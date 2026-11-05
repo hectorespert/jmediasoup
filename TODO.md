@@ -43,7 +43,7 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 **Ya tomadas**
 
 - Coordenadas Maven: `io.github.hectorespert:jmediasoup`, con paquete raíz `io.github.hectorespert.jmediasoup`.
-- Servidor de pruebas: una imagen Docker de terceros, por elegir en la sección 0.4.
+- Servidor de pruebas: la imagen de terceros `mmahdisonic/mediasoup-demo`, fijada por digest (sección 0.4). En local se ejecuta con podman.
 - Licencia: Apache-2.0. El código a portar es MIT (pymediasoup, sdp-transform) e ISC (mediasoup-client, h264-profile-level-id), con sus avisos en `NOTICE`.
 - Subproyecto: `jmediasoup`, que da nombre al artefacto sin configuración adicional.
 - Stack WebRTC: `dev.onvoid.webrtc:webrtc-java` (Apache-2.0), confirmado por el spike de la sección 0.3. Validado en local en Linux x86_64; falta probarlo contra un servidor mediasoup real y en otras plataformas.
@@ -136,18 +136,48 @@ Funciona entre dos peer connections locales. Falta probarlo contra un servidor m
 
 ### 0.4 Imagen Docker de mediasoup
 
-La imagen concreta está sin elegir. No se ha encontrado una imagen oficial, y las de la comunidad más visibles en Docker Hub apenas tienen documentación, así que hay que inspeccionarlas antes de usarlas.
+Imagen elegida: `mmahdisonic/mediasoup-demo`, fijada por digest. No se ha encontrado una imagen oficial, y las de la comunidad apenas tienen documentación, así que se han inspeccionado antes de usarlas.
 
-- [ ] `0.4.1` Listar imágenes candidatas (Docker Hub, GHCR y proyectos de GitHub que publiquen imagen).
-- [ ] `0.4.2` Comprobar que traen mediasoup v3 en una versión conocida y reciente.
-- [ ] `0.4.3` Comprobar que el `Dockerfile` o el código fuente se pueden inspeccionar.
-- [ ] `0.4.4` Comprobar que tienen una señalización documentada que permita crear transportes, producir y consumir.
-- [ ] `0.4.5` Comprobar que `announcedAddress` y el rango de puertos RTC son configurables.
-- [ ] `0.4.6` Comprobar que la licencia es compatible con su uso en CI.
-- [ ] `0.4.7` Elegir la imagen y fijarla por digest, no por tag.
-- [ ] `0.4.8` Validar la red UDP en Linux con `--network host`.
+- [x] `0.4.1` Listar imágenes candidatas (Docker Hub, GHCR y proyectos de GitHub que publiquen imagen).
+- [x] `0.4.2` Comprobar que traen mediasoup v3 en una versión conocida y reciente.
+- [x] `0.4.3` Comprobar que el `Dockerfile` o el código fuente se pueden inspeccionar.
+- [x] `0.4.4` Comprobar que tienen una señalización documentada que permita crear transportes, producir y consumir.
+- [x] `0.4.5` Comprobar que `announcedAddress` y el rango de puertos RTC son configurables.
+- [x] `0.4.6` Comprobar que la licencia es compatible con su uso en CI.
+- [x] `0.4.7` Elegir la imagen y fijarla por digest, no por tag.
+- [x] `0.4.8` Validar la red UDP en Linux con `--network host`.
 - [ ] `0.4.9` Validar la red UDP en macOS y Windows con rango de puertos y `announcedAddress`.
-- [ ] `0.4.10` Si ninguna candidata cumple los criterios, volver a plantear la decisión antes de empezar la Fase 7.
+- [x] `0.4.10` Si ninguna candidata cumple los criterios, volver a plantear la decisión antes de empezar la Fase 7: no hace falta, la candidata cumple.
+
+**Resultado** (con podman, que sustituye a Docker en local)
+
+Imagen elegida: `docker.io/mmahdisonic/mediasoup-demo@sha256:2e60f70cf77ed9ac8b3ef2adfcdb9df6666412c6c543831d5d97bdc37609c8c2`.
+
+| Imagen | mediasoup | Código y licencia | Señalización | Conclusión |
+|---|---|---|---|---|
+| `mmahdisonic/mediasoup-demo` | 3.19.14 (diciembre de 2025) | Demo oficial, ISC | protoo por WebSocket, como el ejemplo de pymediasoup | Elegida |
+| `mirotalk/sfu` | 3.32.2 | Público, AGPL-3.0 | socket.io, protocolo propio de la aplicación | Alternativa si hace falta una versión reciente |
+| `achrafyoussef/bizcord-mediasoup` | 3.19.22 | Sin repositorio ni licencia | REST con secreto compartido | Descartada |
+| `shubhamwrktalk/mediasoup-demo` | 3.18.0 | Sin Dockerfile ni documentación | Sin documentar | Descartada |
+| `iabsis/mediasoup-api` | 3.19.0 | Repositorio no encontrado | Sin documentar | Descartada |
+| `gbplkr/mediasoup-demo` | 3.15.7 | Sin Dockerfile ni documentación | Sin documentar | Descartada |
+| `vanjoge/mediasoup-demo:v3` | 3.8.3 | Antigua | Sin documentar | Descartada |
+
+**Procedencia:** `src/` coincide con `versatica/mediasoup-demo@e6bbe34` salvo una función `isValidPort` añadida, `node/lib` de mediasoup es idéntico al paquete de npm, y el worker tiene el mismo SHA-256 que el de la release oficial 3.19.14. `lib/` (el JavaScript compilado) solo se ha revisado buscando llamadas de red o de procesos.
+
+**Prueba con podman 5.7 sin root, con `--cap-drop=all`:** por protoo, `getRouterRtpCapabilities`, `join` y `createWebRtcTransport` (con SCTP) funcionan, y el servidor responde a un STUN firmado por UDP en los dos transportes. Funciona con `--network host` y con los puertos publicados en `127.0.0.1`. No se ha probado DTLS ni media: eso llega con el E2E de la Fase 7.
+
+**Lo que condiciona el cliente de señalización de la Fase 7:**
+
+- Hay que usar protoo. La API REST solo crea `PlainTransport`, y además no crea salas: la sala nace con la primera conexión WebSocket.
+- Tanto el WebSocket como la API exigen `Origin: http://localhost:4443`, aunque se publique en otro puerto.
+- `createWebRtcTransport` recibe la dirección en `appData.direction`, con los valores `producer` y `consumer`.
+- `MEDIASOUP_ANNOUNCED_ADDRESS` se aplica. `MEDIASOUP_MIN_PORT` y `MEDIASOUP_MAX_PORT` no afectan a los transportes WebRTC, que usan un `WebRtcServer` con puerto fijo por worker (44443 en la prueba). Se lanza un worker por CPU, así que al publicar puertos hay que cubrir ese rango.
+- Sirve HTTP sin TLS.
+
+**Riesgos:** la publica una cuenta personal que podría borrarla (habría que republicarla o construirla desde el demo oficial), y va 13 versiones menores por detrás de mediasoup, así que los tests solo validan esa versión del servidor (ver `0.5.14`).
+
+**El demo público no sirve:** `v3demo.mediasoup.org` rechaza las conexiones sin su `Origin`, y falsearlo para usar un servidor ajeno no es una opción. Los tests automáticos de pymediasoup tampoco lo usan: solo usan `FakeHandler`.
 
 ### 0.5 Decisiones de diseño
 
