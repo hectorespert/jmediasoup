@@ -61,13 +61,13 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 
 ### 0.1 Limpieza de la plantilla
 
-- [ ] `0.1.1` Borrar `org.example.Library` y `org.example.LibraryTest`.
-- [ ] `0.1.2` Quitar `commons-math3` y `guava` de `lib/build.gradle.kts`.
-- [ ] `0.1.3` Quitar `commons-math3` y `guava` de `gradle/libs.versions.toml`.
-- [ ] `0.1.4` Quitar los comentarios generados por `gradle init` de los scripts de build.
-- [ ] `0.1.5` Crear el paquete `io.github.hectorespert.jmediasoup` con `package-info.java`.
-- [ ] `0.1.6` Añadir un test de humo para que `./gradlew test` ejecute algo.
-- [ ] `0.1.7` Actualizar "Project state" y los comandos de ejemplo en `CLAUDE.md`.
+- [x] `0.1.1` Borrar `org.example.Library` y `org.example.LibraryTest`.
+- [x] `0.1.2` Quitar `commons-math3` y `guava` de `lib/build.gradle.kts`.
+- [x] `0.1.3` Quitar `commons-math3` y `guava` de `gradle/libs.versions.toml`.
+- [x] `0.1.4` Quitar los comentarios generados por `gradle init` de los scripts de build.
+- [x] `0.1.5` Crear el paquete `io.github.hectorespert.jmediasoup` con `package-info.java`.
+- [x] `0.1.6` Añadir un test de humo para que `./gradlew test` ejecute algo.
+- [x] `0.1.7` Actualizar "Project state" y los comandos de ejemplo en `CLAUDE.md`.
 
 ### 0.2 Coordenadas, repositorio y licencia
 

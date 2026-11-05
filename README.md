@@ -2,7 +2,7 @@
 
 Java client for [mediasoup](https://mediasoup.org), the counterpart of what [pymediasoup](https://github.com/Huddle01/pymediasoup) is for Python.
 
-> **Status:** not implemented yet and not published. This repository still contains only the Gradle project template.
+> **Status:** not implemented yet and not published. This repository still contains only the empty project skeleton.
 
 ## Roadmap
 
