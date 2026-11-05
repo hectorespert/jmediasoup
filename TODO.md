@@ -1,0 +1,1106 @@
+# TODO: hoja de ruta de jmediasoup
+
+Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas funcionalidades que [pymediasoup](https://github.com/Huddle01/pymediasoup), usando [mediasoup-client](https://github.com/versatica/mediasoup-client) como referencia donde pymediasoup deja huecos.
+
+> **Documento vivo.** Todas las fases, tareas y pasos pueden cambiar según se vaya implementando: se pueden añadir, dividir, reordenar o eliminar. Si la implementación demuestra que un paso está mal planteado, se corrige aquí en vez de seguirlo al pie de la letra.
+
+## Cómo leer este documento
+
+- Cada subtarea tiene un ID (`3.2.4`) y debería caber en un commit o PR pequeño.
+- `Origen:` indica el código de referencia. Las rutas son de pymediasoup (commit `7e6b7ab`) salvo que se indique otra cosa.
+- `⚠️ no copiar` marca un bug o un stub del original que no debe reproducirse.
+- Cada fase termina con sus criterios de aceptación.
+- La [matriz de paridad](#matriz-de-paridad) relaciona la API de pymediasoup con la fase que la cubre.
+
+## Resumen
+
+| Parte | Fase | Contenido |
+|---|---|---|
+| A: MVP | [0](#fase-0-proyecto-y-decisiones) | Proyecto y decisiones |
+| A: MVP | [1](#fase-1-fundamentos) | Errores, eventos, modelos y JSON |
+| A: MVP | [2](#fase-2-ortc) | Lógica ORTC y capacidades RTP |
+| A: MVP | [3](#fase-3-sdp) | Parser y generador de SDP |
+| A: MVP | [4](#fase-4-device-y-transport-con-fakehandler) | `Device` y `Transport` con `FakeHandler` |
+| A: MVP | [5](#fase-5-webrtcjavahandler-recepción) | `WebRtcJavaHandler`: recepción |
+| A: MVP | [6](#fase-6-webrtcjavahandler-envío) | `WebRtcJavaHandler`: envío |
+| A: MVP | [7](#fase-7-hito-mvp) | Hito MVP con servidor real |
+| B: paridad | [8](#fase-8-control-de-medios) | Control de medios |
+| B: paridad | [9](#fase-9-data-channels) | Data channels |
+| B: paridad | [10](#fase-10-stats-e-ice) | Stats e ICE |
+| B: paridad | [11](#fase-11-codecs-y-encodings) | Codecs, simulcast y SVC |
+| B: paridad | [12](#fase-12-ejemplos-y-utilidades-de-media) | Ejemplos y utilidades de media |
+| B: paridad | [13](#fase-13-publicación) | Publicación |
+| C: extras | [14](#fase-14-más-allá-de-pymediasoup-opcional) | Más allá de pymediasoup |
+
+**Definición de MVP:** contra un servidor mediasoup real y con un test automatizado, `Device.load`, crear transportes send y recv, producir audio y vídeo desde una fuente custom (sin simulcast), consumir audio y vídeo con un sink, y cerrar limpiamente observando `connectionState`.
+
+**Qué significa "paridad":** la misma API pública, pero funcional donde pymediasoup no lo es. Varias funciones del original son stubs por limitaciones de aiortc, y aquí deben funcionar de verdad.
+
+**Exclusión deliberada:** Plan B. Existe en `media_section.py` y `remote_sdp.py`, pero ningún handler lo usa.
+
+## Decisiones
+
+**Ya tomadas**
+
+- Coordenadas Maven: `io.github.hectorespert:jmediasoup`, con paquete raíz `io.github.hectorespert.jmediasoup`.
+- Servidor de pruebas: una imagen Docker de terceros, por elegir en la sección 0.4.
+
+**Recomendadas, pendientes de confirmar en la Fase 0**
+
+- Stack WebRTC: `dev.onvoid.webrtc:webrtc-java` (Apache-2.0, 0.20.0 en Maven Central en octubre de 2026). Su API cubre lo que necesita el handler, pero solo se ha comprobado leyéndola. La sección 0.3 valida que funciona.
+- API asíncrona con `CompletableFuture`.
+- Eventos con listeners tipados en lugar de nombres de evento en texto.
+- Modelos con `record` y Jackson.
+- Port propio de `sdp-transform` y `h264-profile-level-id`. No se ha encontrado un port Java mantenido.
+
+---
+
+# Parte A: hasta el MVP
+
+## Fase 0: proyecto y decisiones
+
+### 0.1 Limpieza de la plantilla
+
+- [ ] `0.1.1` Borrar `org.example.Library` y `org.example.LibraryTest`.
+- [ ] `0.1.2` Quitar `commons-math3` y `guava` de `lib/build.gradle.kts`.
+- [ ] `0.1.3` Quitar `commons-math3` y `guava` de `gradle/libs.versions.toml`.
+- [ ] `0.1.4` Quitar los comentarios generados por `gradle init` de los scripts de build.
+- [ ] `0.1.5` Crear el paquete `io.github.hectorespert.jmediasoup` con `package-info.java`.
+- [ ] `0.1.6` Añadir un test de humo para que `./gradlew test` ejecute algo.
+- [ ] `0.1.7` Actualizar "Project state" y los comandos de ejemplo en `CLAUDE.md`.
+
+### 0.2 Coordenadas, repositorio y licencia
+
+- [ ] `0.2.1` Fijar `group = "io.github.hectorespert"` en el build.
+- [ ] `0.2.2` Fijar la versión inicial `0.1.0-SNAPSHOT`.
+- [ ] `0.2.3` Decidir entre renombrar el subproyecto `lib` o fijar el `artifactId` en la publicación (por defecto se publicaría como `lib`).
+- [ ] `0.2.4` Aplicar `maven-publish` y comprobar con `publishToMavenLocal` que el artefacto sale como `jmediasoup`.
+- [ ] `0.2.5` Crear el repositorio remoto en GitHub (hoy no hay ningún remoto configurado).
+- [ ] `0.2.6` Verificar el namespace `io.github.hectorespert` en Central Portal.
+- [ ] `0.2.7` Elegir la licencia del proyecto y añadir `LICENSE`.
+- [ ] `0.2.8` Revisar las licencias del código que se va a portar (pymediasoup, mediasoup-client, sdp-transform, h264-profile-level-id) y conservar sus avisos de copyright en un `NOTICE`.
+
+### 0.3 Spike de webrtc-java
+
+Rama desechable: el objetivo es confirmar o descartar el stack, no dejar código definitivo.
+
+- [ ] `0.3.1` Añadir `webrtc-java` 0.20.0 al catálogo de versiones.
+- [ ] `0.3.2` Resolver el artefacto nativo de Linux x86_64.
+- [ ] `0.3.3` Seleccionar el clasificador nativo según el SO en Gradle, de forma compatible con el configuration cache.
+- [ ] `0.3.4` Crear y destruir un `PeerConnectionFactory` y un `RTCPeerConnection`, sin fugas ni bloqueos al cerrar.
+- [ ] `0.3.5` Comprobar que funciona sin dispositivos de audio ni pantalla (entorno de CI).
+- [ ] `0.3.6` Generar una oferta con transceivers de audio y vídeo, y guardar el SDP como fixture.
+- [ ] `0.3.7` Revisar en ese SDP los codecs, `extmap`, `rtcp-fb` y la presencia de líneas `a=ssrc`.
+- [ ] `0.3.8` Conectar un `CustomAudioSource` a un `AudioTrackSink` a través de dos peer connections locales.
+- [ ] `0.3.9` Conectar un `CustomVideoSource` a un `VideoTrackSink` a través de dos peer connections locales.
+- [ ] `0.3.10` Comprobar `setEnabled`, el estado del track y cómo se detecta su finalización (`ended`).
+- [ ] `0.3.11` Crear un data channel `negotiated` con `id` fijo e intercambiar mensajes.
+- [ ] `0.3.12` Comprobar `sendEncodings` con varios `rid` y las líneas `a=rid` y `a=simulcast` resultantes.
+- [ ] `0.3.13` Comprobar `RTCOfferOptions.iceRestart` y `setConfiguration`.
+- [ ] `0.3.14` Comprobar `getStats` a nivel de peer connection, sender y receiver.
+- [ ] `0.3.15` Averiguar en qué hilos llegan los callbacks nativos y si se puede bloquear en ellos.
+- [ ] `0.3.16` Comprobar si los tracks se pueden instanciar o simular sin cargar nativos (condiciona `FakeHandler`).
+- [ ] `0.3.17` Averiguar si las capacidades nativas dependen de los tracks añadidos (en aiortc hay que pasarlos a `createFactory`).
+- [ ] `0.3.18` Enumerar plataformas y arquitecturas soportadas.
+- [ ] `0.3.19` Registrar el resultado y confirmar o descartar el stack. Si se descarta, replantear las fases 5 y 6.
+
+### 0.4 Imagen Docker de mediasoup
+
+La imagen concreta está sin elegir. No se ha encontrado una imagen oficial, y las de la comunidad más visibles en Docker Hub apenas tienen documentación, así que hay que inspeccionarlas antes de usarlas.
+
+- [ ] `0.4.1` Listar imágenes candidatas (Docker Hub, GHCR y proyectos de GitHub que publiquen imagen).
+- [ ] `0.4.2` Comprobar que traen mediasoup v3 en una versión conocida y reciente.
+- [ ] `0.4.3` Comprobar que el `Dockerfile` o el código fuente se pueden inspeccionar.
+- [ ] `0.4.4` Comprobar que tienen una señalización documentada que permita crear transportes, producir y consumir.
+- [ ] `0.4.5` Comprobar que `announcedAddress` y el rango de puertos RTC son configurables.
+- [ ] `0.4.6` Comprobar que la licencia es compatible con su uso en CI.
+- [ ] `0.4.7` Elegir la imagen y fijarla por digest, no por tag.
+- [ ] `0.4.8` Validar la red UDP en Linux con `--network host`.
+- [ ] `0.4.9` Validar la red UDP en macOS y Windows con rango de puertos y `announcedAddress`.
+- [ ] `0.4.10` Si ninguna candidata cumple los criterios, volver a plantear la decisión antes de empezar la Fase 7.
+
+### 0.5 Decisiones de diseño
+
+Cada una se confirma y se anota en la sección [Decisiones](#decisiones) de este documento.
+
+- [ ] `0.5.1` Modelo asíncrono: `CompletableFuture` en la API pública.
+- [ ] `0.5.2` Modelo de hilos: un ejecutor serializado por transporte, sin trabajo bloqueante en callbacks nativos.
+- [ ] `0.5.3` Eventos: listeners tipados, con `connect`, `produce` y `producedata` devolviendo un futuro.
+- [ ] `0.5.4` Tipos de texto cerrado (`MediaKind`, `DtlsRole`, `ConnectionState`...): enums con su valor JSON.
+- [ ] `0.5.5` Abstracciones propias sobre `MediaStreamTrack`, sender, receiver y data channel, para probar sin nativos (según `0.3.16`).
+- [ ] `0.5.6` Módulos: artefacto único `jmediasoup` y handler pluggable por interfaz.
+- [ ] `0.5.7` Alcance de dependencias: qué va en `api` y qué en `implementation` (Jackson, SLF4J, webrtc-java).
+- [ ] `0.5.8` Nulos: `Optional`, anotaciones JSpecify o una convención documentada.
+- [ ] `0.5.9` Tipo de `appData`: `Map<String, Object>` inmutable.
+- [ ] `0.5.10` Logging: SLF4J como fachada.
+- [ ] `0.5.11` Decidir si se publica `module-info.java` (JPMS).
+- [ ] `0.5.12` Representación del SDP parseado: `Map<String, Object>` como `sdp-transform`, o un modelo tipado.
+- [ ] `0.5.13` Revisar `intrepidkarthi/libSDPtransform-android` por si algo es aprovechable.
+- [ ] `0.5.14` Definir qué versiones de servidor mediasoup se soportan.
+
+### 0.6 CI y calidad
+
+- [ ] `0.6.1` Workflow de GitHub Actions: `./gradlew build` en push y PR.
+- [ ] `0.6.2` Caché de Gradle en el workflow.
+- [ ] `0.6.3` Publicar los informes de tests como artefacto del workflow.
+- [ ] `0.6.4` Decidir si se añade un formateador (p. ej. Spotless). Hoy no hay ninguno.
+- [ ] `0.6.5` Activar actualizaciones automáticas de dependencias.
+
+**Aceptación de la Fase 0**
+
+- `./gradlew build` pasa sin restos de la plantilla, en local y en CI.
+- `publishToMavenLocal` genera `io.github.hectorespert:jmediasoup`.
+- El stack WebRTC y la imagen Docker están confirmados, o se ha replanteado la decisión.
+
+## Fase 1: fundamentos
+
+### 1.1 Errores
+
+Origen: `pymediasoup/errors.py`
+
+- [ ] `1.1.1` Excepción base del proyecto (equivalente a `Error`).
+- [ ] `1.1.2` `UnsupportedError`.
+- [ ] `1.1.3` `InvalidStateError`.
+- [ ] `1.1.4` Decidir qué excepción de Java sustituye a cada `TypeError` del original (normalmente `IllegalArgumentException`).
+
+### 1.2 Eventos y observers
+
+Origen: `pymediasoup/emitter.py`, `pyee`
+
+- [ ] `1.2.1` Colección de listeners segura ante concurrencia, con alta y baja.
+- [ ] `1.2.2` Aislar errores: la excepción de un listener no impide avisar a los demás y queda registrada.
+- [ ] `1.2.3` Contrato para listeners que devuelven un resultado asíncrono (sustituye a `emit_for_results`).
+- [ ] `1.2.4` Error claro si un listener obligatorio no está registrado o no devuelve resultado. ⚠️ no copiar: `ids[0]` falla con `IndexError` si el listener de `produce` falla o no devuelve nada.
+- [ ] `1.2.5` Tests de orden de entrega, baja durante la entrega y propagación de errores.
+
+### 1.3 Parámetros RTP
+
+Origen: `pymediasoup/rtp_parameters.py`
+
+- [ ] `1.3.1` `MediaKind`.
+- [ ] `1.3.2` `RtcpFeedback`.
+- [ ] `1.3.3` `RtpCodecCapability`.
+- [ ] `1.3.4` `RtpCodecParameters`.
+- [ ] `1.3.5` Tipo común de codec para que `matchCodecs` acepte capacidades y parámetros (`Codec` y `RtpCodec` en el original).
+- [ ] `1.3.6` `RtpHeaderExtension` y su `direction`.
+- [ ] `1.3.7` `RtpHeaderExtensionParameters`.
+- [ ] `1.3.8` `RtpCapabilities`.
+- [ ] `1.3.9` `RTX` (SSRC de retransmisión).
+- [ ] `1.3.10` `RtpEncodingParameters`, con todos sus campos opcionales.
+- [ ] `1.3.11` `RtcpParameters`.
+- [ ] `1.3.12` `RtpParameters`.
+- [ ] `1.3.13` `ExtendedCodec`.
+- [ ] `1.3.14` `ExtendedHeaderExtension`.
+- [ ] `1.3.15` `ExtendedRtpCapabilities`.
+- [ ] `1.3.16` Representar los `parameters` de codec con tipos estables al comparar (un `apt` puede llegar como número o como texto).
+- [ ] `1.3.17` Validar en el constructor los campos obligatorios (en el original lo hace pydantic).
+- [ ] `1.3.18` Copias defensivas de listas y mapas (sustituye a `copy(deep=True)`).
+
+### 1.4 Parámetros SCTP
+
+Origen: `pymediasoup/sctp_parameters.py`
+
+- [ ] `1.4.1` `NumSctpStreams`.
+- [ ] `1.4.2` `SctpCapabilities`.
+- [ ] `1.4.3` `SctpParameters`.
+- [ ] `1.4.4` `SctpStreamParameters`, con `ordered = true` por defecto.
+- [ ] `1.4.5` Validar la combinación `ordered`, `maxPacketLifeTime` y `maxRetransmits` descrita en el original.
+
+### 1.5 Parámetros de transporte
+
+Origen: `pymediasoup/models/transport.py`
+
+- [ ] `1.5.1` `IceParameters`, incluido `iceLite`.
+- [ ] `1.5.2` `IceCandidate`, con enums de `protocol`, `type` y `tcpType`.
+- [ ] `1.5.3` `DtlsFingerprint`.
+- [ ] `1.5.4` `DtlsRole`.
+- [ ] `1.5.5` `DtlsParameters`, con rol `auto` por defecto.
+- [ ] `1.5.6` `ConnectionState`.
+- [ ] `1.5.7` `IpVersion`.
+- [ ] `1.5.8` `PlainRtpParameters`.
+- [ ] `1.5.9` `TransportOptions`, con builder.
+- [ ] `1.5.10` Opciones internas de transporte (`InternalTransportOptions`).
+- [ ] `1.5.11` Enum `TransportDirection` (`send`, `recv`).
+- [ ] `1.5.12` Modelo de `RTCIceServer` propio, si `0.5.5` lo requiere.
+
+### 1.6 Opciones de productores y consumidores
+
+Origen: `producer.py`, `consumer.py`, `data_producer.py`, `data_consumer.py`
+
+- [ ] `1.6.1` `ProducerCodecOptions`, con sus nueve campos.
+- [ ] `1.6.2` `ProducerOptions`, con los valores por defecto del original (`stopTracks = true`, `disableTrackOnPause = true`, `zeroRtpOnPause = false`).
+- [ ] `1.6.3` `ConsumerOptions`.
+- [ ] `1.6.4` `DataProducerOptions`.
+- [ ] `1.6.5` `DataConsumerOptions`.
+
+### 1.7 Abstracciones de medios
+
+Origen: `pymediasoup/types/webrtc.py` y los tipos de aiortc que usa el original
+
+- [ ] `1.7.1` Interfaz de track: `id`, `kind`, `enabled`, estado, `stop()` y aviso de finalización.
+- [ ] `1.7.2` Interfaz de sender (`replaceTrack`, parámetros, stats).
+- [ ] `1.7.3` Interfaz de receiver (track, stats).
+- [ ] `1.7.4` Interfaz de data channel (`label`, `protocol`, `readyState`, `send`, `close`, buffer y eventos).
+- [ ] `1.7.5` Implementaciones falsas de las cuatro interfaces para los tests.
+
+### 1.8 JSON
+
+- [ ] `1.8.1` Añadir Jackson al catálogo de versiones.
+- [ ] `1.8.2` Configurar la serialización: omitir nulos, ignorar campos desconocidos.
+- [ ] `1.8.3` Serializar enums con el valor que espera mediasoup (`sendrecv`, `actpass`...).
+- [ ] `1.8.4` Utilidad pública para leer y escribir los modelos que viajan por señalización.
+- [ ] `1.8.5` Comprobar que el round-trip conserva los tipos de los `parameters` de codec.
+
+### 1.9 Fixtures
+
+Origen: `tests/fake_parameters.py`, `tests/fake_handler.py`
+
+- [ ] `1.9.1` Portar `generateRouterRtpCapabilities`.
+- [ ] `1.9.2` Portar las capacidades RTP nativas de `FakeHandler`.
+- [ ] `1.9.3` Portar `generateTransportRemoteParameters`.
+- [ ] `1.9.4` Portar `generateConsumerRemoteParameters`, por codec.
+- [ ] `1.9.5` Portar `generateDataProducerRemoteParameters` y `generateDataConsumerRemoteParameters`.
+- [ ] `1.9.6` Round-trip JSON de todos los fixtures.
+
+**Aceptación de la Fase 1**
+
+- Todos los fixtures se leen, se validan y se reescriben sin perder datos.
+- Las entradas no válidas fallan al construir el objeto, con un mensaje útil.
+
+## Fase 2: ORTC
+
+### 2.1 Port de h264-profile-level-id
+
+Origen: paquete `h264-profile-level-id`. pymediasoup solo usa `isSameProfile` y `generateProfileLevelIdForAnswer`.
+
+- [ ] `2.1.1` Constantes de perfiles y niveles.
+- [ ] `2.1.2` Parsear una cadena `profile-level-id`.
+- [ ] `2.1.3` Convertir un perfil y nivel a cadena.
+- [ ] `2.1.4` Leer el parámetro del `fmtp`, con su valor por defecto si falta.
+- [ ] `2.1.5` `isSameProfile`.
+- [ ] `2.1.6` `generateProfileLevelIdForAnswer`.
+- [ ] `2.1.7` Port de los casos de prueba de la librería original.
+
+### 2.2 Modos de escalabilidad
+
+Origen: `pymediasoup/scalability_modes.py`
+
+- [ ] `2.2.1` `ScalabilityMode` (capas espaciales y temporales).
+- [ ] `2.2.2` `parse`. ⚠️ no copiar: la regex usa `\\d` en un raw string, así que el original siempre devuelve 1 y 1.
+- [ ] `2.2.3` Tests de `L1T3`, `S3T3`, `L3T3_KEY`, cadena vacía y nula, y valores no válidos.
+
+### 2.3 Comparación de codecs
+
+Origen: `pymediasoup/ortc.py`
+
+- [ ] `2.3.1` Constantes `RTP_PROBATOR_MID`, `RTP_PROBATOR_SSRC` y `RTP_PROBATOR_CODEC_PAYLOAD_TYPE`.
+- [ ] `2.3.2` `isRtxCodec`.
+- [ ] `2.3.3` `matchCodecs`: `mimeType` (sin distinguir mayúsculas), `clockRate` y `channels`.
+- [ ] `2.3.4` `matchCodecs`: H264, `packetization-mode`.
+- [ ] `2.3.5` `matchCodecs`: H264 estricto, `isSameProfile`.
+- [ ] `2.3.6` `matchCodecs`: H264 con `modify`, usando `generateProfileLevelIdForAnswer`. ⚠️ no copiar: el original muta el codec de entrada; aquí se devuelve el resultado sin mutar.
+- [ ] `2.3.7` `matchCodecs`: VP9 estricto, `profile-id`.
+- [ ] `2.3.8` `reduceRtcpFeedback`.
+- [ ] `2.3.9` `matchHeaderExtensions`.
+
+### 2.4 Capacidades extendidas
+
+- [ ] `2.4.1` `getExtendedRtpCapabilities`: codecs, respetando el orden del router.
+- [ ] `2.4.2` `getExtendedRtpCapabilities`: emparejar RTX por `apt`.
+- [ ] `2.4.3` `getExtendedRtpCapabilities`: extensiones de cabecera.
+- [ ] `2.4.4` `getExtendedRtpCapabilities`: invertir `direction` respecto al router.
+- [ ] `2.4.5` `getRecvRtpCapabilities`: codecs y RTX.
+- [ ] `2.4.6` `getRecvRtpCapabilities`: filtrar extensiones no válidas para recibir.
+- [ ] `2.4.7` `canSend`.
+- [ ] `2.4.8` `canReceive`.
+
+### 2.5 Parámetros de envío
+
+- [ ] `2.5.1` `getSendingRtpParameters`: codecs y RTX.
+- [ ] `2.5.2` `getSendingRtpParameters`: extensiones de cabecera.
+- [ ] `2.5.3` `getSendingRemoteRtpParameters`: usar los parámetros remotos del codec.
+- [ ] `2.5.4` `getSendingRemoteRtpParameters`: reducir el feedback (Transport-CC, si no REMB, si no ninguno).
+- [ ] `2.5.5` `reduceCodecs` sin codec indicado: el primero y su RTX.
+- [ ] `2.5.6` `reduceCodecs` con codec indicado. ⚠️ no copiar: el `break` solo se ejecuta si hay RTX, así que sin RTX sigue añadiendo coincidencias.
+- [ ] `2.5.7` `reduceCodecs`: error si no hay coincidencia.
+- [ ] `2.5.8` `generateProbatorRtpParameters`.
+
+**Aceptación de la Fase 2**
+
+- Cada función de `ortc.py` tiene tests, incluidos H264, VP9, RTX y el caso sin coincidencias.
+- Los resultados con los fixtures coinciden con los de pymediasoup o mediasoup-client, salvo los bugs marcados.
+
+## Fase 3: SDP
+
+### 3.1 Port de sdp-transform: parser
+
+Origen: paquete `sdp-transform`
+
+- [ ] `3.1.1` Estructura de la gramática, con regex, nombre, campos y formato por tipo de línea.
+- [ ] `3.1.2` Parser de líneas y separación entre sesión y secciones `m=`.
+- [ ] `3.1.3` Conversión numérica de campos, con la misma regla que el original.
+- [ ] `3.1.4` Líneas de sesión: `v`, `o`, `s`, `i`, `u`, `e`, `p`, `z`, `r`, `t`, `c`, `b`.
+- [ ] `3.1.5` Línea `m=` con tipo, puerto, protocolo y payloads.
+- [ ] `3.1.6` `a=rtpmap`, `a=fmtp`, `a=rtcp` y `a=rtcp-fb`.
+- [ ] `3.1.7` `a=extmap`, `a=extmap-allow-mixed`.
+- [ ] `3.1.8` `a=ice-ufrag`, `a=ice-pwd`, `a=ice-lite`, `a=ice-options`.
+- [ ] `3.1.9` `a=candidate`, `a=end-of-candidates`, `a=remote-candidates`.
+- [ ] `3.1.10` `a=fingerprint`, `a=setup`, `a=crypto`, `a=connection`.
+- [ ] `3.1.11` `a=mid`, `a=msid`, `a=msid-semantic`, `a=group`.
+- [ ] `3.1.12` `a=ssrc`, `a=ssrc-group`.
+- [ ] `3.1.13` Dirección (`sendrecv`, `sendonly`, `recvonly`, `inactive`), `a=rtcp-mux`, `a=rtcp-rsize`.
+- [ ] `3.1.14` `a=ptime`, `a=maxptime`, `a=framerate`.
+- [ ] `3.1.15` `a=rid`, `a=simulcast`, `a=simulcast:` del borrador 03.
+- [ ] `3.1.16` `a=sctp-port`, `a=max-message-size`, `a=sctpmap`.
+- [ ] `3.1.17` Resto de atributos de la gramática original, y conservar los desconocidos en `invalid`.
+- [ ] `3.1.18` `parseParams`. El `profile-level-id` debe quedar como texto (ver `extractRtpCapabilities` en el original).
+- [ ] `3.1.19` `parsePayloads`.
+- [ ] `3.1.20` Port de los casos de prueba de parseo de la librería original.
+
+### 3.2 Port de sdp-transform: generador
+
+- [ ] `3.2.1` Formateador de líneas con los especificadores de la gramática.
+- [ ] `3.2.2` Orden de líneas de sesión.
+- [ ] `3.2.3` Orden de líneas de cada sección `m=`.
+- [ ] `3.2.4` Omitir los campos ausentes.
+- [ ] `3.2.5` Fin de línea `\r\n`.
+- [ ] `3.2.6` Port de los casos de prueba de escritura.
+- [ ] `3.2.7` Round-trip parse y write con el SDP guardado en `0.3.6`.
+- [ ] `3.2.8` Comprobar que webrtc-java acepta un SDP generado por el port.
+
+### 3.3 Utilidades comunes
+
+Origen: `pymediasoup/handlers/sdp/common_utils.py`, `unified_plan_utils.py`
+
+- [ ] `3.3.1` `extractRtpCapabilities`: codecs, solo de la primera sección de cada tipo.
+- [ ] `3.3.2` `extractRtpCapabilities`: parámetros desde `fmtp`.
+- [ ] `3.3.3` `extractRtpCapabilities`: `rtcp-fb`.
+- [ ] `3.3.4` `extractRtpCapabilities`: extensiones de cabecera, omitiendo las cifradas.
+- [ ] `3.3.5` `extractDtlsParameters`: sección activa y fingerprint de sesión o de media. ⚠️ no copiar: compara con `"activate"`, y el valor correcto es `"active"`.
+- [ ] `3.3.6` `getCname`.
+- [ ] `3.3.7` `getRtpEncodings`: SSRC y grupos `FID`. Conservar el orden; ⚠️ el original usa un `set`, sin orden definido.
+- [ ] `3.3.8` Tests con SDP con RTX, sin RTX y sin SSRC.
+
+### 3.4 Secciones de media
+
+Origen: `pymediasoup/handlers/sdp/media_section.py`
+
+- [ ] `3.4.1` `getCodecName`.
+- [ ] `3.4.2` Base `MediaSection`: ICE y candidatos (`component = 1`, `end-of-candidates`, `renomination`).
+- [ ] `3.4.3` `MediaSection`: propiedades `mid` y `closed` (puerto 0).
+- [ ] `3.4.4` `MediaSection.setIceParameters`.
+- [ ] `3.4.5` `MediaSection.disable`.
+- [ ] `3.4.6` `MediaSection.close`.
+- [ ] `3.4.7` `AnswerMediaSection`: cabecera, conexión y puerto.
+- [ ] `3.4.8` `AnswerMediaSection`: audio y vídeo, `rtp`, `fmtp`, `rtcpFb` y `payloads`.
+- [ ] `3.4.9` `AnswerMediaSection`: incluir solo las extensiones presentes en la oferta.
+- [ ] `3.4.10` `AnswerMediaSection`: `extmapAllowMixed`, `rtcp-mux`, `rtcp-rsize`.
+- [ ] `3.4.11` `AnswerMediaSection.setDtlsRole`.
+- [ ] `3.4.12` `OfferMediaSection`: cabecera, conexión, puerto y protocolo.
+- [ ] `3.4.13` `OfferMediaSection`: audio y vídeo, `msid`, `rtp`, `fmtp`, `rtcpFb` y `ext`.
+- [ ] `3.4.14` `OfferMediaSection`: `ssrcs` y `ssrcGroups`, con RTX.
+- [ ] `3.4.15` `OfferMediaSection.setDtlsRole` (siempre `actpass`).
+- [ ] `3.4.16` Comprobar el resultado contra salidas de mediasoup-client (`RemoteMediaSection.ts`).
+
+### 3.5 RemoteSdp
+
+Origen: `pymediasoup/handlers/sdp/remote_sdp.py`
+
+- [ ] `3.5.1` Constructor con el SDP base (`origin`, `name`, `timing`).
+- [ ] `3.5.2` Indicador `ice-lite`.
+- [ ] `3.5.3` Fingerprint. ⚠️ no copiar: el filtro `sha-256` existe porque aiortc solo soporta ese; revisar qué acepta webrtc-java.
+- [ ] `3.5.4` Grupo `BUNDLE` y `msid-semantic`.
+- [ ] `3.5.5` `updateIceParameters`.
+- [ ] `3.5.6` `updateDtlsRole`.
+- [ ] `3.5.7` `getNextMediaSectionIdx` y `MediaSectionIdx`.
+- [ ] `3.5.8` `send`.
+- [ ] `3.5.9` `receive`.
+- [ ] `3.5.10` `disableMediaSection`.
+- [ ] `3.5.11` `closeMediaSection`, sin cerrar nunca la primera sección.
+- [ ] `3.5.12` `getSdp`, incrementando `sessionVersion`.
+- [ ] `3.5.13` `addMediaSection`, `replaceMediaSection` y `regenerateBundleMids`.
+- [ ] `3.5.14` Tests de añadir, cerrar y reciclar secciones.
+
+**Aceptación de la Fase 3**
+
+- El port pasa los casos de prueba de `sdp-transform` que se hayan portado.
+- `RemoteSdp` genera ofertas y respuestas que webrtc-java acepta en un test con peer connections locales.
+
+## Fase 4: Device y Transport con FakeHandler
+
+### 4.1 HandlerInterface y FakeHandler
+
+Origen: `pymediasoup/handlers/handler_interface.py`, `pymediasoup/models/handler_interface.py`, `tests/fake_handler.py`
+
+- [ ] `4.1.1` `HandlerInterface`, con todos sus métodos y `CompletableFuture`.
+- [ ] `4.1.2` Listeners `@connect` y `@connectionstatechange` del handler.
+- [ ] `4.1.3` `HandlerRunOptions`.
+- [ ] `4.1.4` `HandlerSendOptions` y `HandlerSendResult`.
+- [ ] `4.1.5` `HandlerReceiveOptions` y `HandlerReceiveResult`.
+- [ ] `4.1.6` `HandlerSendDataChannelResult`, `HandlerReceiveDataChannelOptions` y `HandlerReceiveDataChannelResult`.
+- [ ] `4.1.7` `HandlerFactory`.
+- [ ] `4.1.8` `FakeHandler`: capacidades nativas fijas.
+- [ ] `4.1.9` `FakeHandler`: `run`, `send` y `receive` sin WebRTC, generando IDs y parámetros.
+- [ ] `4.1.10` `FakeHandler`: permitir simular cambios de estado y fallos.
+
+### 4.2 Device
+
+Origen: `pymediasoup/device.py`
+
+- [ ] `4.2.1` Constructor con `HandlerFactory`.
+- [ ] `4.2.2` `load`: obtener capacidades nativas con un handler temporal.
+- [ ] `4.2.3` `load`: calcular capacidades extendidas, `canProduce` y capacidades de recepción.
+- [ ] `4.2.4` `load`: capacidades SCTP.
+- [ ] `4.2.5` `load`: cerrar el handler temporal también si hay error. ⚠️ no copiar: el original no lo cierra si falla.
+- [ ] `4.2.6` `load` repetido: decidir si falla como mediasoup-client. El original avisa y vuelve.
+- [ ] `4.2.7` `loaded`, `handlerName`.
+- [ ] `4.2.8` `rtpCapabilities` y `sctpCapabilities`, con `InvalidStateError` si no está cargado.
+- [ ] `4.2.9` `canProduce`.
+- [ ] `4.2.10` `createSendTransport`.
+- [ ] `4.2.11` `createRecvTransport`. ⚠️ no copiar: el original solo acepta `dict` en recv. Las dos variantes deben aceptar los mismos tipos de entrada.
+- [ ] `4.2.12` `observer` con `newtransport`. ⚠️ no copiar: el original lo documenta pero nunca lo emite.
+
+### 4.3 Transport básico
+
+Origen: `pymediasoup/transport.py`
+
+- [ ] `4.3.1` Constructor: crear el handler y llamar a `run`.
+- [ ] `4.3.2` Cola serializada por transporte para las operaciones de handler. ⚠️ no copiar: el original no tiene cola (`NOTE: Mediasoup client enqueue command here`). En Java hay concurrencia real.
+- [ ] `4.3.3` Rechazar las operaciones pendientes de la cola al cerrar.
+- [ ] `4.3.4` Propiedades `id`, `closed`, `direction`, `handler`, `connectionState` y `appData`.
+- [ ] `4.3.5` Listener `connect` con futuro. ⚠️ no copiar: el original lanza `connect` y sigue sin esperar a que termine la señalización.
+- [ ] `4.3.6` Listener `connectionstatechange`.
+- [ ] `4.3.7` Listener `produce`, que devuelve el ID del producer.
+- [ ] `4.3.8` `close`: cerrar el handler y avisar a todos los productores y consumidores.
+- [ ] `4.3.9` `observer` con `close`, `newproducer` y `newconsumer`.
+- [ ] `4.3.10` `additionalSettings`: sin campos reservados. ⚠️ no copiar: el original llama a `copy(deep=True)` sobre un `dict`.
+
+### 4.4 Producer básico y Transport.produce
+
+Origen: `pymediasoup/producer.py`, `pymediasoup/transport.py`
+
+- [ ] `4.4.1` `Producer`: propiedades `id`, `localId`, `closed`, `kind`, `rtpSender`, `track`, `rtpParameters`, `paused`, `maxSpatialLayer` y `appData`.
+- [ ] `4.4.2` `Producer.close`.
+- [ ] `4.4.3` `Producer.transportClosed` y evento `transportclose`.
+- [ ] `4.4.4` `Transport.produce`: validaciones de track, dirección y `canProduce`. ⚠️ no copiar: el original no comprueba si el transporte está cerrado.
+- [ ] `4.4.5` `Transport.produce`: exigir el listener `produce`. ⚠️ no copiar: la segunda comprobación del original mira `connect`.
+- [ ] `4.4.6` `Transport.produce`: flujo con handler y listener, y registro del producer.
+- [ ] `4.4.7` Si falla con el transporte cerrado, parar el track (`TODO` pendiente en el original).
+- [ ] `4.4.8` Conectar `@close` del producer con `handler.stopSending`.
+- [ ] `4.4.9` `Producer.observer` con `close`.
+
+### 4.5 Consumer básico y Transport.consume
+
+Origen: `pymediasoup/consumer.py`, `pymediasoup/transport.py`
+
+- [ ] `4.5.1` `Consumer`: propiedades `id`, `localId`, `producerId`, `closed`, `kind`, `rtpReceiver`, `track`, `rtpParameters`, `paused` y `appData`.
+- [ ] `4.5.2` `Consumer.close`.
+- [ ] `4.5.3` `Consumer.transportClosed` y evento `transportclose`.
+- [ ] `4.5.4` `Transport.consume`: validaciones y `canReceive`.
+- [ ] `4.5.5` `Transport.consume`: flujo con handler y registro del consumer. ⚠️ no copiar: el original no pasa `rtpReceiver` al `Consumer`.
+- [ ] `4.5.6` Conectar `@close` del consumer con `handler.stopReceiving`.
+- [ ] `4.5.7` `Consumer.observer` con `close`.
+
+### 4.6 Port de la batería de tests
+
+Origen: `tests/__init__.py`
+
+- [ ] `4.6.1` `test_create_device`.
+- [ ] `4.6.2` `test_device_load`.
+- [ ] `4.6.3` `test_device_rtp_capabilities`.
+- [ ] `4.6.4` `test_device_sctp_capabilities`.
+- [ ] `4.6.5` `test_device_can_produce_audio` y `test_device_can_produce_video`.
+- [ ] `4.6.6` `test_send_transport`.
+- [ ] `4.6.7` `test_recv_transport`.
+- [ ] `4.6.8` `test_produce`, sin la parte de data channels.
+- [ ] `4.6.9` `test_consume`, sin la parte de data channels.
+- [ ] `4.6.10` Tests de operaciones concurrentes sobre la cola.
+- [ ] `4.6.11` Tests de cierre con operaciones en curso.
+
+**Aceptación de la Fase 4**
+
+- Los tests portados pasan sin cargar nativos.
+- Las operaciones concurrentes sobre un transporte se ejecutan en orden.
+
+## Fase 5: WebRtcJavaHandler, recepción
+
+Para probar contra un servidor real hacen falta las secciones 7.1 y 7.2, así que deben adelantarse antes de cerrar esta fase.
+
+### 5.1 Base del handler
+
+Origen: `pymediasoup/handlers/aiortc_handler.py`
+
+- [ ] `5.1.1` Añadir `webrtc-java` y sus nativos al build definitivo.
+- [ ] `5.1.2` Gestión compartida de `PeerConnectionFactory`, con su ciclo de vida y su cierre.
+- [ ] `5.1.3` Adaptadores de las interfaces de la sección 1.7 sobre webrtc-java.
+- [ ] `5.1.4` Convertir en futuros los callbacks `createOffer`, `createAnswer`, `setLocalDescription` y `setRemoteDescription`.
+- [ ] `5.1.5` `createFactory`, `name`.
+- [ ] `5.1.6` `getNativeRtpCapabilities`, con peer connection temporal (según `0.3.17`).
+- [ ] `5.1.7` `getNativeSctpCapabilities` (`OS` y `MIS` de 1024).
+- [ ] `5.1.8` `run`: `RemoteSdp` y parámetros de envío por tipo.
+- [ ] `5.1.9` `run`: configuración de la peer connection con `iceServers` y `iceTransportPolicy`.
+- [ ] `5.1.10` Mapear el estado ICE a `ConnectionState`.
+- [ ] `5.1.11` `close`, liberando los recursos nativos.
+- [ ] `5.1.12` `setupTransport`: extraer DTLS, fijar el rol, avisar por `@connect` y esperar el resultado.
+- [ ] `5.1.13` `assertSendDirection` y `assertRecvDirection`.
+- [ ] `5.1.14` Test con `Device.load` real: las capacidades incluyen Opus y VP8.
+
+### 5.2 Recibir
+
+- [ ] `5.2.1` `receive`: asignar `localId`. ⚠️ no copiar: `str(len(map))` puede colisionar tras un `stopReceiving`. Usar un contador, como mediasoup-client.
+- [ ] `5.2.2` `receive`: oferta remota con `RemoteSdp.receive`.
+- [ ] `5.2.3` `receive`: `setRemoteDescription` y `createAnswer`.
+- [ ] `5.2.4` `receive`: `setupTransport` con rol `client` la primera vez.
+- [ ] `5.2.5` `receive`: `setLocalDescription` y localizar el transceiver por `mid`.
+- [ ] `5.2.6` `applyCodecParameters` para Opus. ⚠️ no copiar: el original busca `rmtp` en vez de `fmtp`.
+- [ ] `5.2.7` Devolver track y receiver envueltos en las abstracciones.
+- [ ] `5.2.8` `stopReceiving`: cerrar la sección y renegociar.
+- [ ] `5.2.9` Test E2E: recibir audio de un producer del servidor.
+- [ ] `5.2.10` Test E2E: recibir vídeo de un producer del servidor.
+- [ ] `5.2.11` Test: `connectionState` llega a `connected` y a `closed`.
+
+**Aceptación de la Fase 5**
+
+- Los sinks reciben audio y vídeo reales desde el servidor mediasoup.
+- Al cerrar no quedan hilos ni recursos nativos vivos.
+
+## Fase 6: WebRtcJavaHandler, envío
+
+### 6.1 Fuentes de prueba
+
+Origen: `AudioStreamTrack` y `VideoStreamTrack` de aiortc, usados en `examples/mediasoup.py`
+
+- [ ] `6.1.1` Fuente de audio de silencio sobre `CustomAudioSource`.
+- [ ] `6.1.2` Fuente de vídeo con frames de color fijo sobre `CustomVideoSource`.
+- [ ] `6.1.3` Temporización estable de las dos fuentes.
+- [ ] `6.1.4` Parada de las fuentes al cerrar.
+
+### 6.2 Enviar
+
+- [ ] `6.2.1` `send`: copiar y reducir los parámetros RTP según el codec.
+- [ ] `6.2.2` `send`: `addTransceiver` en `sendonly`.
+- [ ] `6.2.3` `send`: `createOffer` y `setupTransport` con rol `server` la primera vez.
+- [ ] `6.2.4` `send`: `setLocalDescription` y obtener el `mid`.
+- [ ] `6.2.5` `send`: localizar la sección de la oferta por `mid` en vez de confiar solo en el índice.
+- [ ] `6.2.6` `send`: CNAME y encodings desde el SDP local.
+- [ ] `6.2.7` `send`: `RemoteSdp.send` y `setRemoteDescription`.
+- [ ] `6.2.8` `send`: reutilizar el `mid` de una sección cerrada.
+- [ ] `6.2.9` `stopSending` real. ⚠️ no copiar: en el original no hace nada porque aiortc no tiene `removeTrack`.
+- [ ] `6.2.10` Test E2E: enviar audio y comprobar en el servidor que llega RTP.
+- [ ] `6.2.11` Test E2E: enviar vídeo y comprobar en el servidor que llega RTP.
+- [ ] `6.2.12` Test E2E: cerrar un producer y crear otro en el mismo transporte.
+
+**Aceptación de la Fase 6**
+
+- El servidor recibe RTP de audio y vídeo desde jmediasoup.
+- Producers y consumers se pueden crear y cerrar repetidamente en el mismo transporte.
+
+## Fase 7: hito MVP
+
+### 7.1 Entorno de integración
+
+- [ ] `7.1.1` Añadir Testcontainers al catálogo de versiones.
+- [ ] `7.1.2` Crear un source set o tarea `integrationTest`, separado de `test`.
+- [ ] `7.1.3` Hacer que la tarea sea compatible con el configuration cache.
+- [ ] `7.1.4` Arrancar la imagen elegida en `0.4.7` por digest, y esperar a que esté lista.
+- [ ] `7.1.5` Configurar la red y `announcedAddress` según `0.4.8` y `0.4.9`.
+- [ ] `7.1.6` Omitir los tests con un mensaje claro si Docker no está disponible.
+- [ ] `7.1.7` Recoger los logs del contenedor si falla un test.
+
+### 7.2 Señalización de los tests
+
+Este cliente es solo para los tests y se adapta a la señalización de la imagen elegida.
+
+- [ ] `7.2.1` Cliente WebSocket o HTTP según la imagen.
+- [ ] `7.2.2` Obtener las capacidades RTP del router.
+- [ ] `7.2.3` Crear transportes WebRTC.
+- [ ] `7.2.4` Conectar transportes (`connect`).
+- [ ] `7.2.5` Crear un producer en el servidor (`produce`).
+- [ ] `7.2.6` Crear y reanudar un consumer en el servidor.
+- [ ] `7.2.7` Consultar las estadísticas del servidor para comprobar que llega RTP.
+
+### 7.3 Test E2E de loopback
+
+- [ ] `7.3.1` Cargar `Device` con las capacidades del router.
+- [ ] `7.3.2` Crear transportes send y recv.
+- [ ] `7.3.3` Producir audio y vídeo.
+- [ ] `7.3.4` Consumir lo producido en el mismo proceso.
+- [ ] `7.3.5` Comprobar que el sink de audio recibe muestras.
+- [ ] `7.3.6` Comprobar que el sink de vídeo recibe frames.
+- [ ] `7.3.7` Comprobar las transiciones de `connectionState`.
+- [ ] `7.3.8` Cerrar todo y comprobar el estado final.
+- [ ] `7.3.9` Ejecutar el test varias veces seguidas para detectar inestabilidad.
+
+### 7.4 Entrega del MVP
+
+- [ ] `7.4.1` Ejecutar `integrationTest` en CI.
+- [ ] `7.4.2` Ejemplo mínimo ejecutable.
+- [ ] `7.4.3` Sección de uso en el README, con plataformas soportadas y limitaciones.
+- [ ] `7.4.4` Publicar la versión `0.1.0` (como mínimo con una etiqueta de git).
+
+**Aceptación del MVP**
+
+- El test de loopback pasa en CI de forma estable.
+- Cumple la [definición de MVP](#resumen).
+
+---
+
+# Parte B: del MVP a la paridad
+
+## Fase 8: control de medios
+
+### 8.1 Pausa y reanudación
+
+Origen: `producer.py`, `consumer.py`
+
+- [ ] `8.1.1` `Producer.pause`: deshabilitar el track. ⚠️ no copiar: en el original no lo hace, porque el track de aiortc no tiene `enabled`.
+- [ ] `8.1.2` `Producer.resume`.
+- [ ] `8.1.3` `disableTrackOnPause`.
+- [ ] `8.1.4` `zeroRtpOnPause`: sin track al pausar, con track al reanudar. ⚠️ no copiar: el original emite `@replacetrack` sin argumento.
+- [ ] `8.1.5` `Producer.observer` con `pause` y `resume`.
+- [ ] `8.1.6` `Consumer.pause`. ⚠️ no copiar: en el original `_disableTrackOnPause` es siempre `false` y no hace nada.
+- [ ] `8.1.7` `Consumer.resume`.
+- [ ] `8.1.8` `Consumer.observer` con `pause` y `resume`.
+- [ ] `8.1.9` Test E2E: el servidor deja de recibir RTP al pausar con `zeroRtpOnPause`.
+
+### 8.2 Sustitución y fin de track
+
+- [ ] `8.2.1` `Producer.replaceTrack`: validaciones y mismo track.
+- [ ] `8.2.2` `Producer.replaceTrack`: permitir un track nulo, como indica el comentario del original.
+- [ ] `8.2.3` `Producer.replaceTrack`: parar el track anterior según `stopTracks`.
+- [ ] `8.2.4` `Producer.replaceTrack`: aplicar el estado de pausa al track nuevo.
+- [ ] `8.2.5` Si el producer está cerrado, parar el track recibido según `stopTracks`.
+- [ ] `8.2.6` `handler.replaceTrack`.
+- [ ] `8.2.7` Conectar `@replacetrack` del producer con el handler.
+- [ ] `8.2.8` `stopTracks` al cerrar.
+- [ ] `8.2.9` Evento y observer `trackended` en `Producer`.
+- [ ] `8.2.10` Evento y observer `trackended` en `Consumer`.
+- [ ] `8.2.11` Retirar el listener del track al destruirlo.
+
+### 8.3 Probator RTP y reciclado
+
+- [ ] `8.3.1` Crear el consumer de probation con el primer consumer de vídeo.
+- [ ] `8.3.2` Comprobar que no se crea más de una vez, también con llamadas concurrentes.
+- [ ] `8.3.3` Decidir si un fallo del probator debe hacer fallar `consume`. mediasoup-client solo registra el error.
+- [ ] `8.3.4` Test E2E de reciclado de secciones: crear y cerrar consumers repetidamente.
+- [ ] `8.3.5` Test E2E de reciclado de una sección de audio con una de vídeo.
+- [ ] `8.3.6` Test E2E: cerrar el consumer de la primera sección (se deshabilita, no se cierra).
+
+**Aceptación de la Fase 8**
+
+- `pause` y `resume` afectan al medio de verdad, comprobado desde el servidor.
+- `replaceTrack` no interrumpe la sesión.
+
+## Fase 9: data channels
+
+### 9.1 DataProducer
+
+Origen: `pymediasoup/data_producer.py`
+
+- [ ] `9.1.1` Propiedades `id`, `closed`, `sctpStreamParameters`, `readyState`, `label`, `protocol` y `appData`.
+- [ ] `9.1.2` `bufferedAmount` y `bufferedAmountLowThreshold` (lectura y escritura).
+- [ ] `9.1.3` `send` de texto.
+- [ ] `9.1.4` `send` binario.
+- [ ] `9.1.5` `close` y `transportClosed`.
+- [ ] `9.1.6` Eventos `open`, `error`, `bufferedamountlow` y `transportclose`.
+- [ ] `9.1.7` Cierre iniciado por el canal: marcar como cerrado y avisar.
+- [ ] `9.1.8` Descartar y registrar los mensajes entrantes.
+- [ ] `9.1.9` `observer` con `close`.
+
+### 9.2 DataConsumer
+
+Origen: `pymediasoup/data_consumer.py`
+
+- [ ] `9.2.1` Propiedades `id`, `dataProducerId`, `closed`, `sctpStreamParameters`, `readyState`, `label`, `protocol` y `appData`.
+- [ ] `9.2.2` `binaryType` (lectura y escritura), o una alternativa idiomática en Java.
+- [ ] `9.2.3` `close` y `transportClosed`.
+- [ ] `9.2.4` Eventos `open`, `error`, `message` y `transportclose`.
+- [ ] `9.2.5` Cierre iniciado por el canal.
+- [ ] `9.2.6` `observer` con `close`.
+
+### 9.3 Transport
+
+Origen: `pymediasoup/transport.py`
+
+- [ ] `9.3.1` Listener `producedata`.
+- [ ] `9.3.2` `produceData`: validaciones (dirección, SCTP activo, listeners).
+- [ ] `9.3.3` `produceData`: `ordered = false` si hay `maxPacketLifeTime` o `maxRetransmits`. ⚠️ no copiar: el original comprueba si son truthy, así que un valor 0 se ignora.
+- [ ] `9.3.4` `produceData`: flujo con handler y registro.
+- [ ] `9.3.5` `consumeData`: validaciones.
+- [ ] `9.3.6` `consumeData`: flujo con handler y registro.
+- [ ] `9.3.7` Conectar `@close` de los dos tipos con el transporte.
+- [ ] `9.3.8` Avisar a `DataProducer` y `DataConsumer` al cerrar el transporte.
+- [ ] `9.3.9` `observer` con `newdataproducer` y `newdataconsumer`.
+
+### 9.4 Handler y SDP
+
+Origen: `aiortc_handler.py`, `media_section.py`, `remote_sdp.py`
+
+- [ ] `9.4.1` `sendDataChannel`: asignar el `streamId` con contador y módulo de `MIS`. ⚠️ no copiar: el original ignora el `streamId` recibido.
+- [ ] `9.4.2` `sendDataChannel`: crear el canal `negotiated`. ⚠️ no copiar: el original no pasa `maxRetransmits`.
+- [ ] `9.4.3` `sendDataChannel`: negociar `m=application` la primera vez.
+- [ ] `9.4.4` `receiveDataChannel`: crear el canal `negotiated`.
+- [ ] `9.4.5` `receiveDataChannel`: negociar `m=application` la primera vez.
+- [ ] `9.4.6` `AnswerMediaSection`: sección `application` con `sctp-port`.
+- [ ] `9.4.7` `AnswerMediaSection`: `sctpmap` antiguo.
+- [ ] `9.4.8` `OfferMediaSection`: sección `application` con `sctp-port`.
+- [ ] `9.4.9` `OfferMediaSection`: `sctpmap` antiguo (`oldDataChannelSpec`).
+- [ ] `9.4.10` `RemoteSdp.sendSctpAssociation`.
+- [ ] `9.4.11` `RemoteSdp.receiveSctpAssociation`.
+
+### 9.5 Tests
+
+- [ ] `9.5.1` Parte de data channels de `test_produce` y `test_consume`, con `FakeHandler`.
+- [ ] `9.5.2` Test E2E: enviar y recibir texto a través del servidor.
+- [ ] `9.5.3` Test E2E: enviar y recibir binario.
+- [ ] `9.5.4` Test E2E: canal no ordenado con `maxRetransmits`.
+- [ ] `9.5.5` Test: `bufferedamountlow` se dispara.
+- [ ] `9.5.6` Test: cerrar el transporte cierra los canales.
+
+**Aceptación de la Fase 9**
+
+- Mensajes de texto y binarios llegan de extremo a extremo.
+- Los parámetros de fiabilidad llegan al canal nativo.
+
+## Fase 10: stats e ICE
+
+### 10.1 Estadísticas
+
+Origen: `transport.py`, `producer.py`, `consumer.py`, `aiortc_handler.py`
+
+- [ ] `10.1.1` Tipo de resultado de `getStats`, sin exponer detalles nativos si `0.5.5` lo decide así.
+- [ ] `10.1.2` `handler.getTransportStats`.
+- [ ] `10.1.3` `handler.getSenderStats`.
+- [ ] `10.1.4` `handler.getReceiverStats`.
+- [ ] `10.1.5` `Transport.getStats`.
+- [ ] `10.1.6` `Producer.getStats`. ⚠️ no copiar: el original devuelve la lista de `emit_for_results` y, con el transporte cerrado, devuelve la excepción en vez de lanzarla.
+- [ ] `10.1.7` `Consumer.getStats`, con el mismo cuidado.
+- [ ] `10.1.8` Tests E2E de los tres niveles.
+
+### 10.2 ICE
+
+Origen: `transport.py`, `aiortc_handler.py`, `remote_sdp.py`
+
+- [ ] `10.2.1` `Transport.restartIce`.
+- [ ] `10.2.2` `handler.restartIce` en send, con `RTCOfferOptions.iceRestart`. ⚠️ no copiar: el original no puede pedirlo porque aiortc no tiene esa opción.
+- [ ] `10.2.3` `handler.restartIce` en recv.
+- [ ] `10.2.4` `restartIce` antes de que el transporte esté listo: solo actualiza los parámetros.
+- [ ] `10.2.5` `Transport.updateIceServers`.
+- [ ] `10.2.6` `handler.updateIceServers` con `setConfiguration`. ⚠️ no copiar: en el original solo registra un aviso.
+- [ ] `10.2.7` `iceTransportPolicy` (`all` y `relay`).
+- [ ] `10.2.8` `additionalSettings` y `proprietaryConstraints`: decidir cuáles tienen sentido en webrtc-java.
+- [ ] `10.2.9` `RemoteSdp.updateIceParameters`: quitar `icelite` si ya no aplica.
+- [ ] `10.2.10` Test E2E: reiniciar ICE y seguir recibiendo medios.
+- [ ] `10.2.11` Test E2E: conexión a través de un TURN, si la imagen o el entorno lo permiten.
+
+**Aceptación de la Fase 10**
+
+- `restartIce` restablece el medio en una sesión activa.
+- Los tres niveles de `getStats` devuelven datos reales.
+
+## Fase 11: codecs y encodings
+
+### 11.1 Opciones de codec
+
+Origen: `media_section.py`
+
+- [ ] `11.1.1` `opusStereo`.
+- [ ] `11.1.2` `opusFec`.
+- [ ] `11.1.3` `opusDtx`.
+- [ ] `11.1.4` `opusMaxPlaybackRate`.
+- [ ] `11.1.5` `opusMaxAverageBitrate`.
+- [ ] `11.1.6` `opusPtime`.
+- [ ] `11.1.7` `videoGoogleStartBitrate`.
+- [ ] `11.1.8` `videoGoogleMaxBitrate`.
+- [ ] `11.1.9` `videoGoogleMinBitrate`.
+- [ ] `11.1.10` Comprobar en el SDP de respuesta que cada opción se aplica.
+- [ ] `11.1.11` `applyCodecParameters` con `sprop-stereo`.
+
+### 11.2 Selección de codec y encodings
+
+Origen: `aiortc_handler.py`, `unified_plan_utils.py`
+
+- [ ] `11.2.1` `produce` con `codec`: enviar el codec elegido.
+- [ ] `11.2.2` Asignar `rid` `r0`, `r1`... a los encodings.
+- [ ] `11.2.3` Un solo encoding: fusionarlo con el que se obtiene del SDP.
+- [ ] `11.2.4` Varios encodings: usarlos tal cual.
+- [ ] `11.2.5` Pasar `dtx`, `maxBitrate`, `maxFramerate`, `scaleResolutionDownBy`, `priority` y `networkPriority` al encoding nativo.
+- [ ] `11.2.6` Test E2E por codec disponible: Opus, VP8, VP9 y H264.
+
+### 11.3 Simulcast
+
+Origen: `aiortc_handler.py`, `media_section.py`. aiortc no soporta simulcast, así que hay que apoyarse en mediasoup-client (`Chrome111.ts`).
+
+- [ ] `11.3.1` Pasar `sendEncodings` en `addTransceiver`.
+- [ ] `11.3.2` `AnswerMediaSection`: `simulcast` y `rids`.
+- [ ] `11.3.3` `AnswerMediaSection`: `simulcast_03` del borrador.
+- [ ] `11.3.4` Añadir `S1T3` a cada encoding con VP8 o H264. Revisar si `numTemporalLayers` o `scalabilityMode` debe aplicarse al encoding nativo.
+- [ ] `11.3.5` Test E2E: el servidor recibe varias capas.
+- [ ] `11.3.6` Test E2E: el consumer recibe capas distintas al cambiar la capa preferida en el servidor.
+
+### 11.4 SVC
+
+- [ ] `11.4.1` Detectar VP9 SVC con un encoding y varias capas espaciales.
+- [ ] `11.4.2` `addLegacySimulcast`. ⚠️ no copiar: tiene varios bugs (`.get` sobre una lista, clave `ssrc` en vez de `ssrcs`, `join` de enteros).
+- [ ] `11.4.3` Rama VP9 de `send`. ⚠️ no copiar: asigna `sdp_transform.parse` sin llamarlo.
+- [ ] `11.4.4` Revisar en mediasoup-client si todavía hace falta este truco con `scalabilityMode` nativo.
+- [ ] `11.4.5` Test E2E con VP9 SVC.
+
+### 11.5 Control en caliente
+
+Origen: `producer.py`, `aiortc_handler.py`
+
+- [ ] `11.5.1` `Producer.setMaxSpatialLayer`. ⚠️ no copiar: usa `self._kind`, que no existe.
+- [ ] `11.5.2` `handler.setMaxSpatialLayer` con `getParameters` y `setParameters`. ⚠️ no copiar: en el original solo registra un aviso.
+- [ ] `11.5.3` `Producer.setRtpEncodingParameters`.
+- [ ] `11.5.4` `handler.setRtpEncodingParameters`. ⚠️ no copiar: en el original solo registra un aviso.
+- [ ] `11.5.5` Conectar `@setmaxspatiallayer` y `@setrtpencodingparameters` con el handler.
+- [ ] `11.5.6` Test E2E: al limitar la capa, el servidor deja de recibir las superiores.
+
+**Aceptación de la Fase 11**
+
+- El simulcast funciona de extremo a extremo con VP8.
+- Las opciones de codec se reflejan en el SDP y, cuando es posible, en el medio.
+
+## Fase 12: ejemplos y utilidades de media
+
+### 12.1 Utilidades de media
+
+Origen: `aiortc.contrib.media`, usado en `examples/mediasoup.py`
+
+- [ ] `12.1.1` `MediaBlackhole`: consumir tracks y descartar los datos.
+- [ ] `12.1.2` `MediaRecorder`: guardar audio en WAV.
+- [ ] `12.1.3` `MediaRecorder`: guardar vídeo. Decidir el formato y la dependencia.
+- [ ] `12.1.4` `MediaPlayer`: reproducir audio desde un fichero.
+- [ ] `12.1.5` `MediaPlayer`: reproducir vídeo desde un fichero. Decidir la dependencia.
+- [ ] `12.1.6` Decidir si van en un artefacto aparte para no añadir dependencias a la librería.
+
+### 12.2 Port del ejemplo
+
+Origen: `examples/mediasoup.py`
+
+- [ ] `12.2.1` Crear el subproyecto `examples`.
+- [ ] `12.2.2` Conexión WebSocket con `java.net.http`.
+- [ ] `12.2.3` Peticiones y respuestas (`_send_request`, `_wait_for`, `recv_msg_task`).
+- [ ] `12.2.4` Parámetros de línea de comandos.
+- [ ] `12.2.5` `load`, con `getRouterRtpCapabilities`.
+- [ ] `12.2.6` `createSendTransport`, con `createWebRtcTransport` y `connectWebRtcTransport`.
+- [ ] `12.2.7` Listeners de `produce` y `producedata`.
+- [ ] `12.2.8` `join`.
+- [ ] `12.2.9` `produce` de audio y vídeo.
+- [ ] `12.2.10` `produceData`.
+- [ ] `12.2.11` `createRecvTransport`.
+- [ ] `12.2.12` Atender `newConsumer` con `consume`.
+- [ ] `12.2.13` Atender `newDataConsumer` con `consumeData`.
+- [ ] `12.2.14` Cierre ordenado.
+- [ ] `12.2.15` README del ejemplo, indicando contra qué servidor se ejecuta.
+
+**Aceptación de la Fase 12**
+
+- El ejemplo intercambia audio, vídeo y datos con el servidor para el que está escrito.
+
+## Fase 13: publicación
+
+### 13.1 Documentación
+
+- [ ] `13.1.1` Javadoc de toda la API pública.
+- [ ] `13.1.2` README completo: instalación, uso y ejemplos.
+- [ ] `13.1.3` Guía de uso de nativos por plataforma.
+- [ ] `13.1.4` Tabla de diferencias con pymediasoup y mediasoup-client.
+- [ ] `13.1.5` Revisar que `LICENSE` y `NOTICE` están completos.
+- [ ] `13.1.6` `CHANGELOG.md`.
+- [ ] `13.1.7` `CONTRIBUTING.md`.
+
+### 13.2 CI multiplataforma
+
+- [ ] `13.2.1` Tests unitarios en Linux, macOS y Windows.
+- [ ] `13.2.2` Carga de nativos en todas las plataformas soportadas.
+- [ ] `13.2.3` Tests de integración en las plataformas en que la red Docker lo permita.
+- [ ] `13.2.4` Tests con las versiones de servidor definidas en `0.5.14`.
+- [ ] `13.2.5` Prueba de fugas: crear y cerrar transportes en bucle, y vigilar la memoria nativa.
+
+### 13.3 Maven Central
+
+- [ ] `13.3.1` Generar los jars de fuentes y Javadoc.
+- [ ] `13.3.2` Completar los metadatos del POM (nombre, URL, licencia, desarrolladores, SCM).
+- [ ] `13.3.3` Firma GPG en el build.
+- [ ] `13.3.4` Publicar en Central Portal desde el build.
+- [ ] `13.3.5` Workflow de publicación al crear una etiqueta.
+- [ ] `13.3.6` Publicar una versión previa y probarla desde un proyecto limpio.
+- [ ] `13.3.7` Comprobar la matriz de paridad completa.
+- [ ] `13.3.8` Publicar la versión `1.0.0`.
+
+**Aceptación de la Fase 13**
+
+- Un proyecto nuevo puede usar `io.github.hectorespert:jmediasoup` desde Maven Central y completar el flujo básico.
+
+---
+
+# Parte C: más allá de pymediasoup
+
+## Fase 14: más allá de pymediasoup (opcional)
+
+Funcionalidades de mediasoup-client (`src/Transport.ts`) que pymediasoup no tiene.
+
+- [ ] `14.1.1` Crear consumers por lotes en una sola renegociación (`createPendingConsumers`).
+- [ ] `14.1.2` Pausar consumers por lotes (`pausePendingConsumers`).
+- [ ] `14.1.3` Reanudar consumers por lotes (`resumePendingConsumers`).
+- [ ] `14.1.4` `Transport.iceGatheringState`.
+- [ ] `14.1.5` `Transport.getDataChannelMaxMessageSize`.
+- [ ] `14.1.6` Comparar periódicamente con mediasoup-client para detectar funcionalidades nuevas.
+
+---
+
+# Matriz de paridad
+
+Cubre la API de pymediasoup. `Fase` es la fase donde queda funcional; una propiedad básica puede aparecer antes.
+
+## Device
+
+| Elemento | Fase |
+|---|---|
+| Constructor (`handlerFactory`) | 4.2 |
+| `load` | 4.2 |
+| `loaded`, `handlerName` | 4.2 |
+| `rtpCapabilities`, `sctpCapabilities` | 4.2 |
+| `canProduce` | 4.2 |
+| `createSendTransport`, `createRecvTransport` | 4.2 |
+| `observer`: `newtransport` | 4.2 |
+
+## Transport
+
+| Elemento | Fase |
+|---|---|
+| `id`, `closed`, `direction`, `handler`, `connectionState`, `appData` | 4.3 |
+| `close` | 4.3 |
+| `produce` | 4.4 |
+| `consume` | 4.5 |
+| `produceData`, `consumeData` | 9.3 |
+| `getStats` | 10.1 |
+| `restartIce`, `updateIceServers` | 10.2 |
+| Eventos `connect`, `connectionstatechange`, `produce` | 4.3 |
+| Evento `producedata` | 9.3 |
+| `observer`: `close`, `newproducer`, `newconsumer` | 4.3 |
+| `observer`: `newdataproducer`, `newdataconsumer` | 9.3 |
+| Probator RTP (`probatorConsumerCreated`) | 8.3 |
+
+## Producer
+
+| Elemento | Fase |
+|---|---|
+| `id`, `localId`, `closed`, `kind`, `rtpSender`, `track`, `rtpParameters`, `paused`, `maxSpatialLayer`, `appData` | 4.4 |
+| `close`, `transportClosed` | 4.4 |
+| `pause`, `resume` | 8.1 |
+| `replaceTrack` | 8.2 |
+| `getStats` | 10.1 |
+| `setMaxSpatialLayer`, `setRtpEncodingParameters` | 11.5 |
+| Opciones `stopTracks`, `disableTrackOnPause`, `zeroRtpOnPause` | 8.1, 8.2 |
+| Eventos `transportclose`, `trackended` | 4.4, 8.2 |
+| `observer`: `close`, `pause`, `resume`, `trackended` | 4.4, 8.1, 8.2 |
+| Internos `@close`, `@replacetrack`, `@setmaxspatiallayer`, `@setrtpencodingparameters`, `@getstats` | 4.4, 8.2, 11.5, 10.1 |
+
+## Consumer
+
+| Elemento | Fase |
+|---|---|
+| `id`, `localId`, `producerId`, `closed`, `kind`, `rtpReceiver`, `track`, `rtpParameters`, `paused`, `appData` | 4.5 |
+| `close`, `transportClosed` | 4.5 |
+| `pause`, `resume` | 8.1 |
+| `getStats` | 10.1 |
+| Eventos `transportclose`, `trackended` | 4.5, 8.2 |
+| `observer`: `close`, `pause`, `resume`, `trackended` | 4.5, 8.1, 8.2 |
+| Internos `@close`, `@getstats` | 4.5, 10.1 |
+
+## DataProducer
+
+| Elemento | Fase |
+|---|---|
+| `id`, `closed`, `sctpStreamParameters`, `readyState`, `label`, `protocol`, `appData` | 9.1 |
+| `bufferedAmount`, `bufferedAmountLowThreshold` | 9.1 |
+| `send` | 9.1 |
+| `close`, `transportClosed` | 9.1 |
+| Eventos `open`, `error`, `bufferedamountlow`, `transportclose` | 9.1 |
+| `observer`: `close` | 9.1 |
+
+## DataConsumer
+
+| Elemento | Fase |
+|---|---|
+| `id`, `dataProducerId`, `closed`, `sctpStreamParameters`, `readyState`, `label`, `protocol`, `appData` | 9.2 |
+| `binaryType` | 9.2 |
+| `close`, `transportClosed` | 9.2 |
+| Eventos `open`, `error`, `message`, `transportclose` | 9.2 |
+| `observer`: `close` | 9.2 |
+
+## HandlerInterface y AiortcHandler (WebRtcJavaHandler)
+
+| Elemento | Fase |
+|---|---|
+| `name`, `createFactory`, `close` | 5.1 |
+| `pc`, `remoteSdp` (accesores internos) | 5.1 |
+| `getNativeRtpCapabilities`, `getNativeSctpCapabilities` | 5.1 |
+| `run` | 5.1 |
+| `_setupTransport`, `_assertSendDirection`, `_assertRecvDirection` | 5.1 |
+| `receive`, `stopReceiving` | 5.2 |
+| `send`, `stopSending` | 6.2 |
+| `replaceTrack` | 8.2 |
+| `sendDataChannel`, `receiveDataChannel` | 9.4 |
+| `getTransportStats`, `getSenderStats`, `getReceiverStats` | 10.1 |
+| `restartIce`, `updateIceServers` | 10.2 |
+| `setMaxSpatialLayer`, `setRtpEncodingParameters` | 11.5 |
+| Eventos `@connect`, `@connectionstatechange` | 4.1 |
+
+## ortc.py
+
+| Elemento | Fase |
+|---|---|
+| `RTP_PROBATOR_MID`, `RTP_PROBATOR_SSRC`, `RTP_PROBATOR_CODEC_PAYLOAD_TYPE` | 2.3 |
+| `matchCodecs`, `isRtxCodec`, `reduceRtcpFeedback`, `matchHeaderExtensions` | 2.3 |
+| `getExtendedRtpCapabilities`, `getRecvRtpCapabilities`, `canSend`, `canReceive` | 2.4 |
+| `getSendingRtpParameters`, `getSendingRemoteRtpParameters`, `reduceCodecs`, `generateProbatorRtpParameters` | 2.5 |
+
+## handlers/sdp
+
+| Elemento | Fase |
+|---|---|
+| `extractRtpCapabilities`, `extractDtlsParameters`, `getCname` | 3.3 |
+| `applyCodecParameters` | 5.2, 11.1 |
+| `getRtpEncodings` | 3.3 |
+| `addLegacySimulcast` | 11.4 |
+| `getCodecName`, `MediaSection` (`mid`, `closed`, `getDict`, `setIceParameters`, `disable`, `close`, `setDtlsRole`) | 3.4 |
+| `AnswerMediaSection`, `OfferMediaSection`: audio y vídeo | 3.4 |
+| `AnswerMediaSection`, `OfferMediaSection`: `application` | 9.4 |
+| `AnswerMediaSection`: `simulcast`, `simulcast_03`, `rids` | 11.3 |
+| `AnswerMediaSection`: `codecOptions` | 11.1 |
+| `RemoteSdp`: `updateIceParameters`, `updateDtlsRole`, `getNextMediaSectionIdx`, `send`, `receive`, `disableMediaSection`, `closeMediaSection`, `getSdp` | 3.5 |
+| `RemoteSdp`: `_addMediaSection`, `_replaceMediaSection`, `_regenerateBundleMids`, `MediaSectionIdx` | 3.5 |
+| `RemoteSdp`: `sendSctpAssociation`, `receiveSctpAssociation` | 9.4 |
+| `planBReceive`, `planBStopReceiving` | Excluido (Plan B) |
+
+## Modelos y utilidades
+
+| Elemento | Fase |
+|---|---|
+| `Error`, `UnsupportedError`, `InvalidStateError` | 1.1 |
+| `EnhancedEventEmitter`, `emit_for_results` | 1.2 |
+| `MediaKind`, `RtcpFeedback`, `Codec`, `RtpCodec`, `ExtendedCodec`, `RtpCodecCapability`, `RtpCodecParameters` | 1.3 |
+| `RtpHeaderExtension`, `ExtendedHeaderExtension`, `RtpCapabilities`, `RTX`, `RtpEncodingParameters` | 1.3 |
+| `RtpHeaderExtensionParameters`, `RtcpParameters`, `RtpParameters`, `ExtendedRtpCapabilities` | 1.3 |
+| `NumSctpStreams`, `SctpCapabilities`, `SctpParameters`, `SctpStreamParameters` | 1.4 |
+| `IceParameters`, `IceCandidate`, `DtlsFingerprint`, `DtlsRole`, `DtlsParameters`, `ConnectionState` | 1.5 |
+| `IpVersion`, `PlainRtpParameters`, `TransportOptions`, `InternalTransportOptions` | 1.5 |
+| `ProducerCodecOptions`, `ProducerOptions`, `ConsumerOptions`, `DataProducerOptions`, `DataConsumerOptions` | 1.6 |
+| `MediaStreamTrackKind` | 1.3 (`MediaKind`) |
+| `HandlerRunOptions`, `HandlerSendOptions`, `HandlerSendResult`, `HandlerReceiveOptions`, `HandlerReceiveResult` | 4.1 |
+| `HandlerSendDataChannelResult`, `HandlerReceiveDataChannelOptions`, `HandlerReceiveDataChannelResult` | 4.1 |
+| `ScalabilityMode`, `parse` | 2.2 |
+
+## Dependencias de pymediasoup y su equivalente
+
+| Dependencia | Equivalente | Fase |
+|---|---|---|
+| `aiortc` | `webrtc-java` (por confirmar) | 0.3, 5, 6 |
+| `pydantic` | `record` con validación y Jackson | 1 |
+| `pyee` | Listeners tipados | 1.2 |
+| `sdp-transform` | Port propio | 3.1, 3.2 |
+| `h264-profile-level-id` | Port propio | 2.1 |
