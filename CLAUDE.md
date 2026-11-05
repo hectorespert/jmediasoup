@@ -24,7 +24,7 @@ Bare skeleton: the root package `io.github.hectorespert.jmediasoup` holds only `
 
 ## Commands
 
-Use the Gradle wrapper (Gradle 8.14.4). There is one subproject, `lib`.
+Use the Gradle wrapper (Gradle 9.1.0). There is one subproject, `lib`.
 
 ```bash
 ./gradlew build                  # compile, test and assemble the jar
