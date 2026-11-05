@@ -24,20 +24,21 @@ Bare skeleton: the root package `io.github.hectorespert.jmediasoup` holds only `
 
 ## Commands
 
-Use the Gradle wrapper (Gradle 9.1.0). There is one subproject, `lib`.
+Use the Gradle wrapper (Gradle 9.1.0). There is one subproject, `jmediasoup`.
 
 ```bash
 ./gradlew build                  # compile, test and assemble the jar
 ./gradlew test                   # run all tests
-./gradlew :lib:test --tests 'io.github.hectorespert.jmediasoup.SmokeTest.testsRunInTheRootPackage'   # run a single test
+./gradlew :jmediasoup:test --tests 'io.github.hectorespert.jmediasoup.SmokeTest.testsRunInTheRootPackage'   # run a single test
 ./gradlew clean
+./gradlew publishToMavenLocal      # publish io.github.hectorespert:jmediasoup to ~/.m2
 ```
 
-No linter or formatter is configured. Test reports are written to `lib/build/reports/tests/test/`.
+No linter or formatter is configured. Test reports are written to `jmediasoup/build/reports/tests/test/`.
 
 ## Build setup
 
-- Java 21 through a Gradle toolchain (`lib/build.gradle.kts`). The foojay resolver plugin downloads a matching JDK if none is installed.
+- Java 21 through a Gradle toolchain (`jmediasoup/build.gradle.kts`). The foojay resolver plugin downloads a matching JDK if none is installed.
 - Tests use JUnit 5 (Jupiter).
 - Declare dependency versions in the version catalog, `gradle/libs.versions.toml`, and reference them as `libs.*` from the build script.
 - The `java-library` plugin is applied, so `api` dependencies are exposed to consumers and `implementation` dependencies are not.

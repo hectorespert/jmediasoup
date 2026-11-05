@@ -44,6 +44,8 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 
 - Coordenadas Maven: `io.github.hectorespert:jmediasoup`, con paquete raíz `io.github.hectorespert.jmediasoup`.
 - Servidor de pruebas: una imagen Docker de terceros, por elegir en la sección 0.4.
+- Licencia: Apache-2.0. El código a portar es MIT (pymediasoup, sdp-transform) e ISC (mediasoup-client, h264-profile-level-id), con sus avisos en `NOTICE`.
+- Subproyecto: `jmediasoup`, que da nombre al artefacto sin configuración adicional.
 
 **Recomendadas, pendientes de confirmar en la Fase 0**
 
@@ -71,14 +73,14 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 
 ### 0.2 Coordenadas, repositorio y licencia
 
-- [ ] `0.2.1` Fijar `group = "io.github.hectorespert"` en el build.
-- [ ] `0.2.2` Fijar la versión inicial `0.1.0-SNAPSHOT`.
-- [ ] `0.2.3` Decidir entre renombrar el subproyecto `lib` o fijar el `artifactId` en la publicación (por defecto se publicaría como `lib`).
-- [ ] `0.2.4` Aplicar `maven-publish` y comprobar con `publishToMavenLocal` que el artefacto sale como `jmediasoup`.
-- [ ] `0.2.5` Crear el repositorio remoto en GitHub (hoy no hay ningún remoto configurado).
+- [x] `0.2.1` Fijar `group = "io.github.hectorespert"` en el build.
+- [x] `0.2.2` Fijar la versión inicial `0.1.0-SNAPSHOT`.
+- [x] `0.2.3` Decidir entre renombrar el subproyecto `lib` o fijar el `artifactId` en la publicación: se renombra a `jmediasoup`.
+- [x] `0.2.4` Aplicar `maven-publish` y comprobar con `publishToMavenLocal` que el artefacto sale como `jmediasoup`.
+- [x] `0.2.5` Crear el repositorio remoto en GitHub (hoy no hay ningún remoto configurado).
 - [ ] `0.2.6` Verificar el namespace `io.github.hectorespert` en Central Portal.
-- [ ] `0.2.7` Elegir la licencia del proyecto y añadir `LICENSE`.
-- [ ] `0.2.8` Revisar las licencias del código que se va a portar (pymediasoup, mediasoup-client, sdp-transform, h264-profile-level-id) y conservar sus avisos de copyright en un `NOTICE`.
+- [x] `0.2.7` Elegir la licencia del proyecto y añadir `LICENSE`.
+- [x] `0.2.8` Revisar las licencias del código que se va a portar (pymediasoup, mediasoup-client, sdp-transform, h264-profile-level-id) y conservar sus avisos de copyright en un `NOTICE`.
 
 ### 0.3 Spike de webrtc-java
 

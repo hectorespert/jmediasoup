@@ -3,4 +3,4 @@ plugins {
 }
 
 rootProject.name = "jmediasoup"
-include("lib")
+include("jmediasoup")

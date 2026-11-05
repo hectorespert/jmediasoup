@@ -15,3 +15,7 @@ Planned coordinates, not yet available on Maven Central:
 ```
 io.github.hectorespert:jmediasoup
 ```
+
+## License
+
+[Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for the licences of the projects this library is ported from.
