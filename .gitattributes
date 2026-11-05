@@ -10,3 +10,6 @@
 # Binary files should be left untouched
 *.jar           binary
 
+
+# SDP requires CRLF, so fixtures keep their line endings on every platform
+*.sdp           -text

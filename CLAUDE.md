@@ -20,7 +20,7 @@ Assisted-by: Claude Opus 5.5 <noreply@anthropic.com>
 
 ## Project state
 
-Bare skeleton: the root package `io.github.hectorespert.jmediasoup` holds only `package-info.java` and a smoke test, so there is no API yet. The Java WebRTC stack has not been chosen yet.
+Bare skeleton: the root package `io.github.hectorespert.jmediasoup` holds only `package-info.java` and a smoke test, so there is no API yet. The WebRTC stack is [webrtc-java](https://github.com/devopvoid/webrtc-java); the results of the spike that validated it, and what they mean for the design, are in section 0.3 of TODO.md.
 
 ## Commands
 

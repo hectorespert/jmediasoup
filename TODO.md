@@ -46,10 +46,10 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 - Servidor de pruebas: una imagen Docker de terceros, por elegir en la sección 0.4.
 - Licencia: Apache-2.0. El código a portar es MIT (pymediasoup, sdp-transform) e ISC (mediasoup-client, h264-profile-level-id), con sus avisos en `NOTICE`.
 - Subproyecto: `jmediasoup`, que da nombre al artefacto sin configuración adicional.
+- Stack WebRTC: `dev.onvoid.webrtc:webrtc-java` (Apache-2.0), confirmado por el spike de la sección 0.3. Validado en local en Linux x86_64; falta probarlo contra un servidor mediasoup real y en otras plataformas.
 
 **Recomendadas, pendientes de confirmar en la Fase 0**
 
-- Stack WebRTC: `dev.onvoid.webrtc:webrtc-java` (Apache-2.0, 0.20.0 en Maven Central en octubre de 2026). Su API cubre lo que necesita el handler, pero solo se ha comprobado leyéndola. La sección 0.3 valida que funciona.
 - API asíncrona con `CompletableFuture`.
 - Eventos con listeners tipados en lugar de nombres de evento en texto.
 - Modelos con `record` y Jackson.
@@ -84,27 +84,55 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 
 ### 0.3 Spike de webrtc-java
 
-Rama desechable: el objetivo es confirmar o descartar el stack, no dejar código definitivo.
+El objetivo era confirmar o descartar el stack, no dejar código definitivo.
 
-- [ ] `0.3.1` Añadir `webrtc-java` 0.20.0 al catálogo de versiones.
-- [ ] `0.3.2` Resolver el artefacto nativo de Linux x86_64.
-- [ ] `0.3.3` Seleccionar el clasificador nativo según el SO en Gradle, de forma compatible con el configuration cache.
-- [ ] `0.3.4` Crear y destruir un `PeerConnectionFactory` y un `RTCPeerConnection`, sin fugas ni bloqueos al cerrar.
-- [ ] `0.3.5` Comprobar que funciona sin dispositivos de audio ni pantalla (entorno de CI).
-- [ ] `0.3.6` Generar una oferta con transceivers de audio y vídeo, y guardar el SDP como fixture.
-- [ ] `0.3.7` Revisar en ese SDP los codecs, `extmap`, `rtcp-fb` y la presencia de líneas `a=ssrc`.
-- [ ] `0.3.8` Conectar un `CustomAudioSource` a un `AudioTrackSink` a través de dos peer connections locales.
-- [ ] `0.3.9` Conectar un `CustomVideoSource` a un `VideoTrackSink` a través de dos peer connections locales.
-- [ ] `0.3.10` Comprobar `setEnabled`, el estado del track y cómo se detecta su finalización (`ended`).
-- [ ] `0.3.11` Crear un data channel `negotiated` con `id` fijo e intercambiar mensajes.
-- [ ] `0.3.12` Comprobar `sendEncodings` con varios `rid` y las líneas `a=rid` y `a=simulcast` resultantes.
-- [ ] `0.3.13` Comprobar `RTCOfferOptions.iceRestart` y `setConfiguration`.
-- [ ] `0.3.14` Comprobar `getStats` a nivel de peer connection, sender y receiver.
-- [ ] `0.3.15` Averiguar en qué hilos llegan los callbacks nativos y si se puede bloquear en ellos.
-- [ ] `0.3.16` Comprobar si los tracks se pueden instanciar o simular sin cargar nativos (condiciona `FakeHandler`).
-- [ ] `0.3.17` Averiguar si las capacidades nativas dependen de los tracks añadidos (en aiortc hay que pasarlos a `createFactory`).
-- [ ] `0.3.18` Enumerar plataformas y arquitecturas soportadas.
-- [ ] `0.3.19` Registrar el resultado y confirmar o descartar el stack. Si se descarta, replantear las fases 5 y 6.
+- [x] `0.3.1` Añadir `webrtc-java` 0.20.0 al catálogo de versiones.
+- [x] `0.3.2` Resolver el artefacto nativo de Linux x86_64.
+- [x] `0.3.3` Seleccionar el clasificador nativo según el SO en Gradle, de forma compatible con el configuration cache.
+- [x] `0.3.4` Crear y destruir un `PeerConnectionFactory` y un `RTCPeerConnection`, sin fugas ni bloqueos al cerrar.
+- [x] `0.3.5` Comprobar que funciona sin dispositivos de audio ni pantalla (entorno de CI).
+- [x] `0.3.6` Generar una oferta con transceivers de audio y vídeo, y guardar el SDP como fixture.
+- [x] `0.3.7` Revisar en ese SDP los codecs, `extmap`, `rtcp-fb` y la presencia de líneas `a=ssrc`.
+- [x] `0.3.8` Conectar un `CustomAudioSource` a un `AudioTrackSink` a través de dos peer connections locales.
+- [x] `0.3.9` Conectar un `CustomVideoSource` a un `VideoTrackSink` a través de dos peer connections locales.
+- [x] `0.3.10` Comprobar `setEnabled`, el estado del track y cómo se detecta su finalización (`ended`).
+- [x] `0.3.11` Crear un data channel `negotiated` con `id` fijo e intercambiar mensajes.
+- [x] `0.3.12` Comprobar `sendEncodings` con varios `rid` y las líneas `a=rid` y `a=simulcast` resultantes.
+- [x] `0.3.13` Comprobar `RTCOfferOptions.iceRestart` y `setConfiguration`.
+- [x] `0.3.14` Comprobar `getStats` a nivel de peer connection, sender y receiver.
+- [x] `0.3.15` Averiguar en qué hilos llegan los callbacks nativos y si se puede bloquear en ellos.
+- [x] `0.3.16` Comprobar si los tracks se pueden instanciar o simular sin cargar nativos (condiciona `FakeHandler`).
+- [x] `0.3.17` Averiguar si las capacidades nativas dependen de los tracks añadidos (en aiortc hay que pasarlos a `createFactory`).
+- [x] `0.3.18` Enumerar plataformas y arquitecturas soportadas.
+- [x] `0.3.19` Registrar el resultado y confirmar o descartar el stack: **webrtc-java confirmado**. El código del spike se ha borrado.
+
+**Resultado del spike** (webrtc-java 0.20.0, Linux x86_64, Java 21, sin `DISPLAY` ni servidor de audio)
+
+Funciona entre dos peer connections locales. Falta probarlo contra un servidor mediasoup real (Fase 7) y en macOS y Windows.
+
+| Tarea | Resultado |
+|---|---|
+| `0.3.2`, `0.3.3` | En Gradle el clasificador nativo hay que declararlo: sin él falla con `UnsatisfiedLinkError`. La selección por SO y CPU reutiliza el configuration cache. |
+| `0.3.4` | 1000 peer connections en una factory: el RSS no crece. 300 ciclos de factory y peer connection: unos 16 kB por ciclo, sin bloqueos. |
+| `0.3.5` | Hay que usar `HeadlessAudioDeviceModule`: `new PeerConnectionFactory()` falla si no hay sistema de audio. |
+| `0.3.6`, `0.3.7` | Oferta con Opus, VP8, VP9, H264 y AV1, RTX, `sdes:mid`, `rtp-stream-id`, `transport-wide-cc`, `a=ssrc` y `ssrc-group:FID`. SDP en `jmediasoup/src/test/resources/sdp/webrtc-java-0.20.0/`. |
+| `0.3.8`, `0.3.9` | Audio y vídeo custom llegan al sink. El audio se recibe como PCM de 16 bits, 48 kHz y mono. |
+| `0.3.10` | `setEnabled(false)` silencia al receptor. `MediaStreamTrack` no tiene `stop()`. `transceiver.stop()` y renegociar termina el track remoto y dispara `ended`; el local sigue `LIVE`, y también tras `source.dispose()`. |
+| `0.3.11` | Canal `negotiated` con `id` fijo, en texto y binario. Un canal fiable devuelve `getMaxRetransmits() == 0`, no `-1`. |
+| `0.3.12` | `a=rid` y `a=simulcast:send r0;r1;r2` correctos, sin `a=ssrc`. `scalabilityMode` se conserva. No se ha comprobado que se emitan las tres capas. |
+| `0.3.13` | `iceRestart` cambia el `ufrag` y reconecta. `setConfiguration` se aplica. |
+| `0.3.14` | `getStats` funciona en los tres niveles, con `bytesSent` y `bytesReceived`. |
+| `0.3.15` | Callbacks de señalización, ICE, conexión, data channel y stats en un solo hilo por factory; los sinks, en otro. **Bloquear en un callback detiene toda la factory**, incluidos los getters síncronos, y otra operación asíncrona esperada dentro del callback no termina hasta soltarlo. Otra factory no se ve afectada. |
+| `0.3.16` | `MediaStreamTrack` se puede heredar sin nativos, pero `AudioTrack`, `VideoTrack`, `RTCRtpSender`, `RTCRtpReceiver`, `RTCRtpTransceiver`, `RTCDataChannel` y `RTCPeerConnection` tienen constructor privado. Las clases de datos se usan sin nativos. |
+| `0.3.17` | No hacen falta tracks: una oferta con transceivers sin track da las mismas extensiones, y como único cambio de codecs añade `flexfec-03`. |
+| `0.3.18` | Linux (x86_64, aarch64, aarch32), macOS (x86_64, aarch64) y Windows (x86_64, aarch64). En Linux necesita glibc (Alpine no sirve) y librerías X11, `libgbm` y `libdrm`. Jar nativo de 10 MB. |
+
+**Consecuencias para el diseño**
+
+- `0.5.2`: ningún trabajo bloqueante en callbacks nativos, también en los del usuario. Es obligatorio, no una preferencia.
+- `0.5.5`: las abstracciones propias son necesarias para probar `FakeHandler` sin nativos.
+- `0.5.7`: hay que decidir cómo reciben los nativos quienes usen la librería desde Gradle.
+- `8.2.9`: `trackended` en tracks locales tendrá que emitirlo jmediasoup, porque la librería no lo hace.
 
 ### 0.4 Imagen Docker de mediasoup
 

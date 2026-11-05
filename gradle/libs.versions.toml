@@ -1,5 +1,7 @@
 [versions]
 junit-jupiter = "5.12.1"
+webrtc-java = "0.20.0"
 
 [libraries]
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
+webrtc-java = { module = "dev.onvoid.webrtc:webrtc-java", version.ref = "webrtc-java" }
