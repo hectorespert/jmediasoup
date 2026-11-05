@@ -78,7 +78,7 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 - [x] `0.2.3` Decidir entre renombrar el subproyecto `lib` o fijar el `artifactId` en la publicación: se renombra a `jmediasoup`.
 - [x] `0.2.4` Aplicar `maven-publish` y comprobar con `publishToMavenLocal` que el artefacto sale como `jmediasoup`.
 - [x] `0.2.5` Crear el repositorio remoto en GitHub (hoy no hay ningún remoto configurado).
-- [ ] `0.2.6` Verificar el namespace `io.github.hectorespert` en Central Portal.
+- [x] `0.2.6` Verificar el namespace `io.github.hectorespert` en Central Portal.
 - [x] `0.2.7` Elegir la licencia del proyecto y añadir `LICENSE`.
 - [x] `0.2.8` Revisar las licencias del código que se va a portar (pymediasoup, mediasoup-client, sdp-transform, h264-profile-level-id) y conservar sus avisos de copyright en un `NOTICE`.
 
