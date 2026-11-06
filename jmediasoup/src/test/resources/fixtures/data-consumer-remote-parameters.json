@@ -1,0 +1,8 @@
+{
+  "id": "data-consumer-id",
+  "dataProducerId": "data-producer-id",
+  "sctpStreamParameters": {
+    "streamId": 666,
+    "maxPacketLifeTime": 5000
+  }
+}

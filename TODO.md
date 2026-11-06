@@ -352,17 +352,17 @@ El usuario convierte los modelos con su propio `ObjectMapper` (`0.5.15`), así q
 
 Origen: `tests/fake_parameters.py`, `tests/fake_handler.py`
 
-- [ ] `1.9.1` Portar `generateRouterRtpCapabilities`.
-- [ ] `1.9.2` Portar las capacidades RTP nativas de `FakeHandler`.
-- [ ] `1.9.3` Portar `generateTransportRemoteParameters`.
-- [ ] `1.9.4` Portar `generateConsumerRemoteParameters`, por codec.
-- [ ] `1.9.5` Portar `generateDataProducerRemoteParameters` y `generateDataConsumerRemoteParameters`.
-- [ ] `1.9.6` Round-trip JSON de todos los fixtures.
+- [x] `1.9.1` Portar `generateRouterRtpCapabilities`: `fixtures/router-rtp-capabilities.json` y `fake.FakeParameters.routerRtpCapabilities()`. Los JSON se han generado desde el código del original con `ast`, sin copiarlos a mano.
+- [x] `1.9.2` Portar las capacidades RTP nativas de `FakeHandler`: `fixtures/native-rtp-capabilities.json`.
+- [x] `1.9.3` Portar `generateTransportRemoteParameters`, como `TransportOptions` con un id nuevo en cada llamada. Sin el campo `family` de los candidatos, que mediasoup v3 ya no manda.
+- [x] `1.9.4` Portar `generateConsumerRemoteParameters`, por codec (`audio/opus`, `audio/ISAC`, `video/VP8`). ⚠️ no copiar: en ISAC la primera header extension usa la variable `id` como clave en vez de `"id"`.
+- [x] `1.9.5` Portar `generateDataProducerRemoteParameters` y `generateDataConsumerRemoteParameters`. ⚠️ no copiar: pydantic deja `ordered = True` junto a `maxPacketLifeTime`, que es contradictorio; aquí `ordered` queda ausente.
+- [x] `1.9.6` Round-trip JSON de todos los fixtures: `json.FixturesRoundTripTest` recorre `fixtures/` con Jackson 2 y 3, y comprueba que el objeto se conserva y que todo valor de entrada sigue en la salida.
 
-**Aceptación de la Fase 1**
+**Aceptación de la Fase 1** (cumplida)
 
-- Todos los fixtures se leen, se validan y se reescriben sin perder datos.
-- Las entradas no válidas fallan al construir el objeto, con un mensaje útil.
+- Todos los fixtures se leen, se validan y se reescriben sin perder datos (`1.9.6`).
+- Las entradas no válidas fallan al construir el objeto, con un mensaje útil (tests de `Checks` y de cada modelo, y `JsonRoundTripTest`).
 
 ## Fase 2: ORTC
 

@@ -1,0 +1,41 @@
+{
+  "id": "consumer-id",
+  "producerId": "producer-id",
+  "kind": "audio",
+  "rtpParameters": {
+    "codecs": [
+      {
+        "mimeType": "audio/ISAC",
+        "payloadType": 111,
+        "clockRate": 16000,
+        "channels": 1,
+        "rtcpFeedback": [
+          {
+            "type": "transport-cc"
+          }
+        ],
+        "parameters": {}
+      }
+    ],
+    "encodings": [
+      {
+        "ssrc": 46687004
+      }
+    ],
+    "headerExtensions": [
+      {
+        "uri": "urn:ietf:params:rtp-hdrext:sdes:mid",
+        "id": 1
+      },
+      {
+        "uri": "http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01",
+        "id": 5
+      }
+    ],
+    "rtcp": {
+      "cname": "wB4Ql4lrsxYLjzuN",
+      "reducedSize": true,
+      "mux": true
+    }
+  }
+}
