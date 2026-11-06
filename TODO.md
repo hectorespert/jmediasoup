@@ -494,24 +494,24 @@ Origen: `commonUtils.ts` y `unifiedPlanUtils.ts` de mediasoup-client 3.26 (antes
 
 ### 3.4 Secciones de media
 
-Origen: `pymediasoup/handlers/sdp/media_section.py`
+Origen: `RemoteMediaSection.ts` de mediasoup-client 3.26 (antes `pymediasoup/handlers/sdp/media_section.py`), en `internal.sdp` con sus nombres: `RemoteMediaSection`, `RemoteAnswerMediaSection` y `RemoteOfferMediaSection`. Cada sección es un objeto de media de sdp-transform mutable. Las opciones de codec de la respuesta van en la `11.1`, el simulcast en la `11.3` y las secciones `application` en la `9.4`. `plainRtpParameters` no se porta: ningún handler de mediasoup-client lo usa.
 
-- [ ] `3.4.1` `getCodecName`.
-- [ ] `3.4.2` Base `MediaSection`: ICE y candidatos (`component = 1`, `end-of-candidates`, `renomination`).
-- [ ] `3.4.3` `MediaSection`: propiedades `mid` y `closed` (puerto 0).
-- [ ] `3.4.4` `MediaSection.setIceParameters`.
-- [ ] `3.4.5` `MediaSection.disable`.
-- [ ] `3.4.6` `MediaSection.close`.
-- [ ] `3.4.7` `AnswerMediaSection`: cabecera, conexión y puerto.
-- [ ] `3.4.8` `AnswerMediaSection`: audio y vídeo, `rtp`, `fmtp`, `rtcpFb` y `payloads`.
-- [ ] `3.4.9` `AnswerMediaSection`: incluir solo las extensiones presentes en la oferta.
-- [ ] `3.4.10` `AnswerMediaSection`: `extmapAllowMixed`, `rtcp-mux`, `rtcp-rsize`.
-- [ ] `3.4.11` `AnswerMediaSection.setDtlsRole`.
-- [ ] `3.4.12` `OfferMediaSection`: cabecera, conexión, puerto y protocolo.
-- [ ] `3.4.13` `OfferMediaSection`: audio y vídeo, `msid`, `rtp`, `fmtp`, `rtcpFb` y `ext`.
-- [ ] `3.4.14` `OfferMediaSection`: `ssrcs` y `ssrcGroups`, con RTX.
-- [ ] `3.4.15` `OfferMediaSection.setDtlsRole` (siempre `actpass`).
-- [ ] `3.4.16` Comprobar el resultado contra salidas de mediasoup-client (`RemoteMediaSection.ts`).
+- [x] `3.4.1` `getCodecName`.
+- [x] `3.4.2` Base `MediaSection`: ICE y candidatos (`component = 1`, `end-of-candidates`, `renomination`), con la dirección de `effectiveAddress()` y el `tcptype`.
+- [x] `3.4.3` `MediaSection`: propiedades `mid` y `closed` (puerto 0).
+- [x] `3.4.4` `MediaSection.setIceParameters`.
+- [x] `3.4.5` `MediaSection.disable`, con `pause` y `resume` de mediasoup-client.
+- [x] `3.4.6` `MediaSection.close`.
+- [x] `3.4.7` `AnswerMediaSection`: cabecera, conexión y puerto.
+- [x] `3.4.8` `AnswerMediaSection`: audio y vídeo, `rtp`, `fmtp`, `rtcpFb` y `payloads`.
+- [x] `3.4.9` `AnswerMediaSection`: incluir solo las extensiones presentes en la oferta.
+- [x] `3.4.10` `AnswerMediaSection`: `extmapAllowMixed`, `rtcp-mux`, `rtcp-rsize`.
+- [x] `3.4.11` `AnswerMediaSection.setDtlsRole`.
+- [x] `3.4.12` `OfferMediaSection`: cabecera, conexión, puerto y protocolo.
+- [x] `3.4.13` `OfferMediaSection`: audio y vídeo, `msid`, `rtp`, `fmtp`, `rtcpFb` y `ext`.
+- [x] `3.4.14` `OfferMediaSection`: `ssrcs` y `ssrcGroups`, con RTX.
+- [x] `3.4.15` `OfferMediaSection.setDtlsRole` (siempre `actpass`).
+- [x] `3.4.16` Comprobar el resultado contra `RemoteMediaSection.ts`: los tests comparan el SDP escrito de cada sección con el que sale de seguir el código de mediasoup-client, sin ejecutarlo.
 
 ### 3.5 RemoteSdp
 
@@ -753,7 +753,7 @@ Este cliente es solo para los tests y se adapta a la señalización de la imagen
 - [ ] `7.4.3` Sección de uso en el README, con plataformas soportadas y limitaciones.
 - [ ] `7.4.4` Calcular la versión desde git con `gradle-git-versioning`: una etiqueta `vX.Y.Z` da `X.Y.Z`, y cualquier otro commit la siguiente versión menor con `-SNAPSHOT`. Comprobar que funciona con el configuration cache. Sustituye a la versión fija de `0.2.2`.
 - [ ] `7.4.5` Generar los jars de fuentes y Javadoc.
-- [ ] `7.4.6` Completar los metadatos del POM (nombre, URL, licencia, desarrolladores, SCM).
+- [ ] `7.4.6` Completar los metadatos del POM (nombre, URL, licencia, desarrolladores, SCM), e incluir `LICENSE` y `NOTICE` en `META-INF/` de los jars, que hoy no los llevan. MIT e ISC exigen que el aviso y la licencia de los originales acompañen a cada copia.
 - [ ] `7.4.7` Firma GPG en el build.
 - [ ] `7.4.8` Publicar en Central Portal desde el build.
 - [ ] `7.4.9` Workflow de publicación al empujar una etiqueta `vX.Y.Z`.
@@ -930,6 +930,7 @@ Origen: `transport.py`, `aiortc_handler.py`, `remote_sdp.py`
 
 Origen: `media_section.py`
 
+- [ ] `11.1.0` Decidir cómo devuelve `RemoteAnswerMediaSection` los cambios que las opciones de Opus hacen en los parámetros de la oferta (`sprop-stereo`, `useinbandfec`, `usedtx`, `ptime` y el NACK de `opusNack`): mediasoup-client modifica el objeto que recibe, y aquí los modelos son inmutables.
 - [ ] `11.1.1` `opusStereo`.
 - [ ] `11.1.2` `opusFec`.
 - [ ] `11.1.3` `opusDtx`.
