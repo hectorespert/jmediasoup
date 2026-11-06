@@ -51,6 +51,7 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 **Diseño** (sección 0.5)
 
 - API asíncrona con `CompletableFuture`. Quien prefiera estilo bloqueante usa `.join()` en un virtual thread.
+- Handler de webrtc-java (sección 5.1): `WebRtcJavaHandler` en el paquete exportado `handler.webrtc`. La factory de handlers admite las dos formas de libmediasoupclient: `createFactory(peerConnectionFactory)` usa una `PeerConnectionFactory` de la aplicación, que sigue siendo suya, y `createFactory()` crea una propia con `HeadlessAudioDeviceModule`, que se libera al cerrar la factory (`AutoCloseable`). Los tracks a enviar salen de esa misma `PeerConnectionFactory`. Los callbacks de webrtc-java completan sus futuros en un hilo virtual, así que nada de jmediasoup se ejecuta en el hilo de señalización de la factory. Los tests con nativos van en la tarea `test`, con el clasificador elegido por SO y CPU.
 - Transportes (sección 4.3): dos tipos, `SendTransport` y `RecvTransport`, que heredan de una clase sellada `Transport`, como libmediasoupclient y mediasoup-client-android, en vez del `Transport` único de pymediasoup. Así `produce` solo existe en el de envío y `consume` en el de recepción. Se crean con los handlers sueltos: `createSendTransport(options, connect, produce)` y `createRecvTransport(options, connect)`. `producedata` se añadirá en la Fase 9 con una sobrecarga de cuatro parámetros. `ConnectHandler` devuelve un `CompletionStage<?>` cuyo valor se ignora, para que valga directamente el futuro de la señalización. `appData` es de solo lectura, como en pymediasoup (su setter lanza una excepción); un setter se podría añadir sin romper nada. Los eventos que provoca `close()` (observer `close`, `transportclose`) se entregan después, en el ejecutor del transporte, igual que el `newtransport` del `Device`.
 - Hilos (sección 4.3): cada transporte tiene un ejecutor en serie (`internal.event.SerialExecutor`) sobre hilos virtuales compartidos, donde se ejecuta todo el código del usuario: listeners y handlers. Ninguno corre en un hilo nativo ni en el del que llama, ni dos a la vez, y pueden bloquear sin parar la factory; no heredan thread-locals (`MDC`). Las operaciones (`produce`, `consume`...) pasan además por una cola como la `AwaitQueue` de mediasoup-client (`internal.event.OperationQueue`), que las encadena de una en una y al cerrar rechaza las pendientes con `InvalidStateException`. Los eventos del handler no esperan a la cola: se entregan en cuanto llegan, en el ejecutor en serie, como en mediasoup-client. Clases propias en vez de Guava (`MoreExecutors.newSequentialExecutor`, `ExecutionSequencer`), que se quitó en `0.1.3` y no rechaza lo pendiente. Se usa `ReentrantLock` en vez de `synchronized` para no fijar hilos virtuales en Java 21–23.
 - Eventos: `connect` y `produce` se pasan al crear el transporte y devuelven un `CompletableFuture`, así que no pueden faltar. El resto son listeners tipados (`onConnectionStateChange(...)`) que devuelven una suscripción para darse de baja.
@@ -646,20 +647,20 @@ Para probar contra un servidor real hacen falta las secciones 7.1 y 7.2, así qu
 
 Origen: `pymediasoup/handlers/aiortc_handler.py`
 
-- [ ] `5.1.1` Añadir `webrtc-java` como `api`. Los nativos solo para los tests: en uso real los declara el usuario (`0.5.7`).
-- [ ] `5.1.2` Gestión compartida de `PeerConnectionFactory`, con su ciclo de vida y su cierre.
+- [x] `5.1.1` Añadir `webrtc-java` como `api`. Los nativos solo para los tests: en uso real los declara el usuario (`0.5.7`). Ya era `api` desde la Fase 1; los nativos van como `testRuntimeOnly`, con el clasificador según `os.name` y `os.arch`.
+- [x] `5.1.2` Gestión compartida de `PeerConnectionFactory`, con su ciclo de vida y su cierre. `WebRtcJavaHandler.Factory`, con las dos variantes de `createFactory` (ver Decisiones). Tras cerrarla, `getNativeRtpCapabilities` falla con `InvalidStateException`.
 - [ ] `5.1.3` Adaptadores de las interfaces de la sección 1.7 sobre webrtc-java.
-- [ ] `5.1.4` Convertir en futuros los callbacks `createOffer`, `createAnswer`, `setLocalDescription` y `setRemoteDescription`.
-- [ ] `5.1.5` La `HandlerFactory` de `WebRtcJavaHandler`, con `name`.
-- [ ] `5.1.6` `getNativeRtpCapabilities` por dirección (`sendonly` o `recvonly`), con peer connection temporal (según `0.3.17`).
-- [ ] `5.1.7` `getNativeSctpCapabilities` (`OS` y `MIS` de 1024).
+- [x] `5.1.4` Convertir en futuros los callbacks `createOffer`, `createAnswer`, `setLocalDescription` y `setRemoteDescription`: `PeerConnections`, que los completa en un hilo virtual y no en el de señalización.
+- [x] `5.1.5` La `HandlerFactory` de `WebRtcJavaHandler`, con `name` (`WebRtcJava`). `create` falla hasta la `5.1.8`.
+- [x] `5.1.6` `getNativeRtpCapabilities` por dirección (`sendonly` o `recvonly`), con peer connection temporal (según `0.3.17`). Como `Chrome111`: el transceiver de vídeo lleva `scalabilityMode` `L3T3` para que aparezca la extensión Dependency Descriptor, y se añade NACK a Opus (`OrtcUtils.addNackSupportForOpus`). No se porta `validateAndNormalizeRtpCapabilities`, porque los records ya validan, ni `forcedRtpExtensions`, porque webrtc-java no tiene `setHeaderExtensionsToNegotiate`.
+- [x] `5.1.7` `getNativeSctpCapabilities` (`OS` y `MIS` de 1024).
 - [ ] `5.1.8` Constructor: `RemoteSdp` y parámetros de envío por tipo.
 - [ ] `5.1.9` Constructor: configuración de la peer connection con `iceServers` y `iceTransportPolicy`.
 - [ ] `5.1.10` Mapear el estado ICE a `ConnectionState`.
 - [ ] `5.1.11` `close`, liberando los recursos nativos.
 - [ ] `5.1.12` `setupTransport`: extraer DTLS, fijar el rol, avisar por `@connect` y esperar el resultado.
 - [ ] `5.1.13` `assertSendDirection` y `assertRecvDirection`.
-- [ ] `5.1.14` Test con `Device.load` real: las capacidades incluyen Opus y VP8.
+- [x] `5.1.14` Test con `Device.load` real: las capacidades incluyen Opus y VP8. `WebRtcJavaHandlerFactoryTest`.
 - [ ] `5.1.15` Comprobar que webrtc-java acepta un SDP generado por el writer de la `3.2` (antes `3.2.8`), y las ofertas y respuestas de `RemoteSdp` en peer connections locales (aceptación de la Fase 3), con el fingerprint `sha-512` que elige `RemoteSdp`.
 
 ### 5.2 Recibir

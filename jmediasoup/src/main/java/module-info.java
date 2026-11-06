@@ -9,6 +9,7 @@ module io.github.hectorespert.jmediasoup {
 
     exports io.github.hectorespert.jmediasoup;
     exports io.github.hectorespert.jmediasoup.handler;
+    exports io.github.hectorespert.jmediasoup.handler.webrtc;
     exports io.github.hectorespert.jmediasoup.rtp;
     exports io.github.hectorespert.jmediasoup.sctp;
     exports io.github.hectorespert.jmediasoup.transport;

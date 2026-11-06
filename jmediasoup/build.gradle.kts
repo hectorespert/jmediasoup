@@ -12,6 +12,28 @@ repositories {
     mavenCentral()
 }
 
+// The webrtc-java natives for the platform that runs the tests. Users declare their own (0.5.7).
+val webrtcNativeClassifier: String =
+    run {
+        val os = providers.systemProperty("os.name").get().lowercase()
+        val arch = providers.systemProperty("os.arch").get().lowercase()
+        val osPart =
+            when {
+                os.startsWith("linux") -> "linux"
+                os.startsWith("mac") -> "macos"
+                os.startsWith("windows") -> "windows"
+                else -> error("webrtc-java has no natives for $os")
+            }
+        val archPart =
+            when (arch) {
+                "amd64", "x86_64" -> "x86_64"
+                "aarch64", "arm64" -> "aarch64"
+                "arm" -> "aarch32"
+                else -> error("webrtc-java has no natives for $arch")
+            }
+        "$osPart-$archPart"
+    }
+
 dependencies {
     api(libs.jackson.annotations)
     api(libs.jspecify)
@@ -24,6 +46,7 @@ dependencies {
 
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testRuntimeOnly(libs.slf4j.simple)
+    testRuntimeOnly(variantOf(libs.webrtc.java) { classifier(webrtcNativeClassifier) })
 }
 
 java {
