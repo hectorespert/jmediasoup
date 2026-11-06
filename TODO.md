@@ -61,6 +61,7 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 - Modelos con `record` y anotaciones de Jackson. jmediasoup no necesita JSON en tiempo de ejecución: el usuario convierte con su propio `ObjectMapper`, de Jackson 2 o 3. Con Gson harían falta adapters (enums, `OS`/`MIS`, números dentro de `Map`); un `fromMap`/`toMap` propio se puede añadir más adelante sin romper nada.
 - `appData` como `Map<String, Object>` inmutable que admite valores `null`.
 - Logging con SLF4J 2.
+- Excepciones (sección 1.1): base checked `MediasoupClientException extends Exception`, con `UnsupportedException` e `InvalidStateException` como subclases. Los métodos síncronos la declaran; en un `CompletableFuture` llega como causa del fallo (`CompletionException` en `join()`). Un argumento no válido lanza `IllegalArgumentException` y uno obligatorio que llega `null`, `NullPointerException`. Los `Exception` genéricos del original (SDP o transceiver inesperados) lanzan la base.
 - `module-info.java` desde el principio, exportando solo los paquetes públicos. Los paquetes internos van bajo `io.github.hectorespert.jmediasoup.internal` (`.internal.sdp`, `.internal.h264`...) y no se exportan.
 - Los tests se ejecutan dentro del módulo de la librería (whitebox, con `--patch-module`) mediante el plugin `org.gradlex.java-module-testing`. Así ven los paquetes internos y comprueban a la vez los `requires` y `exports`.
 - Ports propios de `sdp-transform` y `h264-profile-level-id` como paquetes internos. No hay alternativa Java aprovechable (ver `0.5.13`). El SDP parseado se representa con `Map<String, Object>`, como el objeto de sdp-transform y el `dict` de pymediasoup.
@@ -239,10 +240,10 @@ Cada una se confirma y se anota en la sección [Decisiones](#decisiones) de este
 
 Origen: `pymediasoup/errors.py`
 
-- [ ] `1.1.1` Excepción base del proyecto (equivalente a `Error`). Es el primer tipo público, así que añade `exports io.github.hectorespert.jmediasoup` a `module-info.java`.
-- [ ] `1.1.2` `UnsupportedError`.
-- [ ] `1.1.3` `InvalidStateError`.
-- [ ] `1.1.4` Decidir qué excepción de Java sustituye a cada `TypeError` del original (normalmente `IllegalArgumentException`).
+- [x] `1.1.1` Excepción base del proyecto (equivalente a `Error`): `MediasoupClientException`, checked. Es el primer tipo público, así que añade `exports io.github.hectorespert.jmediasoup` a `module-info.java`.
+- [x] `1.1.2` `UnsupportedError`: `UnsupportedException`.
+- [x] `1.1.3` `InvalidStateError`: `InvalidStateException`.
+- [x] `1.1.4` Decidir qué excepción de Java sustituye a cada `TypeError` del original: `IllegalArgumentException`, o `NullPointerException` si falta un argumento obligatorio. Los `TypeError` por falta del listener `connect` o `produce` desaparecen, porque se pasan al crear el transporte.
 
 ### 1.2 Eventos y observers
 
@@ -1171,7 +1172,7 @@ Cubre la API de pymediasoup. `Fase` es la fase donde queda funcional; una propie
 
 | Elemento | Fase |
 |---|---|
-| `Error`, `UnsupportedError`, `InvalidStateError` | 1.1 |
+| `Error`, `UnsupportedError`, `InvalidStateError` (`MediasoupClientException`, `UnsupportedException`, `InvalidStateException`) | 1.1 |
 | `EnhancedEventEmitter`, `emit_for_results` | 1.2 |
 | `MediaKind`, `RtcpFeedback`, `Codec`, `RtpCodec`, `ExtendedCodec`, `RtpCodecCapability`, `RtpCodecParameters` | 1.3 |
 | `RtpHeaderExtension`, `ExtendedHeaderExtension`, `RtpCapabilities`, `RTX`, `RtpEncodingParameters` | 1.3 |

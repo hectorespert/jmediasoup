@@ -20,7 +20,7 @@ Assisted-by: Claude Opus 5.5 <noreply@anthropic.com>
 
 ## Project state
 
-Bare skeleton: the module `io.github.hectorespert.jmediasoup` has a `module-info.java` and the root package holds only `package-info.java` (`@NullMarked`) and a smoke test, so there is no API yet. Internal packages go under `io.github.hectorespert.jmediasoup.internal` and are not exported. The WebRTC stack is [webrtc-java](https://github.com/devopvoid/webrtc-java); the results of the spike that validated it, and what they mean for the design, are in section 0.3 of TODO.md.
+Phase 1 has started: the module `io.github.hectorespert.jmediasoup` exports the root package (`@NullMarked`), which so far holds only the exceptions (`MediasoupClientException`, a checked base, and its subclasses `UnsupportedException` and `InvalidStateException`). Internal packages go under `io.github.hectorespert.jmediasoup.internal` and are not exported. The WebRTC stack is [webrtc-java](https://github.com/devopvoid/webrtc-java); the results of the spike that validated it, and what they mean for the design, are in section 0.3 of TODO.md.
 
 The design decisions (async model, threading, events, JSON, nullness, logging, JPMS, SDP representation, dependency scopes) are recorded in the "Decisiones" section of TODO.md. Follow them, and ask before departing from one.
 
