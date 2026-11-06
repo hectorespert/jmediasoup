@@ -6,6 +6,9 @@ package io.github.hectorespert.jmediasoup.rtp;
 
 import static java.util.Objects.requireNonNull;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.github.hectorespert.jmediasoup.internal.Checks;
 import java.util.List;
 import java.util.Map;
@@ -27,14 +30,16 @@ import org.jspecify.annotations.Nullable;
  * @param remoteParameters the codec-specific parameters on the mediasoup side
  * @param rtcpFeedback the RTCP feedback messages both sides support
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record ExtendedCodec(
         MediaKind kind,
         String mimeType,
-        int localPayloadType,
+        @JsonProperty(required = true) int localPayloadType,
         @Nullable Integer localRtxPayloadType,
-        int remotePayloadType,
+        @JsonProperty(required = true) int remotePayloadType,
         @Nullable Integer remoteRtxPayloadType,
-        int clockRate,
+        @JsonProperty(required = true) int clockRate,
         @Nullable Integer channels,
         Map<String, Object> localParameters,
         Map<String, Object> remoteParameters,

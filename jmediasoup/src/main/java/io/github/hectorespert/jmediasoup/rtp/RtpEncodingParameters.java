@@ -4,6 +4,8 @@
  */
 package io.github.hectorespert.jmediasoup.rtp;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.hectorespert.jmediasoup.internal.Checks;
 import org.jspecify.annotations.Nullable;
 
@@ -27,6 +29,8 @@ import org.jspecify.annotations.Nullable;
  * @param priority the priority for bandwidth allocation
  * @param networkPriority the priority for the network (DSCP)
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record RtpEncodingParameters(
         @Nullable Boolean active,
         @Nullable Long ssrc,

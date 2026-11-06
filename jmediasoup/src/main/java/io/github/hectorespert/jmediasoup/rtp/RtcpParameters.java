@@ -4,6 +4,8 @@
  */
 package io.github.hectorespert.jmediasoup.rtp;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -15,6 +17,8 @@ import org.jspecify.annotations.Nullable;
  *     3550), or {@code null} if absent (reduced size)
  * @param mux whether RTCP-mux is used, or {@code null} if absent (used)
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record RtcpParameters(
         @Nullable String cname,
         @Nullable Boolean reducedSize,

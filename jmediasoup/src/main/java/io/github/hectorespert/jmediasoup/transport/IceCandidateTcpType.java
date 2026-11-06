@@ -4,6 +4,9 @@
  */
 package io.github.hectorespert.jmediasoup.transport;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /** Type of a TCP ICE candidate. */
 public enum IceCandidateTcpType {
     /** An active TCP candidate. */
@@ -24,6 +27,7 @@ public enum IceCandidateTcpType {
      *
      * @return {@code active}, {@code passive}, {@code so}
      */
+    @JsonValue
     public String value() {
         return value;
     }
@@ -35,6 +39,7 @@ public enum IceCandidateTcpType {
      * @return the TCP candidate type
      * @throws IllegalArgumentException if the value is not a TCP candidate type
      */
+    @JsonCreator
     public static IceCandidateTcpType fromValue(String value) {
         for (IceCandidateTcpType constant : values()) {
             if (constant.value.equals(value)) {

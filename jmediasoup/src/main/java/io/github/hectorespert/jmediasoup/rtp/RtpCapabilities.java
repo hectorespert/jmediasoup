@@ -4,6 +4,8 @@
  */
 package io.github.hectorespert.jmediasoup.rtp;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.hectorespert.jmediasoup.internal.Checks;
 import java.util.List;
 
@@ -14,6 +16,8 @@ import java.util.List;
  * @param headerExtensions the supported RTP header extensions
  * @param fecMechanisms the supported FEC mechanisms; only old versions of mediasoup send them
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record RtpCapabilities(
         List<RtpCodecCapability> codecs, List<RtpHeaderExtension> headerExtensions, List<String> fecMechanisms) {
 

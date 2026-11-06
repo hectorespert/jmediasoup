@@ -6,6 +6,9 @@ package io.github.hectorespert.jmediasoup.transport;
 
 import static java.util.Objects.requireNonNull;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.github.hectorespert.jmediasoup.internal.Checks;
 import org.jspecify.annotations.Nullable;
 
@@ -25,13 +28,15 @@ import org.jspecify.annotations.Nullable;
  * @param type the candidate type
  * @param tcpType the TCP candidate type, only for TCP, or {@code null} if absent
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record IceCandidate(
         String foundation,
-        long priority,
+        @JsonProperty(required = true) long priority,
         @Nullable String address,
         @Nullable String ip,
         TransportProtocol protocol,
-        int port,
+        @JsonProperty(required = true) int port,
         IceCandidateType type,
         @Nullable IceCandidateTcpType tcpType) {
 

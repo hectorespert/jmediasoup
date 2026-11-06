@@ -4,6 +4,9 @@
  */
 package io.github.hectorespert.jmediasoup.transport;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /** DTLS role of an endpoint. */
 public enum DtlsRole {
     /** Decided during the negotiation. */
@@ -24,6 +27,7 @@ public enum DtlsRole {
      *
      * @return {@code auto}, {@code client}, {@code server}
      */
+    @JsonValue
     public String value() {
         return value;
     }
@@ -35,6 +39,7 @@ public enum DtlsRole {
      * @return the DTLS role
      * @throws IllegalArgumentException if the value is not a DTLS role
      */
+    @JsonCreator
     public static DtlsRole fromValue(String value) {
         for (DtlsRole constant : values()) {
             if (constant.value.equals(value)) {

@@ -4,6 +4,9 @@
  */
 package io.github.hectorespert.jmediasoup.transport;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /** Type of an ICE candidate. */
 public enum IceCandidateType {
     /** A host candidate, the only type mediasoup gathers. */
@@ -26,6 +29,7 @@ public enum IceCandidateType {
      *
      * @return {@code host}, {@code srflx}, {@code prflx}, {@code relay}
      */
+    @JsonValue
     public String value() {
         return value;
     }
@@ -37,6 +41,7 @@ public enum IceCandidateType {
      * @return the ICE candidate type
      * @throws IllegalArgumentException if the value is not an ICE candidate type
      */
+    @JsonCreator
     public static IceCandidateType fromValue(String value) {
         for (IceCandidateType constant : values()) {
             if (constant.value.equals(value)) {

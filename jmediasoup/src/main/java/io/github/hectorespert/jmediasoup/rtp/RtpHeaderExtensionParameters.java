@@ -4,6 +4,9 @@
  */
 package io.github.hectorespert.jmediasoup.rtp;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.github.hectorespert.jmediasoup.internal.Checks;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -17,8 +20,13 @@ import org.jspecify.annotations.Nullable;
  *     encrypted)
  * @param parameters the configuration parameters of the header extension, text or numbers
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record RtpHeaderExtensionParameters(
-        String uri, int id, @Nullable Boolean encrypt, Map<String, Object> parameters) {
+        String uri,
+        @JsonProperty(required = true) int id,
+        @Nullable Boolean encrypt,
+        Map<String, Object> parameters) {
 
     /** Checks the fields and copies the parameters, with absent ones as empty. */
     public RtpHeaderExtensionParameters {

@@ -4,6 +4,9 @@
  */
 package io.github.hectorespert.jmediasoup.rtp;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.github.hectorespert.jmediasoup.internal.Checks;
 
 /**
@@ -11,7 +14,9 @@ import io.github.hectorespert.jmediasoup.internal.Checks;
  *
  * @param ssrc the SSRC of the RTX stream, between 0 and 2<sup>32</sup>-1
  */
-public record Rtx(long ssrc) {
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
+public record Rtx(@JsonProperty(required = true) long ssrc) {
 
     /** Checks the SSRC. */
     public Rtx {

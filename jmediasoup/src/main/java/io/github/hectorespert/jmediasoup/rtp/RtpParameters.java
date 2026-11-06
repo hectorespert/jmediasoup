@@ -4,6 +4,8 @@
  */
 package io.github.hectorespert.jmediasoup.rtp;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.hectorespert.jmediasoup.internal.Checks;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -24,6 +26,8 @@ import org.jspecify.annotations.Nullable;
  * @param rtcp the RTCP settings, or {@code null} if absent
  * @param msid the media stream and track identifiers, or {@code null} if absent
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record RtpParameters(
         @Nullable String mid,
         List<RtpCodecParameters> codecs,

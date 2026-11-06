@@ -4,6 +4,9 @@
  */
 package io.github.hectorespert.jmediasoup.rtp;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /** Media kind. */
 public enum MediaKind {
     /** Audio. */
@@ -22,6 +25,7 @@ public enum MediaKind {
      *
      * @return {@code audio} or {@code video}
      */
+    @JsonValue
     public String value() {
         return value;
     }
@@ -33,6 +37,7 @@ public enum MediaKind {
      * @return the kind
      * @throws IllegalArgumentException if the value is not a media kind
      */
+    @JsonCreator
     public static MediaKind fromValue(String value) {
         for (MediaKind kind : values()) {
             if (kind.value.equals(value)) {

@@ -4,6 +4,9 @@
  */
 package io.github.hectorespert.jmediasoup.sctp;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.github.hectorespert.jmediasoup.internal.Checks;
 import org.jspecify.annotations.Nullable;
 
@@ -24,10 +27,12 @@ import org.jspecify.annotations.Nullable;
  * @param maxReceiveMessageSize the maximum size of an SCTP message mediasoup receives, or
  *     {@code null} if absent
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record SctpParameters(
-        int port,
-        @Nullable Integer os,
-        @Nullable Integer mis,
+        @JsonProperty(required = true) int port,
+        @JsonProperty("OS") @Nullable Integer os,
+        @JsonProperty("MIS") @Nullable Integer mis,
         @Nullable Integer maxMessageSize,
         @Nullable Integer maxSendMessageSize,
         @Nullable Integer maxReceiveMessageSize) {

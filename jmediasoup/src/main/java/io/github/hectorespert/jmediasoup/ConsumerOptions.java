@@ -6,6 +6,8 @@ package io.github.hectorespert.jmediasoup;
 
 import static java.util.Objects.requireNonNull;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.hectorespert.jmediasoup.internal.Checks;
 import io.github.hectorespert.jmediasoup.rtp.MediaKind;
 import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
@@ -24,6 +26,8 @@ import org.jspecify.annotations.Nullable;
  *     {@code null} to use the producer id; from mediasoup-client
  * @param appData custom application data, which may contain {@code null} values
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record ConsumerOptions(
         String id,
         String producerId,

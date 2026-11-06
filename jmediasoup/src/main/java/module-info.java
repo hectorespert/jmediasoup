@@ -2,6 +2,7 @@
  * Java client for <a href="https://mediasoup.org">mediasoup</a>.
  */
 module io.github.hectorespert.jmediasoup {
+    requires transitive com.fasterxml.jackson.annotation;
     requires transitive org.jspecify;
     requires transitive webrtc.java;
     requires org.slf4j;

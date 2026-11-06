@@ -67,6 +67,7 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 - Modelos (sección 1.3) en subpaquetes exportados por área: `jmediasoup.rtp`, `jmediasoup.sctp` y `jmediasoup.transport`. Lo opcional es `null` y no se rellena con los valores por defecto de pydantic; las listas y mapas ausentes quedan vacíos e inmutables. El constructor valida lo obligatorio y los rangos y formatos de cada campo (payload type, SSRC de 32 bits sin signo, `mimeType`...); las reglas entre campos van en ORTC, salvo las contradicciones dentro de un mismo record que no dependen del contexto (fiabilidad de `SctpStreamParameters`). Los records que el usuario construye con 4 o más opcionales tienen builder escrito a mano.
 - Opciones (sección 1.6): `ProducerOptions`, `ConsumerOptions`, `DataProducerOptions`, `DataConsumerOptions` y `ProducerCodecOptions` van en el paquete raíz, junto a las clases que las usan. Las que solo construye el usuario y no se serializan tienen sus flags como `boolean` con el valor por defecto del original en el builder. De mediasoup-client se añaden `opusNack` y `streamId`; `onRtpSender` y `onRtpReceiver` quedan para la Fase 14.
 - Excepción a la 0.5.5 (sección 1.5): los servidores ICE son un record propio, `IceServer`, porque es configuración que suele llegar como JSON y `RTCIceServer` de webrtc-java es mutable. El handler lo convierte.
+- JSON (sección 1.8): un valor de enum desconocido falla al leer, con un mensaje claro, en vez de leerse como `null`.
 - `parameters` de codec: `Map<String, Object>` que conserva el orden y el tipo JSON de cada valor (texto o número). ORTC los compara con `internal.ParameterValues`, que trata `100`, `100L` y `"100"` como iguales. `RtpCodec` es una interfaz sellada que implementan `RtpCodecCapability` y `RtpCodecParameters`.
 - Excepciones (sección 1.1): base checked `MediasoupClientException extends Exception`, con `UnsupportedException` e `InvalidStateException` como subclases. Los métodos síncronos la declaran; en un `CompletableFuture` llega como causa del fallo (`CompletionException` en `join()`). Un argumento no válido lanza `IllegalArgumentException` y uno obligatorio que llega `null`, `NullPointerException`. Los `Exception` genéricos del original (SDP o transceiver inesperados) lanzan la base.
 - `module-info.java` desde el principio, exportando solo los paquetes públicos. Los paquetes internos van bajo `io.github.hectorespert.jmediasoup.internal` (`.internal.sdp`, `.internal.h264`...) y no se exportan.
@@ -339,13 +340,13 @@ La API pública usa los tipos de webrtc-java (`0.5.5`). Sender y receiver no nec
 
 El usuario convierte los modelos con su propio `ObjectMapper` (`0.5.15`), así que todo se configura con anotaciones.
 
-- [ ] `1.8.1` Añadir `jackson-annotations` como `api`, y `jackson-databind` 2 y 3 solo para tests.
-- [ ] `1.8.2` Anotar los modelos para omitir nulos e ignorar campos desconocidos.
-- [ ] `1.8.3` Serializar enums con el valor que espera mediasoup (`sendrecv`, `actpass`...).
-- [ ] `1.8.4` Nombres que no siguen camelCase, como `OS` y `MIS` de `NumSctpStreams`.
-- [ ] `1.8.5` Comprobar que el round-trip conserva los tipos de los `parameters` de codec.
-- [ ] `1.8.6` Tests de round-trip con Jackson 2 y con Jackson 3.
-- [ ] `1.8.7` `IceServer.urls`: aceptar también un texto suelto, que el estándar W3C permite (`"urls": "turn:..."`).
+- [x] `1.8.1` Añadir `jackson-annotations` como `api` (2.22, la que usan Jackson 2.22 y 3.2), y `jackson-databind` 2 (2.22.4) y 3 (3.2.4) solo para tests.
+- [x] `1.8.2` Anotar los modelos para omitir nulos e ignorar campos desconocidos (`@JsonInclude(NON_NULL)` y `@JsonIgnoreProperties(ignoreUnknown = true)` en cada record JSON; no en `ProducerOptions`, que lleva un track). Los componentes primitivos obligatorios llevan `@JsonProperty(required = true)`, para que su ausencia falle en vez de dar 0.
+- [x] `1.8.3` Serializar enums con el valor que espera mediasoup: `@JsonValue` en `value()` y `@JsonCreator` en `fromValue()`. Un valor desconocido falla con el mensaje de `fromValue`.
+- [x] `1.8.4` Nombres que no siguen camelCase, como `OS` y `MIS` de `NumSctpStreams` y `SctpParameters`, con `@JsonProperty`.
+- [x] `1.8.5` Comprobar que el round-trip conserva los tipos de los `parameters` de codec, y su orden.
+- [x] `1.8.6` Tests de round-trip con Jackson 2 y con Jackson 3: `json.JsonRoundTripTest` ejecuta cada caso con los dos (`@WithEachJackson`). Comprobado también desde un módulo JPMS consumidor, sin `opens`.
+- [x] `1.8.7` `IceServer.urls`: aceptar también un texto suelto, que el estándar W3C permite (`"urls": "turn:..."`), con `ACCEPT_SINGLE_VALUE_AS_ARRAY`.
 
 ### 1.9 Fixtures
 

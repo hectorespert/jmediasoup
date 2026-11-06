@@ -4,6 +4,9 @@
  */
 package io.github.hectorespert.jmediasoup.transport;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /** Transport protocol of an ICE candidate. */
 public enum TransportProtocol {
     /** UDP. */
@@ -22,6 +25,7 @@ public enum TransportProtocol {
      *
      * @return {@code udp}, {@code tcp}
      */
+    @JsonValue
     public String value() {
         return value;
     }
@@ -33,6 +37,7 @@ public enum TransportProtocol {
      * @return the transport protocol
      * @throws IllegalArgumentException if the value is not a transport protocol
      */
+    @JsonCreator
     public static TransportProtocol fromValue(String value) {
         for (TransportProtocol constant : values()) {
             if (constant.value.equals(value)) {

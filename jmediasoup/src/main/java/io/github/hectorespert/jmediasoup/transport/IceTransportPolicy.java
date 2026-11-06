@@ -4,6 +4,9 @@
  */
 package io.github.hectorespert.jmediasoup.transport;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /** Which ICE candidates may be used. */
 public enum IceTransportPolicy {
     /** Any candidate. */
@@ -22,6 +25,7 @@ public enum IceTransportPolicy {
      *
      * @return {@code all}, {@code relay}
      */
+    @JsonValue
     public String value() {
         return value;
     }
@@ -33,6 +37,7 @@ public enum IceTransportPolicy {
      * @return the ICE transport policy
      * @throws IllegalArgumentException if the value is not an ICE transport policy
      */
+    @JsonCreator
     public static IceTransportPolicy fromValue(String value) {
         for (IceTransportPolicy constant : values()) {
             if (constant.value.equals(value)) {

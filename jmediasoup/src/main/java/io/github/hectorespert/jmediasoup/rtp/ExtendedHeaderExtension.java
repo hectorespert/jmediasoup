@@ -4,6 +4,9 @@
  */
 package io.github.hectorespert.jmediasoup.rtp;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.github.hectorespert.jmediasoup.internal.Checks;
 import org.jspecify.annotations.Nullable;
 
@@ -19,12 +22,14 @@ import org.jspecify.annotations.Nullable;
  * @param direction the direction in which mediasoup supports it, or {@code null} if absent (send and
  *     receive)
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record ExtendedHeaderExtension(
         @Nullable MediaKind kind,
         String uri,
-        int sendId,
-        int recvId,
-        boolean encrypt,
+        @JsonProperty(required = true) int sendId,
+        @JsonProperty(required = true) int recvId,
+        @JsonProperty(required = true) boolean encrypt,
         @Nullable RtpHeaderExtensionDirection direction) {
 
     /** Checks the fields. */

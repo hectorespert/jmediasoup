@@ -4,6 +4,8 @@
  */
 package io.github.hectorespert.jmediasoup;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.hectorespert.jmediasoup.internal.Checks;
 import org.jspecify.annotations.Nullable;
 
@@ -22,6 +24,8 @@ import org.jspecify.annotations.Nullable;
  * @param videoGoogleMaxBitrate the maximum video bitrate, in kilobits per second
  * @param videoGoogleMinBitrate the minimum video bitrate, in kilobits per second
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record ProducerCodecOptions(
         @Nullable Boolean opusStereo,
         @Nullable Boolean opusFec,

@@ -4,6 +4,9 @@
  */
 package io.github.hectorespert.jmediasoup.sctp;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.github.hectorespert.jmediasoup.internal.Checks;
 
 /**
@@ -13,7 +16,11 @@ import io.github.hectorespert.jmediasoup.internal.Checks;
  *     65535
  * @param mis the maximum number of incoming SCTP streams ({@code MIS}), between 1 and 65535
  */
-public record NumSctpStreams(int os, int mis) {
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
+public record NumSctpStreams(
+        @JsonProperty(value = "OS", required = true) int os,
+        @JsonProperty(value = "MIS", required = true) int mis) {
 
     /** Checks the fields. */
     public NumSctpStreams {

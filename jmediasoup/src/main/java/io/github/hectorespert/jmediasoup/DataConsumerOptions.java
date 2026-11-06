@@ -6,6 +6,8 @@ package io.github.hectorespert.jmediasoup;
 
 import static java.util.Objects.requireNonNull;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.hectorespert.jmediasoup.internal.Checks;
 import io.github.hectorespert.jmediasoup.sctp.SctpStreamParameters;
 import java.util.Map;
@@ -23,6 +25,8 @@ import org.jspecify.annotations.Nullable;
  * @param protocol the sub-protocol of the data channel, or {@code null} if absent
  * @param appData custom application data, which may contain {@code null} values
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record DataConsumerOptions(
         String id,
         String dataProducerId,

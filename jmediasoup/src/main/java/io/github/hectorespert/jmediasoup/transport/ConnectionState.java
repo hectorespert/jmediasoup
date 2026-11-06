@@ -4,6 +4,9 @@
  */
 package io.github.hectorespert.jmediasoup.transport;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /** Connection state of a transport. */
 public enum ConnectionState {
     /** Not connected yet. */
@@ -30,6 +33,7 @@ public enum ConnectionState {
      *
      * @return {@code new}, {@code connecting}, {@code connected}, {@code failed}, {@code disconnected}, {@code closed}
      */
+    @JsonValue
     public String value() {
         return value;
     }
@@ -41,6 +45,7 @@ public enum ConnectionState {
      * @return the connection state
      * @throws IllegalArgumentException if the value is not a connection state
      */
+    @JsonCreator
     public static ConnectionState fromValue(String value) {
         for (ConnectionState constant : values()) {
             if (constant.value.equals(value)) {

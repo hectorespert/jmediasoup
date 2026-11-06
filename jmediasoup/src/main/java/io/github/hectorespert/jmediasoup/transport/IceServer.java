@@ -4,6 +4,9 @@
  */
 package io.github.hectorespert.jmediasoup.transport;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.hectorespert.jmediasoup.internal.Checks;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -16,8 +19,12 @@ import org.jspecify.annotations.Nullable;
  * @param username the TURN username, or {@code null} if absent
  * @param credential the TURN password, or {@code null} if absent
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record IceServer(
+        @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
         List<String> urls,
+
         @Nullable String username,
         @Nullable String credential) {
 

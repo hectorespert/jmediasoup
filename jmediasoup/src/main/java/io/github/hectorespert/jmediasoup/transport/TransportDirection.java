@@ -4,6 +4,9 @@
  */
 package io.github.hectorespert.jmediasoup.transport;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /** Direction of a transport, from the point of view of this endpoint. */
 public enum TransportDirection {
     /** Sends media to mediasoup. */
@@ -22,6 +25,7 @@ public enum TransportDirection {
      *
      * @return {@code send}, {@code recv}
      */
+    @JsonValue
     public String value() {
         return value;
     }
@@ -33,6 +37,7 @@ public enum TransportDirection {
      * @return the transport direction
      * @throws IllegalArgumentException if the value is not a transport direction
      */
+    @JsonCreator
     public static TransportDirection fromValue(String value) {
         for (TransportDirection constant : values()) {
             if (constant.value.equals(value)) {

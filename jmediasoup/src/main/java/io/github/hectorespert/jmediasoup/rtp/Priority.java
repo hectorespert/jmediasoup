@@ -4,6 +4,9 @@
  */
 package io.github.hectorespert.jmediasoup.rtp;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /** Priority of an encoding, for bandwidth allocation and for the network (DSCP). */
 public enum Priority {
     /** Very low priority. */
@@ -26,6 +29,7 @@ public enum Priority {
      *
      * @return {@code very-low}, {@code low}, {@code medium} or {@code high}
      */
+    @JsonValue
     public String value() {
         return value;
     }
@@ -37,6 +41,7 @@ public enum Priority {
      * @return the priority
      * @throws IllegalArgumentException if the value is not a priority
      */
+    @JsonCreator
     public static Priority fromValue(String value) {
         for (Priority priority : values()) {
             if (priority.value.equals(value)) {

@@ -6,6 +6,8 @@ package io.github.hectorespert.jmediasoup.transport;
 
 import static java.util.Objects.requireNonNull;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.hectorespert.jmediasoup.internal.Checks;
 import io.github.hectorespert.jmediasoup.sctp.SctpParameters;
 import java.util.List;
@@ -29,6 +31,8 @@ import org.jspecify.annotations.Nullable;
  * @param iceTransportPolicy which ICE candidates may be used, or {@code null} if absent (all)
  * @param appData custom application data, which may contain {@code null} values
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record TransportOptions(
         String id,
         IceParameters iceParameters,

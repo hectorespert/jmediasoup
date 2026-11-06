@@ -4,6 +4,9 @@
  */
 package io.github.hectorespert.jmediasoup.transport;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /** Hash function of a DTLS certificate fingerprint, from the "Hash function Textual Names" registry of RFC 4572. */
 public enum FingerprintAlgorithm {
     /** SHA-1. */
@@ -28,6 +31,7 @@ public enum FingerprintAlgorithm {
      *
      * @return {@code sha-1}, {@code sha-224}, {@code sha-256}, {@code sha-384}, {@code sha-512}
      */
+    @JsonValue
     public String value() {
         return value;
     }
@@ -39,6 +43,7 @@ public enum FingerprintAlgorithm {
      * @return the fingerprint algorithm
      * @throws IllegalArgumentException if the value is not a fingerprint algorithm
      */
+    @JsonCreator
     public static FingerprintAlgorithm fromValue(String value) {
         for (FingerprintAlgorithm constant : values()) {
             if (constant.value.equals(value)) {

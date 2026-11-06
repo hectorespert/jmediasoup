@@ -6,6 +6,9 @@ package io.github.hectorespert.jmediasoup.transport;
 
 import static java.util.Objects.requireNonNull;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.github.hectorespert.jmediasoup.internal.Checks;
 
 /**
@@ -15,7 +18,12 @@ import io.github.hectorespert.jmediasoup.internal.Checks;
  * @param ipVersion the IP version
  * @param port the port, between 0 and 65535
  */
-public record PlainRtpParameters(String ip, IpVersion ipVersion, int port) {
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
+public record PlainRtpParameters(
+        String ip,
+        IpVersion ipVersion,
+        @JsonProperty(required = true) int port) {
 
     /** Checks the fields. */
     public PlainRtpParameters {

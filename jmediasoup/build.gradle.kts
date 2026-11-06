@@ -13,10 +13,13 @@ repositories {
 }
 
 dependencies {
+    api(libs.jackson.annotations)
     api(libs.jspecify)
     api(libs.webrtc.java)
     implementation(libs.slf4j.api)
 
+    testImplementation(libs.jackson2.databind)
+    testImplementation(libs.jackson3.databind)
     testImplementation(libs.junit.jupiter)
 
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -62,7 +65,10 @@ tasks.named<Javadoc>("javadoc") {
 // Runs the tests inside the library module (--patch-module), so they see the
 // internal packages and also check the requires and exports of module-info.java.
 javaModuleTesting.whitebox(testing.suites["test"]) {
+    requires.add("com.fasterxml.jackson.databind")
     requires.add("org.junit.jupiter.api")
+    requires.add("org.junit.jupiter.params")
+    requires.add("tools.jackson.databind")
 }
 
 publishing {

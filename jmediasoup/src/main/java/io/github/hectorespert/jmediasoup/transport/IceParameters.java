@@ -4,6 +4,8 @@
  */
 package io.github.hectorespert.jmediasoup.transport;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.hectorespert.jmediasoup.internal.Checks;
 import org.jspecify.annotations.Nullable;
 
@@ -14,6 +16,8 @@ import org.jspecify.annotations.Nullable;
  * @param password the ICE password
  * @param iceLite whether mediasoup uses ICE Lite, or {@code null} if absent
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record IceParameters(
         String usernameFragment, String password, @Nullable Boolean iceLite) {
 

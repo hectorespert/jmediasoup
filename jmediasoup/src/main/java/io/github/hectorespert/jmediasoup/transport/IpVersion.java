@@ -4,6 +4,9 @@
  */
 package io.github.hectorespert.jmediasoup.transport;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /** IP version of an address. mediasoup represents it as a number. */
 public enum IpVersion {
     /** IPv4. */
@@ -22,6 +25,7 @@ public enum IpVersion {
      *
      * @return {@code 4} or {@code 6}
      */
+    @JsonValue
     public int value() {
         return value;
     }
@@ -33,6 +37,7 @@ public enum IpVersion {
      * @return the IP version
      * @throws IllegalArgumentException if the value is not an IP version
      */
+    @JsonCreator
     public static IpVersion fromValue(int value) {
         for (IpVersion version : values()) {
             if (version.value == value) {

@@ -4,6 +4,8 @@
  */
 package io.github.hectorespert.jmediasoup.sctp;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.hectorespert.jmediasoup.internal.Checks;
 import org.jspecify.annotations.Nullable;
 
@@ -25,6 +27,8 @@ import org.jspecify.annotations.Nullable;
  * @param label the label that distinguishes the data channel from others, or {@code null} if absent
  * @param protocol the sub-protocol of the data channel, or {@code null} if absent
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record SctpStreamParameters(
         @Nullable Integer streamId,
         @Nullable Boolean ordered,

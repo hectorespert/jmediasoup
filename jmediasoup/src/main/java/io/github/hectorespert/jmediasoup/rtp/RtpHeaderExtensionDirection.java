@@ -4,6 +4,9 @@
  */
 package io.github.hectorespert.jmediasoup.rtp;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /**
  * Direction in which mediasoup supports an RTP header extension. Only present in the RTP
  * capabilities of mediasoup, and ignored in those of an endpoint.
@@ -29,6 +32,7 @@ public enum RtpHeaderExtensionDirection {
      *
      * @return {@code sendrecv}, {@code sendonly}, {@code recvonly} or {@code inactive}
      */
+    @JsonValue
     public String value() {
         return value;
     }
@@ -40,6 +44,7 @@ public enum RtpHeaderExtensionDirection {
      * @return the direction
      * @throws IllegalArgumentException if the value is not a direction
      */
+    @JsonCreator
     public static RtpHeaderExtensionDirection fromValue(String value) {
         for (RtpHeaderExtensionDirection direction : values()) {
             if (direction.value.equals(value)) {

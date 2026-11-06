@@ -6,6 +6,8 @@ package io.github.hectorespert.jmediasoup.transport;
 
 import static java.util.Objects.requireNonNull;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.hectorespert.jmediasoup.internal.Checks;
 
 /**
@@ -14,6 +16,8 @@ import io.github.hectorespert.jmediasoup.internal.Checks;
  * @param algorithm the hash function
  * @param value the fingerprint, as colon-separated hexadecimal bytes (RFC 4572 section 5)
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record DtlsFingerprint(FingerprintAlgorithm algorithm, String value) {
 
     /** Checks the fields. */
