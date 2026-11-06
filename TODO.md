@@ -68,13 +68,13 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 - Opciones (sección 1.6): `ProducerOptions`, `ConsumerOptions`, `DataProducerOptions`, `DataConsumerOptions` y `ProducerCodecOptions` van en el paquete raíz, junto a las clases que las usan. Las que solo construye el usuario y no se serializan tienen sus flags como `boolean` con el valor por defecto del original en el builder. De mediasoup-client se añaden `opusNack` y `streamId`; `onRtpSender` y `onRtpReceiver` quedan para la Fase 14.
 - Excepción a la 0.5.5 (sección 1.5): los servidores ICE son un record propio, `IceServer`, porque es configuración que suele llegar como JSON y `RTCIceServer` de webrtc-java es mutable. El handler lo convierte.
 - JSON (sección 1.8): un valor de enum desconocido falla al leer, con un mensaje claro, en vez de leerse como `null`.
-- ORTC (sección 2.3): donde pymediasoup y mediasoup-client difieren, se sigue a mediasoup-client, que tiene la versión actual del algoritmo. La API sigue siendo la de pymediasoup.
+- ORTC (sección 2.3) y SDP (Fase 3): donde pymediasoup y mediasoup-client difieren, se sigue a mediasoup-client, que tiene la versión actual del algoritmo. La API sigue siendo la de pymediasoup.
 - Capacidades (sección 2.4): modelo de mediasoup-client 3.26. El handler da capacidades nativas por dirección, `Device.load` calcula unas capacidades extendidas de recepción y otras de envío (con la opción `preferLocalCodecsOrder`), y `canSend` y `canReceive` trabajan sobre las capacidades de envío y de recepción, no sobre las extendidas.
 - `parameters` de codec: `Map<String, Object>` que conserva el orden y el tipo JSON de cada valor (texto o número). ORTC los compara con `internal.ParameterValues`, que trata `100`, `100L` y `"100"` como iguales. `RtpCodec` es una interfaz sellada que implementan `RtpCodecCapability` y `RtpCodecParameters`.
 - Excepciones (sección 1.1): base checked `MediasoupClientException extends Exception`, con `UnsupportedException` e `InvalidStateException` como subclases. Los métodos síncronos la declaran; en un `CompletableFuture` llega como causa del fallo (`CompletionException` en `join()`). Un argumento no válido lanza `IllegalArgumentException` y uno obligatorio que llega `null`, `NullPointerException`. Los `Exception` genéricos del original (SDP o transceiver inesperados) lanzan la base. Un codec elegido en `ProducerOptions.codec` que no se puede enviar lanza `UnsupportedException` (sección 2.5), aunque el original lanza `TypeError`.
-- `module-info.java` desde el principio, exportando solo los paquetes públicos. Los paquetes internos van bajo `io.github.hectorespert.jmediasoup.internal` (`.internal.sdp`, `.internal.h264`...) y no se exportan.
+- `module-info.java` desde el principio, exportando solo los paquetes públicos. Los paquetes internos van bajo `io.github.hectorespert.jmediasoup.internal` (`.internal.sdp`, `.internal.sdptransform`, `.internal.h264`...) y no se exportan.
 - Los tests se ejecutan dentro del módulo de la librería (whitebox, con `--patch-module`) mediante el plugin `org.gradlex.java-module-testing`. Así ven los paquetes internos y comprueban a la vez los `requires` y `exports`.
-- Ports propios de `sdp-transform` y `h264-profile-level-id` como paquetes internos. No hay alternativa Java aprovechable (ver `0.5.13`). El SDP parseado se representa con `Map<String, Object>`, como el objeto de sdp-transform y el `dict` de pymediasoup.
+- Ports propios de `sdp-transform` y `h264-profile-level-id` como paquetes internos (`internal.sdptransform` e `internal.h264`). El código de SDP de mediasoup-client (`handlers/sdp`) va en `internal.sdp`. No hay alternativa Java aprovechable (ver `0.5.13`). El SDP parseado se representa con `Map<String, Object>`, como el objeto de sdp-transform y el `dict` de pymediasoup.
 - Versiones: SemVer. `0.1.0` con el MVP (`7.4`), una versión menor al cerrar cada fase de paridad (`0.2.0` la 8, `0.3.0` la 9, `0.4.0` la 10, `0.5.0` la 11 y `0.6.0` la 12) y `1.0.0` con la 13. Las correcciones entre fases salen como parches. En `0.x` una versión menor puede romper la API; desde la `1.0.0`, SemVer estricto. Solo se publica desde CI, al empujar una etiqueta `vX.Y.Z`.
 - La versión la calcula desde git el plugin `gradle-git-versioning` (qoomon). Se ha elegido frente a axion-release, que está mejor mantenido pero tiene incidencias abiertas con el configuration cache, porque su versión 7.0 lo soporta. Es GPL-3.0, pero solo se usa en el build y no afecta a la licencia de la librería.
 - Servidor: mediasoup v3. La CI valida la versión de la imagen (3.19.14), y en la Fase 13 se añade una reciente.
@@ -443,7 +443,7 @@ Origen: paquete `sdp-transform`
 
 Va en un paquete interno (`0.5.16`), y el SDP parseado es un `Map<String, Object>` mutable que conserva el orden de inserción (`0.5.12`).
 
-Portado de `clux/sdp-transform` 3.0.0, la versión que usa mediasoup-client 3.26, en `internal.sdp` (`Grammar` y `Parser`). Las regex son las del original; en Java `\s` y `\S` solo cubren espacios ASCII.
+Portado de `clux/sdp-transform` 3.0.0, la versión que usa mediasoup-client 3.26, en `internal.sdptransform` (`Grammar` y `Parser`). Las regex son las del original; en Java `\s` y `\S` solo cubren espacios ASCII.
 
 - [x] `3.1.1` Estructura de la gramática, con regex, nombre, campos y formato por tipo de línea (`Grammar.Rule`). Los formatos son funciones del mapa de valores, como en el original.
 - [x] `3.1.2` Parser de líneas y separación entre sesión y secciones `m=`. Acepta `\r\n`, `\r` y `\n`, e ignora las líneas que no son `x=...` con una minúscula.
@@ -468,7 +468,7 @@ Portado de `clux/sdp-transform` 3.0.0, la versión que usa mediasoup-client 3.26
 
 ### 3.2 Port de sdp-transform: generador
 
-En `internal.sdp.Writer`. Como el original, escribe las líneas en el orden de la gramática y completa la sesión que recibe (`version`, `name` y `payloads`). Las conversiones de JavaScript que usan el parser y el writer están en `internal.sdp.JavaScript`.
+En `internal.sdptransform.Writer`. Como el original, escribe las líneas en el orden de la gramática y completa la sesión que recibe (`version`, `name` y `payloads`). Las conversiones de JavaScript que usan el parser y el writer están en `internal.sdptransform.JavaScript`.
 
 - [x] `3.2.1` Formateador de líneas con los especificadores de la gramática (`%s`, `%d`, `%v`, `%%`). Escribe los valores como JavaScript: `%d` convierte con `Number()`, un valor ausente es `undefined` y los decimales salen con los dígitos mínimos. Los enteros se escriben exactos, aunque pasen de 53 bits.
 - [x] `3.2.2` Orden de líneas de sesión.
@@ -481,16 +481,16 @@ En `internal.sdp.Writer`. Como el original, escribe las líneas en el orden de l
 
 ### 3.3 Utilidades comunes
 
-Origen: `pymediasoup/handlers/sdp/common_utils.py`, `unified_plan_utils.py`
+Origen: `commonUtils.ts` y `unifiedPlanUtils.ts` de mediasoup-client 3.26 (antes `pymediasoup/handlers/sdp/common_utils.py`, `unified_plan_utils.py`), en `internal.sdp` (`CommonUtils` y `UnifiedPlanUtils`). Un SDP que no encaja en los modelos (un codec sin clock rate, un SSRC de más de 32 bits) lanza `IllegalArgumentException`, y los `Error` del original lanzan `MediasoupClientException`.
 
-- [ ] `3.3.1` `extractRtpCapabilities`: codecs, solo de la primera sección de cada tipo.
-- [ ] `3.3.2` `extractRtpCapabilities`: parámetros desde `fmtp`, con `profile-level-id` como texto y las claves sin valor (`null` en `parseParams`) como `''`.
-- [ ] `3.3.3` `extractRtpCapabilities`: `rtcp-fb`.
-- [ ] `3.3.4` `extractRtpCapabilities`: extensiones de cabecera, omitiendo las cifradas.
-- [ ] `3.3.5` `extractDtlsParameters`: sección activa y fingerprint de sesión o de media. ⚠️ no copiar: compara con `"activate"`, y el valor correcto es `"active"`.
-- [ ] `3.3.6` `getCname`.
-- [ ] `3.3.7` `getRtpEncodings`: SSRC y grupos `FID`. Conservar el orden; ⚠️ el original usa un `set`, sin orden definido.
-- [ ] `3.3.8` Tests con SDP con RTX, sin RTX y sin SSRC.
+- [x] `3.3.1` `extractRtpCapabilities`: codecs de todas las secciones de audio y vídeo, indexados por payload type (BUNDLE), como mediasoup-client. ⚠️ no copiar: pymediasoup solo lee la primera sección de cada tipo.
+- [x] `3.3.2` `extractRtpCapabilities`: parámetros desde `fmtp`, con `profile-level-id` como texto y las claves sin valor (`null` en `parseParams`) como `''`.
+- [x] `3.3.3` `extractRtpCapabilities`: `rtcp-fb`; con payload `*` se aplica a todos los codecs del tipo salvo RTX. ⚠️ no copiar: pymediasoup lo ignora.
+- [x] `3.3.4` `extractRtpCapabilities`: extensiones de cabecera indexadas por tipo e id, omitiendo las cifradas.
+- [x] `3.3.5` `extractDtlsParameters`: `a=setup` y `a=fingerprint` de sesión o, si faltan, de la primera sección con puerto. Un `setup` desconocido deja el rol a `null`. ⚠️ no copiar: pymediasoup compara con `"activate"`, y el valor correcto es `"active"`.
+- [x] `3.3.6` `getCname`.
+- [x] `3.3.7` `getRtpEncodings`: SSRC y grupos `FID`, en el orden de los SSRC. Como mediasoup-client, solo añade el SSRC de RTX si hay más de un codec. ⚠️ pymediasoup usa un `set`, sin orden definido.
+- [x] `3.3.8` Tests con SDP con RTX, sin RTX y sin SSRC, usando las ofertas reales de webrtc-java de `0.3.6`.
 
 ### 3.4 Secciones de media
 
