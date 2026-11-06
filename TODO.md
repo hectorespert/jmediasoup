@@ -74,6 +74,8 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 - `module-info.java` desde el principio, exportando solo los paquetes públicos. Los paquetes internos van bajo `io.github.hectorespert.jmediasoup.internal` (`.internal.sdp`, `.internal.h264`...) y no se exportan.
 - Los tests se ejecutan dentro del módulo de la librería (whitebox, con `--patch-module`) mediante el plugin `org.gradlex.java-module-testing`. Así ven los paquetes internos y comprueban a la vez los `requires` y `exports`.
 - Ports propios de `sdp-transform` y `h264-profile-level-id` como paquetes internos. No hay alternativa Java aprovechable (ver `0.5.13`). El SDP parseado se representa con `Map<String, Object>`, como el objeto de sdp-transform y el `dict` de pymediasoup.
+- Versiones: SemVer. `0.1.0` con el MVP (`7.4`), una versión menor al cerrar cada fase de paridad (`0.2.0` la 8, `0.3.0` la 9, `0.4.0` la 10, `0.5.0` la 11 y `0.6.0` la 12) y `1.0.0` con la 13. Las correcciones entre fases salen como parches. En `0.x` una versión menor puede romper la API; desde la `1.0.0`, SemVer estricto. Solo se publica desde CI, al empujar una etiqueta `vX.Y.Z`.
+- La versión la calcula desde git el plugin `gradle-git-versioning` (qoomon). Se ha elegido frente a axion-release, que está mejor mantenido pero tiene incidencias abiertas con el configuration cache, porque su versión 7.0 lo soporta. Es GPL-3.0, pero solo se usa en el build y no afecta a la licencia de la librería.
 - Servidor: mediasoup v3. La CI valida la versión de la imagen (3.19.14), y en la Fase 13 se añade una reciente.
 
 ---
@@ -738,12 +740,19 @@ Este cliente es solo para los tests y se adapta a la señalización de la imagen
 - [ ] `7.4.1` Ejecutar `integrationTest` en CI.
 - [ ] `7.4.2` Ejemplo mínimo ejecutable.
 - [ ] `7.4.3` Sección de uso en el README, con plataformas soportadas y limitaciones.
-- [ ] `7.4.4` Publicar la versión `0.1.0` (como mínimo con una etiqueta de git).
+- [ ] `7.4.4` Calcular la versión desde git con `gradle-git-versioning`: una etiqueta `vX.Y.Z` da `X.Y.Z`, y cualquier otro commit la siguiente versión menor con `-SNAPSHOT`. Comprobar que funciona con el configuration cache. Sustituye a la versión fija de `0.2.2`.
+- [ ] `7.4.5` Generar los jars de fuentes y Javadoc.
+- [ ] `7.4.6` Completar los metadatos del POM (nombre, URL, licencia, desarrolladores, SCM).
+- [ ] `7.4.7` Firma GPG en el build.
+- [ ] `7.4.8` Publicar en Central Portal desde el build.
+- [ ] `7.4.9` Workflow de publicación al empujar una etiqueta `vX.Y.Z`.
+- [ ] `7.4.10` Publicar la versión `0.1.0` en Maven Central y probarla desde un proyecto limpio.
 
 **Aceptación del MVP**
 
 - El test de loopback pasa en CI de forma estable.
 - Cumple la [definición de MVP](#resumen).
+- Un proyecto nuevo puede usar la `0.1.0` desde Maven Central.
 
 ---
 
@@ -787,6 +796,7 @@ Origen: `producer.py`, `consumer.py`
 - [ ] `8.3.4` Test E2E de reciclado de secciones: crear y cerrar consumers repetidamente.
 - [ ] `8.3.5` Test E2E de reciclado de una sección de audio con una de vídeo.
 - [ ] `8.3.6` Test E2E: cerrar el consumer de la primera sección (se deshabilita, no se cierra).
+- [ ] `8.3.7` Publicar la versión `0.2.0`.
 
 **Aceptación de la Fase 8**
 
@@ -859,6 +869,7 @@ Origen: `aiortc_handler.py`, `media_section.py`, `remote_sdp.py`
 - [ ] `9.5.4` Test E2E: canal no ordenado con `maxRetransmits`.
 - [ ] `9.5.5` Test: `bufferedamountlow` se dispara.
 - [ ] `9.5.6` Test: cerrar el transporte cierra los canales.
+- [ ] `9.5.7` Publicar la versión `0.3.0`.
 
 **Aceptación de la Fase 9**
 
@@ -895,6 +906,7 @@ Origen: `transport.py`, `aiortc_handler.py`, `remote_sdp.py`
 - [ ] `10.2.9` `RemoteSdp.updateIceParameters`: quitar `icelite` si ya no aplica.
 - [ ] `10.2.10` Test E2E: reiniciar ICE y seguir recibiendo medios.
 - [ ] `10.2.11` Test E2E: conexión a través de un TURN, si la imagen o el entorno lo permiten.
+- [ ] `10.2.12` Publicar la versión `0.4.0`.
 
 **Aceptación de la Fase 10**
 
@@ -960,6 +972,7 @@ Origen: `producer.py`, `aiortc_handler.py`
 - [ ] `11.5.4` `handler.setRtpEncodingParameters`. ⚠️ no copiar: en el original solo registra un aviso.
 - [ ] `11.5.5` Conectar `@setmaxspatiallayer` y `@setrtpencodingparameters` con el handler.
 - [ ] `11.5.6` Test E2E: al limitar la capa, el servidor deja de recibir las superiores.
+- [ ] `11.5.7` Publicar la versión `0.5.0`.
 
 **Aceptación de la Fase 11**
 
@@ -998,6 +1011,7 @@ Origen: `examples/mediasoup.py`
 - [ ] `12.2.13` Atender `newDataConsumer` con `consumeData`.
 - [ ] `12.2.14` Cierre ordenado.
 - [ ] `12.2.15` README del ejemplo, indicando contra qué servidor se ejecuta.
+- [ ] `12.2.16` Publicar la versión `0.6.0`.
 
 **Aceptación de la Fase 12**
 
@@ -1026,14 +1040,10 @@ Origen: `examples/mediasoup.py`
 
 ### 13.3 Maven Central
 
-- [ ] `13.3.1` Generar los jars de fuentes y Javadoc.
-- [ ] `13.3.2` Completar los metadatos del POM (nombre, URL, licencia, desarrolladores, SCM).
-- [ ] `13.3.3` Firma GPG en el build.
-- [ ] `13.3.4` Publicar en Central Portal desde el build.
-- [ ] `13.3.5` Workflow de publicación al crear una etiqueta.
-- [ ] `13.3.6` Publicar una versión previa y probarla desde un proyecto limpio.
-- [ ] `13.3.7` Comprobar la matriz de paridad completa.
-- [ ] `13.3.8` Publicar la versión `1.0.0`.
+La publicación en Central Portal se monta en la `7.4`, con la versión `0.1.0`.
+
+- [ ] `13.3.1` Comprobar la matriz de paridad completa.
+- [ ] `13.3.2` Publicar la versión `1.0.0`.
 
 **Aceptación de la Fase 13**
 
