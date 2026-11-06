@@ -65,6 +65,7 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 - Logging con SLF4J 2.
 - Java 21 como versión mínima. Podría bajar a 17 sin cambiar otras decisiones (webrtc-java es Java 8), pero se mantiene 21 por el `switch` con patrones, `SequencedMap` y los virtual threads.
 - Modelos (sección 1.3) en subpaquetes exportados por área: `jmediasoup.rtp`, `jmediasoup.sctp` y `jmediasoup.transport`. Lo opcional es `null` y no se rellena con los valores por defecto de pydantic; las listas y mapas ausentes quedan vacíos e inmutables. El constructor valida lo obligatorio y los rangos y formatos de cada campo (payload type, SSRC de 32 bits sin signo, `mimeType`...); las reglas entre campos van en ORTC, salvo las contradicciones dentro de un mismo record que no dependen del contexto (fiabilidad de `SctpStreamParameters`). Los records que el usuario construye con 4 o más opcionales tienen builder escrito a mano.
+- Opciones (sección 1.6): `ProducerOptions`, `ConsumerOptions`, `DataProducerOptions`, `DataConsumerOptions` y `ProducerCodecOptions` van en el paquete raíz, junto a las clases que las usan. Las que solo construye el usuario y no se serializan tienen sus flags como `boolean` con el valor por defecto del original en el builder. De mediasoup-client se añaden `opusNack` y `streamId`; `onRtpSender` y `onRtpReceiver` quedan para la Fase 14.
 - Excepción a la 0.5.5 (sección 1.5): los servidores ICE son un record propio, `IceServer`, porque es configuración que suele llegar como JSON y `RTCIceServer` de webrtc-java es mutable. El handler lo convierte.
 - `parameters` de codec: `Map<String, Object>` que conserva el orden y el tipo JSON de cada valor (texto o número). ORTC los compara con `internal.ParameterValues`, que trata `100`, `100L` y `"100"` como iguales. `RtpCodec` es una interfaz sellada que implementan `RtpCodecCapability` y `RtpCodecParameters`.
 - Excepciones (sección 1.1): base checked `MediasoupClientException extends Exception`, con `UnsupportedException` e `InvalidStateException` como subclases. Los métodos síncronos la declaran; en un `CompletableFuture` llega como causa del fallo (`CompletionException` en `join()`). Un argumento no válido lanza `IllegalArgumentException` y uno obligatorio que llega `null`, `NullPointerException`. Los `Exception` genéricos del original (SDP o transceiver inesperados) lanzan la base.
@@ -316,11 +317,11 @@ Origen: `pymediasoup/models/transport.py`
 
 Origen: `producer.py`, `consumer.py`, `data_producer.py`, `data_consumer.py`
 
-- [ ] `1.6.1` `ProducerCodecOptions`, con sus nueve campos.
-- [ ] `1.6.2` `ProducerOptions`, con los valores por defecto del original (`stopTracks = true`, `disableTrackOnPause = true`, `zeroRtpOnPause = false`).
-- [ ] `1.6.3` `ConsumerOptions`.
-- [ ] `1.6.4` `DataProducerOptions`.
-- [ ] `1.6.5` `DataConsumerOptions`.
+- [x] `1.6.1` `ProducerCodecOptions`, con sus nueve campos y `opusNack` de mediasoup-client, y builder.
+- [x] `1.6.2` `ProducerOptions`, con los valores por defecto del original (`stopTracks = true`, `disableTrackOnPause = true`, `zeroRtpOnPause = false`) como `boolean` del builder. El track es obligatorio, y añade `streamId` de mediasoup-client.
+- [x] `1.6.3` `ConsumerOptions`, con `streamId` de mediasoup-client.
+- [x] `1.6.4` `DataProducerOptions`, con builder y las mismas reglas de fiabilidad que `SctpStreamParameters`.
+- [x] `1.6.5` `DataConsumerOptions`.
 
 ### 1.7 Abstracciones de medios
 
@@ -328,7 +329,7 @@ Origen: `pymediasoup/types/webrtc.py` y los tipos de aiortc que usa el original
 
 La API pública usa los tipos de webrtc-java (`0.5.5`). Estas abstracciones son internas al handler y existen para probar sin nativos.
 
-- [ ] `1.7.1` Subclase de prueba de `MediaStreamTrack` de webrtc-java, que se instancia sin nativos (según `0.3.16`).
+- [x] `1.7.1` Subclase de prueba de `MediaStreamTrack` de webrtc-java, que se instancia sin nativos (según `0.3.16`): `FakeMediaStreamTrack`, en el paquete `fake` de los tests.
 - [ ] `1.7.2` Interfaz interna de sender (`replaceTrack`, parámetros, stats), que da acceso al `RTCRtpSender` nativo si existe.
 - [ ] `1.7.3` Interfaz interna de receiver (track, stats), que da acceso al `RTCRtpReceiver` nativo si existe.
 - [ ] `1.7.4` Interfaz interna de data channel (`label`, `protocol`, `readyState`, `send`, `close`, buffer y eventos).
@@ -655,6 +656,7 @@ Origen: `pymediasoup/handlers/aiortc_handler.py`
 - [ ] `5.2.9` Test E2E: recibir audio de un producer del servidor.
 - [ ] `5.2.10` Test E2E: recibir vídeo de un producer del servidor.
 - [ ] `5.2.11` Test: `connectionState` llega a `connected` y a `closed`.
+- [ ] `5.2.12` `receive`: usar `streamId` de `ConsumerOptions` (o el `producerId` si falta) como stream del `msid`, como mediasoup-client.
 
 **Aceptación de la Fase 5**
 
@@ -686,6 +688,7 @@ Origen: `AudioStreamTrack` y `VideoStreamTrack` de aiortc, usados en `examples/m
 - [ ] `6.2.10` Test E2E: enviar audio y comprobar en el servidor que llega RTP.
 - [ ] `6.2.11` Test E2E: enviar vídeo y comprobar en el servidor que llega RTP.
 - [ ] `6.2.12` Test E2E: cerrar un producer y crear otro en el mismo transporte.
+- [ ] `6.2.13` `send`: usar `streamId` de `ProducerOptions` como stream del `msid`, para sincronizar los tracks que lo comparten.
 
 **Aceptación de la Fase 6**
 
@@ -912,6 +915,7 @@ Origen: `media_section.py`
 - [ ] `11.1.9` `videoGoogleMinBitrate`.
 - [ ] `11.1.10` Comprobar en el SDP de respuesta que cada opción se aplica.
 - [ ] `11.1.11` `applyCodecParameters` con `sprop-stereo`.
+- [ ] `11.1.12` `opusNack`, de mediasoup-client.
 
 ### 11.2 Selección de codec y encodings
 
@@ -1045,7 +1049,8 @@ Funcionalidades de mediasoup-client (`src/Transport.ts`) que pymediasoup no tien
 - [ ] `14.1.3` Reanudar consumers por lotes (`resumePendingConsumers`).
 - [ ] `14.1.4` `Transport.iceGatheringState`.
 - [ ] `14.1.5` `Transport.getDataChannelMaxMessageSize`.
-- [ ] `14.1.6` Comparar periódicamente con mediasoup-client para detectar funcionalidades nuevas.
+- [ ] `14.1.6` Callbacks `onRtpSender` y `onRtpReceiver` de `ProducerOptions` y `ConsumerOptions`: decidir cómo se ejecutan con la cola del transporte.
+- [ ] `14.1.7` Comparar periódicamente con mediasoup-client para detectar funcionalidades nuevas.
 
 ---
 

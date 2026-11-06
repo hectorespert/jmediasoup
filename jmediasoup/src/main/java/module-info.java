@@ -3,6 +3,7 @@
  */
 module io.github.hectorespert.jmediasoup {
     requires transitive org.jspecify;
+    requires transitive webrtc.java;
     requires org.slf4j;
 
     exports io.github.hectorespert.jmediasoup;

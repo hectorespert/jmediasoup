@@ -36,13 +36,6 @@ public record SctpStreamParameters(
     /** Checks the fields and rejects contradictory reliability settings. */
     public SctpStreamParameters {
         Checks.range(streamId, 0, 65534, "streamId");
-        Checks.range(maxPacketLifeTime, 0, 65535, "maxPacketLifeTime");
-        Checks.range(maxRetransmits, 0, 65535, "maxRetransmits");
-        if (maxPacketLifeTime != null && maxRetransmits != null) {
-            throw new IllegalArgumentException("cannot provide both maxPacketLifeTime and maxRetransmits");
-        }
-        if (Boolean.TRUE.equals(ordered) && (maxPacketLifeTime != null || maxRetransmits != null)) {
-            throw new IllegalArgumentException("cannot be ordered with maxPacketLifeTime or maxRetransmits");
-        }
+        Checks.reliability(ordered, maxPacketLifeTime, maxRetransmits);
     }
 }

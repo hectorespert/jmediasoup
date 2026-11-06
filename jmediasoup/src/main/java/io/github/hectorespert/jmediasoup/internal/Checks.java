@@ -114,6 +114,22 @@ public final class Checks {
         return Collections.unmodifiableMap(copy);
     }
 
+    /**
+     * Checks the reliability settings of an SCTP stream: at most one of the two limits, and none of
+     * them if it is explicitly ordered.
+     */
+    public static void reliability(
+            @Nullable Boolean ordered, @Nullable Integer maxPacketLifeTime, @Nullable Integer maxRetransmits) {
+        range(maxPacketLifeTime, 0, 65535, "maxPacketLifeTime");
+        range(maxRetransmits, 0, 65535, "maxRetransmits");
+        if (maxPacketLifeTime != null && maxRetransmits != null) {
+            throw new IllegalArgumentException("cannot provide both maxPacketLifeTime and maxRetransmits");
+        }
+        if (Boolean.TRUE.equals(ordered) && (maxPacketLifeTime != null || maxRetransmits != null)) {
+            throw new IllegalArgumentException("cannot be ordered with maxPacketLifeTime or maxRetransmits");
+        }
+    }
+
     /** Checks that a MIME type is {@code audio/subtype} or {@code video/subtype}. */
     public static String mimeType(String mimeType) {
         requireNonNull(mimeType, "mimeType");

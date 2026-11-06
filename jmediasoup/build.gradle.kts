@@ -14,6 +14,7 @@ repositories {
 
 dependencies {
     api(libs.jspecify)
+    api(libs.webrtc.java)
     implementation(libs.slf4j.api)
 
     testImplementation(libs.junit.jupiter)
