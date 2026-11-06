@@ -22,7 +22,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class Checks {
 
-    private static final Pattern MIME_TYPE = Pattern.compile("(audio|video)/[^/\\s]+");
+    private static final Pattern MIME_TYPE = Pattern.compile("(audio|video)/[^/\\s]+", Pattern.CASE_INSENSITIVE);
     private static final long MAX_UINT32 = 0xFFFF_FFFFL;
 
     private Checks() {}
@@ -130,7 +130,10 @@ public final class Checks {
         }
     }
 
-    /** Checks that a MIME type is {@code audio/subtype} or {@code video/subtype}. */
+    /**
+     * Checks that a MIME type is {@code audio/subtype} or {@code video/subtype}, in any case, as
+     * mediasoup-client accepts it.
+     */
     public static String mimeType(String mimeType) {
         requireNonNull(mimeType, "mimeType");
         if (!MIME_TYPE.matcher(mimeType).matches()) {

@@ -91,6 +91,8 @@ class ChecksTest {
     @Test
     void mimeTypeNeedsAudioOrVideoAndASubtype() {
         assertEquals("video/H264", Checks.mimeType("video/H264"));
+        assertEquals("AUDIO/opus", Checks.mimeType("AUDIO/opus"));
+        assertEquals("Video/VP8", Checks.mimeType("Video/VP8"));
         assertThrows(IllegalArgumentException.class, () -> Checks.mimeType("opus"));
         assertThrows(IllegalArgumentException.class, () -> Checks.mimeType("application/opus"));
         assertThrows(IllegalArgumentException.class, () -> Checks.mimeType("audio/"));
