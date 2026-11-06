@@ -7,4 +7,5 @@ module io.github.hectorespert.jmediasoup {
 
     exports io.github.hectorespert.jmediasoup;
     exports io.github.hectorespert.jmediasoup.rtp;
+    exports io.github.hectorespert.jmediasoup.sctp;
 }

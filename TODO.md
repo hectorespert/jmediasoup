@@ -64,7 +64,7 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 - `appData` como `Map<String, Object>` inmutable que admite valores `null`.
 - Logging con SLF4J 2.
 - Java 21 como versión mínima. Podría bajar a 17 sin cambiar otras decisiones (webrtc-java es Java 8), pero se mantiene 21 por el `switch` con patrones, `SequencedMap` y los virtual threads.
-- Modelos (sección 1.3) en subpaquetes exportados por área: `jmediasoup.rtp`, `jmediasoup.sctp` y `jmediasoup.transport`. Lo opcional es `null` y no se rellena con los valores por defecto de pydantic; las listas y mapas ausentes quedan vacíos e inmutables. El constructor valida lo obligatorio y los rangos y formatos de cada campo (payload type, SSRC de 32 bits sin signo, `mimeType`...); las reglas entre campos van en ORTC. Los records que el usuario construye con 4 o más opcionales tienen builder escrito a mano.
+- Modelos (sección 1.3) en subpaquetes exportados por área: `jmediasoup.rtp`, `jmediasoup.sctp` y `jmediasoup.transport`. Lo opcional es `null` y no se rellena con los valores por defecto de pydantic; las listas y mapas ausentes quedan vacíos e inmutables. El constructor valida lo obligatorio y los rangos y formatos de cada campo (payload type, SSRC de 32 bits sin signo, `mimeType`...); las reglas entre campos van en ORTC, salvo las contradicciones dentro de un mismo record que no dependen del contexto (fiabilidad de `SctpStreamParameters`). Los records que el usuario construye con 4 o más opcionales tienen builder escrito a mano.
 - `parameters` de codec: `Map<String, Object>` que conserva el orden y el tipo JSON de cada valor (texto o número). ORTC los compara con `internal.ParameterValues`, que trata `100`, `100L` y `"100"` como iguales. `RtpCodec` es una interfaz sellada que implementan `RtpCodecCapability` y `RtpCodecParameters`.
 - Excepciones (sección 1.1): base checked `MediasoupClientException extends Exception`, con `UnsupportedException` e `InvalidStateException` como subclases. Los métodos síncronos la declaran; en un `CompletableFuture` llega como causa del fallo (`CompletionException` en `join()`). Un argumento no válido lanza `IllegalArgumentException` y uno obligatorio que llega `null`, `NullPointerException`. Los `Exception` genéricos del original (SDP o transceiver inesperados) lanzan la base.
 - `module-info.java` desde el principio, exportando solo los paquetes públicos. Los paquetes internos van bajo `io.github.hectorespert.jmediasoup.internal` (`.internal.sdp`, `.internal.h264`...) y no se exportan.
@@ -288,11 +288,11 @@ Origen: `pymediasoup/rtp_parameters.py`
 
 Origen: `pymediasoup/sctp_parameters.py`
 
-- [ ] `1.4.1` `NumSctpStreams`.
-- [ ] `1.4.2` `SctpCapabilities`.
-- [ ] `1.4.3` `SctpParameters`.
-- [ ] `1.4.4` `SctpStreamParameters`, con `ordered = true` por defecto.
-- [ ] `1.4.5` Validar la combinación `ordered`, `maxPacketLifeTime` y `maxRetransmits` descrita en el original.
+- [x] `1.4.1` `NumSctpStreams`, con los campos `os()` y `mis()` (`OS` y `MIS` en JSON, `1.8.4`).
+- [x] `1.4.2` `SctpCapabilities`.
+- [x] `1.4.3` `SctpParameters`. Solo `port` es obligatorio, para aceptar los campos de mediasoup 3.19 (`OS`, `MIS`, `maxMessageSize`) y los de servidores más nuevos (`maxSendMessageSize`, `maxReceiveMessageSize`).
+- [x] `1.4.4` `SctpStreamParameters`. `ordered` queda `null` si no llega, como el resto de opcionales; deducirlo es tarea de `9.3.3`.
+- [x] `1.4.5` Validar la combinación `ordered`, `maxPacketLifeTime` y `maxRetransmits` descrita en el original. Las contradicciones (los dos máximos, u `ordered: true` con uno) fallan en el constructor, porque no dependen del contexto.
 
 ### 1.5 Parámetros de transporte
 
@@ -819,7 +819,7 @@ Origen: `pymediasoup/transport.py`
 
 - [ ] `9.3.1` Listener `producedata`, opcional al crear el transporte de envío porque no todos usan data channels.
 - [ ] `9.3.2` `produceData`: validaciones (dirección, SCTP activo, listener `producedata` presente).
-- [ ] `9.3.3` `produceData`: `ordered = false` si hay `maxPacketLifeTime` o `maxRetransmits`. ⚠️ no copiar: el original comprueba si son truthy, así que un valor 0 se ignora.
+- [ ] `9.3.3` `produceData`: `ordered = false` si hay `maxPacketLifeTime` o `maxRetransmits`, y `true` si no hay ninguno (`validateAndNormalizeSctpStreamParameters` de mediasoup-client). ⚠️ no copiar: el original comprueba si son truthy, así que un valor 0 se ignora.
 - [ ] `9.3.4` `produceData`: flujo con handler y registro.
 - [ ] `9.3.5` `consumeData`: validaciones.
 - [ ] `9.3.6` `consumeData`: flujo con handler y registro.
