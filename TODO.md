@@ -51,6 +51,7 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 **Diseño** (sección 0.5)
 
 - API asíncrona con `CompletableFuture`. Quien prefiera estilo bloqueante usa `.join()` en un virtual thread.
+- Transportes (sección 4.3): dos tipos, `SendTransport` y `RecvTransport`, que heredan de una clase sellada `Transport`, como libmediasoupclient y mediasoup-client-android, en vez del `Transport` único de pymediasoup. Así `produce` solo existe en el de envío y `consume` en el de recepción. Se crean con los handlers sueltos: `createSendTransport(options, connect, produce)` y `createRecvTransport(options, connect)`. `producedata` se añadirá en la Fase 9 con una sobrecarga de cuatro parámetros. `ConnectHandler` devuelve un `CompletionStage<?>` cuyo valor se ignora, para que valga directamente el futuro de la señalización. `appData` es de solo lectura, como en pymediasoup (su setter lanza una excepción); un setter se podría añadir sin romper nada. Los eventos que provoca `close()` (observer `close`, `transportclose`) se entregan después, en el ejecutor del transporte, igual que el `newtransport` del `Device`.
 - Hilos (sección 4.3): cada transporte tiene un ejecutor en serie (`internal.event.SerialExecutor`) sobre hilos virtuales compartidos, donde se ejecuta todo el código del usuario: listeners y handlers. Ninguno corre en un hilo nativo ni en el del que llama, ni dos a la vez, y pueden bloquear sin parar la factory; no heredan thread-locals (`MDC`). Las operaciones (`produce`, `consume`...) pasan además por una cola como la `AwaitQueue` de mediasoup-client (`internal.event.OperationQueue`), que las encadena de una en una y al cerrar rechaza las pendientes con `InvalidStateException`. Los eventos del handler no esperan a la cola: se entregan en cuanto llegan, en el ejecutor en serie, como en mediasoup-client. Clases propias en vez de Guava (`MoreExecutors.newSequentialExecutor`, `ExecutionSequencer`), que se quitó en `0.1.3` y no rechaza lo pendiente. Se usa `ReentrantLock` en vez de `synchronized` para no fijar hilos virtuales en Java 21–23.
 - Eventos: `connect` y `produce` se pasan al crear el transporte y devuelven un `CompletableFuture`, así que no pueden faltar. El resto son listeners tipados (`onConnectionStateChange(...)`) que devuelven una suscripción para darse de baja.
 - Listeners (sección 1.2): `Consumer<T>` para los eventos con valor y `Runnable` para los que no tienen. `onXxx` devuelve una `Subscription` (`AutoCloseable`, `close()` idempotente). En cuanto `close()` vuelve, el listener no recibe nada más, ni siquiera el evento que se está entregando; uno añadido durante una entrega empieza con el siguiente evento. Si un listener lanza una excepción, se registra a nivel ERROR con SLF4J y se sigue con los demás.
@@ -576,19 +577,19 @@ Origen: `pymediasoup/device.py` y `Device.ts` de mediasoup-client 3.26, en `jmed
 
 Origen: `pymediasoup/transport.py`
 
-- [ ] `4.3.1` Constructor: crear el handler con `HandlerFactory.create`, pasándole un `HandlerListener` que lleve sus eventos a la cola del transporte. Recibe las opciones internas (`InternalTransportOptions` en el original, antes `1.5.10`): dirección, `HandlerFactory`, capacidades RTP de recepción, la función que calcula las extendidas de envío a partir de las nativas (`getSendExtendedRtpCapabilities` en mediasoup-client) y `canProduceByKind`.
+- [x] `4.3.1` Constructor: crear el handler con `HandlerFactory.create`, pasándole un `HandlerListener` que lleve sus eventos a la cola del transporte. Recibe las opciones internas (`InternalTransportOptions` en el original, antes `1.5.10`): dirección, `HandlerFactory`, capacidades RTP de recepción, la función que calcula las extendidas de envío a partir de las nativas (`getSendExtendedRtpCapabilities` en mediasoup-client) y `canProduceByKind`. Hecho como `Transport`, sellada, con `SendTransport` y `RecvTransport` (ver Decisiones). Completa los tamaños de mensaje SCTP que no envían los servidores antiguos, como mediasoup-client. `canProduceByKind` y las capacidades de recepción llegan con `produce` (`4.4`) y `consume` (`4.5`), que son quienes las usan.
 - [x] `4.3.2` Cola serializada por transporte para las operaciones de handler y la entrega de eventos (`0.5.2`). ⚠️ no copiar: el original no tiene cola (`NOTE: Mediasoup client enqueue command here`). En Java hay concurrencia real. Hecho con `SerialExecutor` y `OperationQueue` en `internal.event` (ver Decisiones); el transporte los usa desde `4.3.1`.
 - [x] `4.3.3` Rechazar las operaciones pendientes de la cola al cerrar: `OperationQueue.stop`, con `InvalidStateException("closed")`. La operación en curso no se interrumpe, pero su resultado se descarta.
-- [ ] `4.3.4` Propiedades `id`, `closed`, `direction`, `handler`, `connectionState` y `appData`.
-- [ ] `4.3.5` Listener `connect`, obligatorio al crear el transporte, con futuro: interfaz `ConnectHandler`, llamada con `AsyncHandlers.run`. ⚠️ no copiar: el original lanza `connect` y sigue sin esperar a que termine la señalización.
-- [ ] `4.3.6` Listener `connectionstatechange`.
-- [ ] `4.3.7` Listener `produce`, obligatorio al crear el transporte de envío, que devuelve el ID del producer: interfaz `ProduceHandler` con un record de petición, llamada con `AsyncHandlers.call`. Un ID vacío también falla.
-- [ ] `4.3.8` `close`: cerrar el handler y avisar a todos los productores y consumidores.
-- [ ] `4.3.9` `observer` con `close`, `newproducer` y `newconsumer`.
-- [ ] `4.3.10` `additionalSettings`: movida a `10.2.8`.
-- [ ] `4.3.11` `Device.createSendTransport` (antes `4.2.10`).
-- [ ] `4.3.12` `Device.createRecvTransport` (antes `4.2.11`). ⚠️ no copiar: el original solo acepta `dict` en recv. Las dos variantes deben aceptar los mismos tipos de entrada.
-- [ ] `4.3.13` `Device.observer` con `newtransport` (antes `4.2.12`). ⚠️ no copiar: el original lo documenta pero nunca lo emite.
+- [x] `4.3.4` Propiedades `id`, `closed`, `direction`, `handler`, `connectionState` y `appData`. Además `iceGatheringState` de mediasoup-client (antes `14.1.4`). `appData` sin setter.
+- [x] `4.3.5` Listener `connect`, obligatorio al crear el transporte, con futuro: interfaz `ConnectHandler`, llamada con `AsyncHandlers.run`. ⚠️ no copiar: el original lanza `connect` y sigue sin esperar a que termine la señalización. Falla con `InvalidStateException` si el transporte está cerrado.
+- [x] `4.3.6` Listener `connectionstatechange`. Además `icegatheringstatechange` e `icecandidateerror` de mediasoup-client. Un estado repetido no se emite, y después de `close` no se emite nada.
+- [x] `4.3.7` Listener `produce`, obligatorio al crear el transporte de envío, que devuelve el ID del producer: interfaz `ProduceHandler` con un record de petición, llamada con `AsyncHandlers.call`. Un ID vacío también falla. Hecho: `ProduceHandler` y `ProduceRequest`; la llamada y la comprobación del ID van con `produce` en la `4.4`.
+- [x] `4.3.8` `close`: cerrar el handler y avisar a todos los productores y consumidores. Para la cola, cierra el handler y pone el estado en `closed` sin evento. El aviso a productores y consumidores llega con `4.4.3` y `4.5.3`.
+- [x] `4.3.9` `observer` con `close`, `newproducer` y `newconsumer`. `TransportObserver` con `onClose`; `newproducer` y `newconsumer` llegan con la `4.4` y la `4.5`.
+- [x] `4.3.10` `additionalSettings`: movida a `10.2.8`.
+- [x] `4.3.11` `Device.createSendTransport` (antes `4.2.10`).
+- [x] `4.3.12` `Device.createRecvTransport` (antes `4.2.11`). ⚠️ no copiar: el original solo acepta `dict` en recv. Las dos variantes deben aceptar los mismos tipos de entrada. Las dos reciben `TransportOptions`.
+- [x] `4.3.13` `Device.observer` con `newtransport` (antes `4.2.12`). ⚠️ no copiar: el original lo documenta pero nunca lo emite. `DeviceObserver.onNewTransport`, emitido en el ejecutor del transporte nuevo antes que cualquier otro evento suyo.
 
 ### 4.4 Producer básico y Transport.produce
 
@@ -849,7 +850,7 @@ Origen: `pymediasoup/data_consumer.py`
 
 Origen: `pymediasoup/transport.py`
 
-- [ ] `9.3.1` Listener `producedata`, opcional al crear el transporte de envío porque no todos usan data channels.
+- [ ] `9.3.1` Listener `producedata`, opcional al crear el transporte de envío porque no todos usan data channels: sobrecarga `createSendTransport(options, connect, produce, produceData)`; sin ella, `produceData` falla con `InvalidStateException`.
 - [ ] `9.3.2` `produceData`: validaciones (dirección, SCTP activo, listener `producedata` presente).
 - [ ] `9.3.3` `produceData`: `ordered = false` si hay `maxPacketLifeTime` o `maxRetransmits`, y `true` si no hay ninguno (`validateAndNormalizeSctpStreamParameters` de mediasoup-client). ⚠️ no copiar: el original comprueba si son truthy, así que un valor 0 se ignora.
 - [ ] `9.3.4` `produceData`: flujo con handler y registro.
@@ -1076,7 +1077,7 @@ Funcionalidades de mediasoup-client (`src/Transport.ts`) que pymediasoup no tien
 - [ ] `14.1.1` Crear consumers por lotes en una sola renegociación (`createPendingConsumers`).
 - [ ] `14.1.2` Pausar consumers por lotes (`pausePendingConsumers`).
 - [ ] `14.1.3` Reanudar consumers por lotes (`resumePendingConsumers`).
-- [ ] `14.1.4` `Transport.iceGatheringState`.
+- [x] `14.1.4` `Transport.iceGatheringState`: movida a `4.3.4`, con los eventos `icegatheringstatechange` e `icecandidateerror`.
 - [ ] `14.1.5` `Transport.getDataChannelMaxMessageSize`.
 - [ ] `14.1.6` Callbacks `onRtpSender` y `onRtpReceiver` de `ProducerOptions` y `ConsumerOptions`: decidir cómo se ejecutan con la cola del transporte.
 - [ ] `14.1.7` Comparar periódicamente con mediasoup-client para detectar funcionalidades nuevas.
@@ -1112,7 +1113,7 @@ Cubre la API de pymediasoup. `Fase` es la fase donde queda funcional; una propie
 | `restartIce`, `updateIceServers` | 10.2 |
 | Eventos `connect`, `connectionstatechange`, `produce` | 4.3 |
 | Evento `producedata` | 9.3 |
-| `observer`: `close`, `newproducer`, `newconsumer` | 4.3 |
+| `observer`: `close`, `newproducer`, `newconsumer` | 4.3, 4.4, 4.5 |
 | `observer`: `newdataproducer`, `newdataconsumer` | 9.3 |
 | Probator RTP (`probatorConsumerCreated`) | 8.3 |
 

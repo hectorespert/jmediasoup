@@ -13,6 +13,7 @@ import io.github.hectorespert.jmediasoup.rtp.MediaKind;
 import io.github.hectorespert.jmediasoup.rtp.RtpCapabilities;
 import io.github.hectorespert.jmediasoup.sctp.SctpCapabilities;
 import io.github.hectorespert.jmediasoup.transport.TransportDirection;
+import io.github.hectorespert.jmediasoup.transport.TransportOptions;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -43,6 +44,8 @@ public final class Device {
     private final AtomicBoolean loading = new AtomicBoolean();
     // What the device computed when it loaded, or null if it is not loaded.
     private volatile @Nullable Loaded loaded;
+    // Observer instance.
+    private final DeviceObserver observer = new DeviceObserver(logger);
 
     // The capabilities of a loaded device.
     private record Loaded(
@@ -137,6 +140,15 @@ public final class Device {
     }
 
     /**
+     * Returns the observer, whose events are meant for monitoring.
+     *
+     * @return the observer of this device
+     */
+    public DeviceObserver observer() {
+        return observer;
+    }
+
+    /**
      * Loads the device with the RTP capabilities of the router, keeping the codec order of the
      * router.
      *
@@ -204,6 +216,52 @@ public final class Device {
                 logger.debug("load() succeeded");
             }
         });
+    }
+
+    /**
+     * Creates a transport for sending media and data.
+     *
+     * @param options the parameters of the mediasoup transport, as the server created it, and the
+     *     local settings
+     * @param connect connects the mediasoup transport, before the first produce
+     * @param produce creates each producer on the server
+     * @return the transport
+     * @throws InvalidStateException if the device is not loaded
+     */
+    public SendTransport createSendTransport(TransportOptions options, ConnectHandler connect, ProduceHandler produce)
+            throws InvalidStateException {
+        logger.debug("createSendTransport()");
+        requireNonNull(options, "options");
+        requireNonNull(connect, "connect");
+        requireNonNull(produce, "produce");
+        Loaded current = assertLoaded();
+        return emitNewTransport(
+                new SendTransport(options, handlerFactory, current.getSendExtendedRtpCapabilities(), connect, produce));
+    }
+
+    /**
+     * Creates a transport for receiving media and data.
+     *
+     * @param options the parameters of the mediasoup transport, as the server created it, and the
+     *     local settings
+     * @param connect connects the mediasoup transport, before the first consume
+     * @return the transport
+     * @throws InvalidStateException if the device is not loaded
+     */
+    public RecvTransport createRecvTransport(TransportOptions options, ConnectHandler connect)
+            throws InvalidStateException {
+        logger.debug("createRecvTransport()");
+        requireNonNull(options, "options");
+        requireNonNull(connect, "connect");
+        Loaded current = assertLoaded();
+        return emitNewTransport(
+                new RecvTransport(options, handlerFactory, current.getSendExtendedRtpCapabilities(), connect));
+    }
+
+    private <T extends Transport> T emitNewTransport(T transport) {
+        // On the executor of the transport, so before any of its events.
+        transport.executor().execute(() -> observer.emitNewTransport(transport));
+        return transport;
     }
 
     private static Loaded compute(

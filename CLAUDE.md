@@ -22,9 +22,9 @@ Assisted-by: Claude Opus 5.5 <noreply@anthropic.com>
 
 ## Project state
 
-Phases 1 (foundations), 2 (ORTC) and 3 (SDP) are done, except for checking the SDP against webrtc-java, which needs the natives (task 5.1.15). `Device` loads and reports its capabilities, but there is no `Transport` yet. The module `io.github.hectorespert.jmediasoup` exports these packages, all `@NullMarked`:
+Phases 1 (foundations), 2 (ORTC) and 3 (SDP) are done, except for checking the SDP against webrtc-java, which needs the natives (task 5.1.15). `Device` loads, reports its capabilities and creates transports, which connect and report their state, but cannot produce or consume yet. The module `io.github.hectorespert.jmediasoup` exports these packages, all `@NullMarked`:
 
-- the root package: `Device`, the exceptions (`MediasoupClientException`, a checked base, with `UnsupportedException` and `InvalidStateException`), `Subscription`, `DataChannelMessage`, and the producer and consumer options;
+- the root package: `Device`; the transports, a sealed `Transport` with `SendTransport` and `RecvTransport`, which run every listener and handler of the application on their own serial executor; the handlers the application passes when creating them (`ConnectHandler`, `ProduceHandler` with `ProduceRequest`); `DeviceObserver` and `TransportObserver`; the exceptions (`MediasoupClientException`, a checked base, with `UnsupportedException` and `InvalidStateException`), `Subscription`, `DataChannelMessage`, and the producer and consumer options;
 - `rtp`, `sctp` and `transport`: the models, as validated, immutable records;
 - `handler`: the contract with the WebRTC stack for custom handlers, the one of mediasoup-client 3.26: `HandlerFactory` (native capabilities by direction, `create`), `Handler`, which reports to its transport through the `HandlerListener` in its `HandlerOptions`, their options and results, and `DataChannel`.
 
@@ -61,3 +61,4 @@ Spotless formats Java with palantir-java-format and adds the SPDX licence header
 - The `java-library` plugin is applied, so `api` dependencies are exposed to consumers and `implementation` dependencies are not.
 - The configuration cache is on (`gradle.properties`), so custom tasks and build logic have to be compatible with it.
 - `compileJava` records the project version in the module descriptor, where `RemoteSdp` reads it.
+- The test JVM opens `dev.onvoid.webrtc` to the library module, so that tests can create webrtc-java events whose constructors are package-private.

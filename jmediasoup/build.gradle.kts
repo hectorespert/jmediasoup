@@ -54,6 +54,9 @@ tasks.named<Test>("test") {
     useJUnitPlatform()
     // slf4j-simple also receives the logs of Gradle's test worker, which are noise at INFO.
     systemProperty("org.slf4j.simpleLogger.defaultLogLevel", "warn")
+    // Some webrtc-java events only have package-private constructors; the tests create them by
+    // reflection to simulate the stack.
+    jvmArgs("--add-opens", "webrtc.java/dev.onvoid.webrtc=io.github.hectorespert.jmediasoup")
 }
 
 // The internal packages are not exported, so they stay out of the public Javadoc. Their compiled
