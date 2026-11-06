@@ -382,9 +382,9 @@ Origen: paquete `h264-profile-level-id`. Va en un paquete interno (`0.5.16`). py
 
 Origen: `pymediasoup/scalability_modes.py`
 
-- [ ] `2.2.1` `ScalabilityMode` (capas espaciales y temporales).
-- [ ] `2.2.2` `parse`. ⚠️ no copiar: la regex usa `\\d` en un raw string, así que el original siempre devuelve 1 y 1.
-- [ ] `2.2.3` Tests de `L1T3`, `S3T3`, `L3T3_KEY`, cadena vacía y nula, y valores no válidos.
+- [x] `2.2.1` `ScalabilityMode` (capas espaciales y temporales): record en `internal.ortc`. Es interno aunque mediasoup-client exporta `parseScalabilityMode`; solo lo usa el handler.
+- [x] `2.2.2` `parse`, que solo mira el prefijo (acepta `_KEY` y otros sufijos) y devuelve una capa de cada si el modo falta o no es válido. ⚠️ no copiar: la regex usa `\\d` en un raw string, así que el original siempre devuelve 1 y 1.
+- [x] `2.2.3` Tests de `L1T3`, `S3T3`, `L3T3_KEY`, cadena vacía y nula, y valores no válidos, más los casos de `test.ts` de mediasoup-client.
 
 ### 2.3 Comparación de codecs
 
@@ -1200,7 +1200,7 @@ Cubre la API de pymediasoup. `Fase` es la fase donde queda funcional; una propie
 | `MediaStreamTrackKind` | 1.3 (`MediaKind`) |
 | `HandlerRunOptions`, `HandlerSendOptions`, `HandlerSendResult`, `HandlerReceiveOptions`, `HandlerReceiveResult` | 4.1 |
 | `HandlerSendDataChannelResult`, `HandlerReceiveDataChannelOptions`, `HandlerReceiveDataChannelResult` | 4.1 |
-| `ScalabilityMode`, `parse` | 2.2 |
+| `ScalabilityMode`, `parse` (internos) | 2.2 |
 
 ## Dependencias de pymediasoup y su equivalente
 
