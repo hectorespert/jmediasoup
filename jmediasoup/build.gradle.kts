@@ -14,10 +14,12 @@ repositories {
 
 dependencies {
     api(libs.jspecify)
+    implementation(libs.slf4j.api)
 
     testImplementation(libs.junit.jupiter)
 
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testRuntimeOnly(libs.slf4j.simple)
 }
 
 java {
@@ -39,6 +41,13 @@ spotless {
 
 tasks.named<Test>("test") {
     useJUnitPlatform()
+    // slf4j-simple also receives the logs of Gradle's test worker, which are noise at INFO.
+    systemProperty("org.slf4j.simpleLogger.defaultLogLevel", "warn")
+}
+
+// The internal packages are not exported, so they stay out of the public Javadoc.
+tasks.named<Javadoc>("javadoc") {
+    exclude("**/internal/**")
 }
 
 // Runs the tests inside the library module (--patch-module), so they see the

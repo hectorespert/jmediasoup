@@ -53,6 +53,8 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 - API asíncrona con `CompletableFuture`. Quien prefiera estilo bloqueante usa `.join()` en un virtual thread.
 - Una cola serializada por transporte, como la `AwaitQueue` de mediasoup-client. Los eventos nativos se reenvían a esa cola, así que ningún listener del usuario se ejecuta en un hilo nativo y puede bloquear sin parar la factory.
 - Eventos: `connect` y `produce` se pasan al crear el transporte y devuelven un `CompletableFuture`, así que no pueden faltar. El resto son listeners tipados (`onConnectionStateChange(...)`) que devuelven una suscripción para darse de baja.
+- Listeners (sección 1.2): `Consumer<T>` para los eventos con valor y `Runnable` para los que no tienen. `onXxx` devuelve una `Subscription` (`AutoCloseable`, `close()` idempotente). En cuanto `close()` vuelve, el listener no recibe nada más, ni siquiera el evento que se está entregando; uno añadido durante una entrega empieza con el siguiente evento. Si un listener lanza una excepción, se registra a nivel ERROR con SLF4J y se sigue con los demás.
+- Handlers asíncronos (sección 1.2): `connect` y `produce` son interfaces propias (`ConnectHandler`, `ProduceHandler` con un record de petición) que devuelven un `CompletionStage`. Si el handler lanza, devuelve `null` o su stage falla, la operación falla con `MediasoupClientException` y la causa original. jmediasoup no pone timeout; lo pone el usuario en su señalización.
 - Tipos de texto cerrado como enums con su valor JSON.
 - La API pública usa los tipos de webrtc-java (`MediaStreamTrack`, `RTCRtpSender`...), como pymediasoup usa los de aiortc. Sender, receiver y data channel tienen abstracciones internas al handler, y `FakeHandler` usa una subclase de prueba de `MediaStreamTrack`. Se necesita el jar de webrtc-java, pero no sus nativos, salvo con `WebRtcJavaHandler`. Deja fuera Android.
 - Un único artefacto, `jmediasoup`, con el handler pluggable por interfaz. `FakeHandler` solo en tests, como en pymediasoup.
@@ -249,12 +251,12 @@ Origen: `pymediasoup/errors.py`
 
 Origen: `pymediasoup/emitter.py`, `pyee`
 
-- [ ] `1.2.1` Colección de listeners segura ante concurrencia, con alta y baja.
-- [ ] `1.2.2` Aislar errores: la excepción de un listener no impide avisar a los demás y queda registrada con SLF4J, que se añade aquí como `implementation`.
-- [ ] `1.2.3` Contrato para listeners que devuelven un resultado asíncrono (sustituye a `emit_for_results`).
-- [ ] `1.2.4` Error claro si un listener obligatorio falla o devuelve un resultado nulo. No pueden faltar, porque se pasan al crear el transporte (`0.5.3`). ⚠️ no copiar: `ids[0]` falla con `IndexError` si el listener de `produce` falla o no devuelve nada.
-- [ ] `1.2.5` Tests de orden de entrega, baja durante la entrega y propagación de errores.
-- [ ] `1.2.6` Suscripción devuelta al registrar un listener, para darse de baja.
+- [x] `1.2.1` Colección de listeners segura ante concurrencia, con alta y baja: `internal.event.Listeners<T>` y `RunnableListeners`, sobre `CopyOnWriteArrayList`.
+- [x] `1.2.2` Aislar errores: la excepción de un listener no impide avisar a los demás y queda registrada con SLF4J, que se añade aquí como `implementation` (2.0.20; `slf4j-simple` solo en tests).
+- [x] `1.2.3` Contrato para listeners que devuelven un resultado asíncrono (sustituye a `emit_for_results`): `internal.event.AsyncHandlers`, con `run` para los que no devuelven valor y `call` para los que sí. Las interfaces `ConnectHandler` y `ProduceHandler` se crean con sus tipos en `4.3.5` y `4.3.7`.
+- [x] `1.2.4` Error claro si un listener obligatorio falla o devuelve un resultado nulo: `MediasoupClientException` con un mensaje distinto para cada caso y la causa original. No pueden faltar, porque se pasan al crear el transporte (`0.5.3`). ⚠️ no copiar: `ids[0]` falla con `IndexError` si el listener de `produce` falla o no devuelve nada.
+- [x] `1.2.5` Tests de orden de entrega, baja durante la entrega y propagación de errores, incluido un test de concurrencia.
+- [x] `1.2.6` Suscripción devuelta al registrar un listener, para darse de baja: `Subscription`, en el paquete raíz.
 
 ### 1.3 Parámetros RTP
 
@@ -558,9 +560,9 @@ Origen: `pymediasoup/transport.py`
 - [ ] `4.3.2` Cola serializada por transporte para las operaciones de handler y la entrega de eventos (`0.5.2`). ⚠️ no copiar: el original no tiene cola (`NOTE: Mediasoup client enqueue command here`). En Java hay concurrencia real.
 - [ ] `4.3.3` Rechazar las operaciones pendientes de la cola al cerrar.
 - [ ] `4.3.4` Propiedades `id`, `closed`, `direction`, `handler`, `connectionState` y `appData`.
-- [ ] `4.3.5` Listener `connect`, obligatorio al crear el transporte, con futuro. ⚠️ no copiar: el original lanza `connect` y sigue sin esperar a que termine la señalización.
+- [ ] `4.3.5` Listener `connect`, obligatorio al crear el transporte, con futuro: interfaz `ConnectHandler`, llamada con `AsyncHandlers.run`. ⚠️ no copiar: el original lanza `connect` y sigue sin esperar a que termine la señalización.
 - [ ] `4.3.6` Listener `connectionstatechange`.
-- [ ] `4.3.7` Listener `produce`, obligatorio al crear el transporte de envío, que devuelve el ID del producer.
+- [ ] `4.3.7` Listener `produce`, obligatorio al crear el transporte de envío, que devuelve el ID del producer: interfaz `ProduceHandler` con un record de petición, llamada con `AsyncHandlers.call`. Un ID vacío también falla.
 - [ ] `4.3.8` `close`: cerrar el handler y avisar a todos los productores y consumidores.
 - [ ] `4.3.9` `observer` con `close`, `newproducer` y `newconsumer`.
 - [ ] `4.3.10` `additionalSettings`: sin campos reservados. ⚠️ no copiar: el original llama a `copy(deep=True)` sobre un `dict`.
