@@ -216,7 +216,7 @@ Cada una se confirma y se anota en la sección [Decisiones](#decisiones) de este
 - [x] `0.6.2` Caché de Gradle con `setup-gradle` y `cache-provider: basic` (la caché de GitHub Actions, en lugar de la comercial que usa por defecto). Solo escriben en ella los builds de `main`.
 - [x] `0.6.3` Publicar los informes de tests como artefacto del workflow (`test-reports`, 14 días).
 - [x] `0.6.4` Formateador: Spotless, que forma parte de `./gradlew build`. En Java aplica palantir-java-format, quita los imports sin usar y pone la cabecera de licencia SPDX (salvo en `package-info.java` y `module-info.java`). En los `.gradle.kts` aplica ktlint. En Markdown, YAML, TOML y ficheros de Git quita los espacios al final de línea y asegura el salto final.
-- [ ] `0.6.5` Activar actualizaciones automáticas de dependencias.
+- [x] `0.6.5` Activar actualizaciones automáticas de dependencias. Hecho con Dependabot (`.github/dependabot.yml`): revisa una vez al mes el catálogo y los plugins de Gradle y los SHA de las Actions, abre una PR agrupada por ecosistema y solo propone versiones publicadas hace al menos 14 días (`cooldown`). Las PRs de Actions tocan `.github/workflows/`, así que el merge se hace desde la web.
 
 ### 0.7 Aplicar las decisiones al build
 

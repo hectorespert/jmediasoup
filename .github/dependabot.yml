@@ -1,0 +1,27 @@
+version: 2
+
+updates:
+  # The version catalog, the plugins in the build scripts and the foojay
+  # resolver in settings.gradle.kts.
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: monthly
+    # Only versions that have been out for at least two weeks.
+    cooldown:
+      default-days: 14
+    groups:
+      gradle:
+        patterns: ["*"]
+
+  # The pinned action SHAs in .github/workflows/. These pull requests have to be
+  # merged from the web, because the local token has no workflow scope.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 14
+    groups:
+      github-actions:
+        patterns: ["*"]
