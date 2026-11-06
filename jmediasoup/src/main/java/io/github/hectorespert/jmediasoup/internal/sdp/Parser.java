@@ -30,9 +30,6 @@ public final class Parser {
     private static final Pattern DECIMAL = Pattern.compile("-?\\d+(?:\\.\\d+)?");
     private static final Pattern PARAM_SEPARATOR = Pattern.compile(";\\s?");
     private static final Pattern KEY_VALUE = Pattern.compile("=(.+)");
-    private static final Pattern JS_DECIMAL = Pattern.compile("[+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?");
-    private static final Pattern JS_INFINITY = Pattern.compile("[+-]?Infinity");
-    private static final Pattern JS_RADIX = Pattern.compile("0([xXoObB])([0-9a-fA-F]+)");
 
     private Parser() {}
 
@@ -267,32 +264,9 @@ public final class Parser {
         return str.substring(Math.min(from, to), Math.max(from, to));
     }
 
-    // JavaScript's Number applied to a text.
+    // JavaScript's Number applied to a text, with integers as Jackson reads them.
     private static Number jsNumber(String str) {
-        String text = str.strip();
-        if (text.isEmpty()) {
-            return 0;
-        }
-        double number;
-        Matcher radix = JS_RADIX.matcher(text);
-        if (JS_DECIMAL.matcher(text).matches()) {
-            number = Double.parseDouble(text);
-        } else if (JS_INFINITY.matcher(text).matches()) {
-            number = text.startsWith("-") ? Double.NEGATIVE_INFINITY : Double.POSITIVE_INFINITY;
-        } else if (radix.matches()) {
-            int base = switch (Character.toLowerCase(radix.group(1).charAt(0))) {
-                case 'x' -> 16;
-                case 'o' -> 8;
-                default -> 2;
-            };
-            try {
-                number = new BigInteger(radix.group(2), base).doubleValue();
-            } catch (NumberFormatException e) {
-                number = Double.NaN;
-            }
-        } else {
-            number = Double.NaN;
-        }
+        double number = JavaScript.number(str);
         if (Double.isFinite(number)
                 && number == Math.rint(number)
                 && !(number == 0 && 1 / number < 0)

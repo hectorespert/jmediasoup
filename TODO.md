@@ -468,14 +468,16 @@ Portado de `clux/sdp-transform` 3.0.0, la versión que usa mediasoup-client 3.26
 
 ### 3.2 Port de sdp-transform: generador
 
-- [ ] `3.2.1` Formateador de líneas con los especificadores de la gramática.
-- [ ] `3.2.2` Orden de líneas de sesión.
-- [ ] `3.2.3` Orden de líneas de cada sección `m=`.
-- [ ] `3.2.4` Omitir los campos ausentes.
-- [ ] `3.2.5` Fin de línea `\r\n`.
-- [ ] `3.2.6` Port de los casos de prueba de escritura, incluidas las comprobaciones del writer de `parse.test.js` (`icelite`, `jsep`).
-- [ ] `3.2.7` Round-trip parse y write con el SDP guardado en `0.3.6`.
-- [ ] `3.2.8` Comprobar que webrtc-java acepta un SDP generado por el port.
+En `internal.sdp.Writer`. Como el original, escribe las líneas en el orden de la gramática y completa la sesión que recibe (`version`, `name` y `payloads`). Las conversiones de JavaScript que usan el parser y el writer están en `internal.sdp.JavaScript`.
+
+- [x] `3.2.1` Formateador de líneas con los especificadores de la gramática (`%s`, `%d`, `%v`, `%%`). Escribe los valores como JavaScript: `%d` convierte con `Number()`, un valor ausente es `undefined` y los decimales salen con los dígitos mínimos. Los enteros se escriben exactos, aunque pasen de 53 bits.
+- [x] `3.2.2` Orden de líneas de sesión.
+- [x] `3.2.3` Orden de líneas de cada sección `m=`.
+- [x] `3.2.4` Omitir los campos ausentes.
+- [x] `3.2.5` Fin de línea `\r\n`.
+- [x] `3.2.6` Port de los casos de prueba de escritura (`ComposeTest`), incluidas las comprobaciones del writer de `parse.test.js` (`icelite`, `jsep`).
+- [x] `3.2.7` Round-trip parse y write con los SDP guardados en `0.3.6`: se conservan todas las líneas salvo `a=msid-semantic: WMS` sin token, que el original también reescribe con dos espacios.
+- [x] `3.2.8` Comprobar que webrtc-java acepta un SDP generado por el port: movida a `5.1.15`, porque necesita los nativos de la `5.1.1`.
 
 ### 3.3 Utilidades comunes
 
@@ -653,6 +655,7 @@ Origen: `pymediasoup/handlers/aiortc_handler.py`
 - [ ] `5.1.12` `setupTransport`: extraer DTLS, fijar el rol, avisar por `@connect` y esperar el resultado.
 - [ ] `5.1.13` `assertSendDirection` y `assertRecvDirection`.
 - [ ] `5.1.14` Test con `Device.load` real: las capacidades incluyen Opus y VP8.
+- [ ] `5.1.15` Comprobar que webrtc-java acepta un SDP generado por el writer de la `3.2` (antes `3.2.8`).
 
 ### 5.2 Recibir
 
