@@ -1,6 +1,7 @@
 plugins {
     `java-library`
     `maven-publish`
+    id("com.diffplug.spotless")
 }
 
 group = "io.github.hectorespert"
@@ -19,6 +20,17 @@ dependencies {
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+spotless {
+    java {
+        palantirJavaFormat(libs.versions.palantir.get())
+        removeUnusedImports()
+        licenseHeader("/*\n * Copyright \$YEAR Hector Espert\n * SPDX-License-Identifier: Apache-2.0\n */")
+    }
+    kotlinGradle {
+        ktlint(libs.versions.ktlint.get())
     }
 }
 

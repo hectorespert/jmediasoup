@@ -212,10 +212,10 @@ Cada una se confirma y se anota en la sección [Decisiones](#decisiones) de este
 
 ### 0.6 CI y calidad
 
-- [ ] `0.6.1` Workflow de GitHub Actions: `./gradlew build` en push y PR.
-- [ ] `0.6.2` Caché de Gradle en el workflow.
-- [ ] `0.6.3` Publicar los informes de tests como artefacto del workflow.
-- [ ] `0.6.4` Decidir si se añade un formateador (p. ej. Spotless). Hoy no hay ninguno.
+- [x] `0.6.1` Workflow de GitHub Actions: `./gradlew build` en push a `main` y en PR (`.github/workflows/build.yml`). Las acciones van fijadas por SHA. El workflow se crea desde la web de GitHub, porque el token de `gh` de las sesiones no tiene el permiso `workflow`.
+- [x] `0.6.2` Caché de Gradle con `setup-gradle` y `cache-provider: basic` (la caché de GitHub Actions, en lugar de la comercial que usa por defecto). Solo escriben en ella los builds de `main`.
+- [x] `0.6.3` Publicar los informes de tests como artefacto del workflow (`test-reports`, 14 días).
+- [x] `0.6.4` Formateador: Spotless, que forma parte de `./gradlew build`. En Java aplica palantir-java-format, quita los imports sin usar y pone la cabecera de licencia SPDX (salvo en `package-info.java` y `module-info.java`). En los `.gradle.kts` aplica ktlint. En Markdown, YAML, TOML y ficheros de Git quita los espacios al final de línea y asegura el salto final.
 - [ ] `0.6.5` Activar actualizaciones automáticas de dependencias.
 
 ### 0.7 Aplicar las decisiones al build

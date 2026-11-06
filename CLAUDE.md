@@ -34,9 +34,10 @@ Use the Gradle wrapper (Gradle 9.1.0). There is one subproject, `jmediasoup`.
 ./gradlew :jmediasoup:test --tests 'io.github.hectorespert.jmediasoup.SmokeTest.testsRunInTheRootPackage'   # run a single test
 ./gradlew clean
 ./gradlew publishToMavenLocal      # publish io.github.hectorespert:jmediasoup to ~/.m2
+./gradlew spotlessApply          # format all files; `build` fails through spotlessCheck if any is not formatted
 ```
 
-No linter or formatter is configured. Test reports are written to `jmediasoup/build/reports/tests/test/`.
+Spotless formats Java with palantir-java-format and adds the SPDX licence header, formats the `.gradle.kts` scripts with ktlint, and trims trailing whitespace in Markdown, YAML and TOML. Run `spotlessApply` after editing. Test reports are written to `jmediasoup/build/reports/tests/test/`.
 
 ## Build setup
 
