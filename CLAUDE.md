@@ -20,13 +20,13 @@ Assisted-by: Claude Opus 5.5 <noreply@anthropic.com>
 
 ## Project state
 
-Bare skeleton: the root package `io.github.hectorespert.jmediasoup` holds only `package-info.java` and a smoke test, so there is no API yet. The WebRTC stack is [webrtc-java](https://github.com/devopvoid/webrtc-java); the results of the spike that validated it, and what they mean for the design, are in section 0.3 of TODO.md.
+Bare skeleton: the module `io.github.hectorespert.jmediasoup` has a `module-info.java` and the root package holds only `package-info.java` (`@NullMarked`) and a smoke test, so there is no API yet. Internal packages go under `io.github.hectorespert.jmediasoup.internal` and are not exported. The WebRTC stack is [webrtc-java](https://github.com/devopvoid/webrtc-java); the results of the spike that validated it, and what they mean for the design, are in section 0.3 of TODO.md.
 
 The design decisions (async model, threading, events, JSON, nullness, logging, JPMS, SDP representation, dependency scopes) are recorded in the "Decisiones" section of TODO.md. Follow them, and ask before departing from one.
 
 ## Commands
 
-Use the Gradle wrapper (Gradle 9.1.0). There is one subproject, `jmediasoup`.
+Use the Gradle wrapper (Gradle 9.8.2). There is one subproject, `jmediasoup`.
 
 ```bash
 ./gradlew build                  # compile, test and assemble the jar
@@ -42,7 +42,7 @@ Spotless formats Java with palantir-java-format and adds the SPDX licence header
 ## Build setup
 
 - Java 21 through a Gradle toolchain (`jmediasoup/build.gradle.kts`). The foojay resolver plugin downloads a matching JDK if none is installed.
-- Tests use JUnit 5 (Jupiter).
+- Tests use JUnit Jupiter 6. The `org.gradlex.java-module-testing` plugin runs them inside the library module (whitebox, `--patch-module`), so they can use the internal packages; a module a test needs has to be added to `requires` in the `javaModuleTesting.whitebox` block.
 - Declare dependency versions in the version catalog, `gradle/libs.versions.toml`, and reference them as `libs.*` from the build script.
 - The `java-library` plugin is applied, so `api` dependencies are exposed to consumers and `implementation` dependencies are not.
 - The configuration cache is on (`gradle.properties`), so custom tasks and build logic have to be compatible with it.

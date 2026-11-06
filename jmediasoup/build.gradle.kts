@@ -2,6 +2,7 @@ plugins {
     `java-library`
     `maven-publish`
     id("com.diffplug.spotless")
+    alias(libs.plugins.java.module.testing)
 }
 
 group = "io.github.hectorespert"
@@ -12,6 +13,8 @@ repositories {
 }
 
 dependencies {
+    api(libs.jspecify)
+
     testImplementation(libs.junit.jupiter)
 
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -36,6 +39,12 @@ spotless {
 
 tasks.named<Test>("test") {
     useJUnitPlatform()
+}
+
+// Runs the tests inside the library module (--patch-module), so they see the
+// internal packages and also check the requires and exports of module-info.java.
+javaModuleTesting.whitebox(testing.suites["test"]) {
+    requires.add("org.junit.jupiter.api")
 }
 
 publishing {

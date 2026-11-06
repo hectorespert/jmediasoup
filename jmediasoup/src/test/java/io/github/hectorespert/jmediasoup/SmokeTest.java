@@ -13,4 +13,9 @@ class SmokeTest {
     void testsRunInTheRootPackage() {
         assertEquals("io.github.hectorespert.jmediasoup", getClass().getPackageName());
     }
+
+    @Test
+    void testsRunInTheLibraryModule() {
+        assertEquals("io.github.hectorespert.jmediasoup", getClass().getModule().getName());
+    }
 }

@@ -61,7 +61,8 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 - Modelos con `record` y anotaciones de Jackson. jmediasoup no necesita JSON en tiempo de ejecución: el usuario convierte con su propio `ObjectMapper`, de Jackson 2 o 3. Con Gson harían falta adapters (enums, `OS`/`MIS`, números dentro de `Map`); un `fromMap`/`toMap` propio se puede añadir más adelante sin romper nada.
 - `appData` como `Map<String, Object>` inmutable que admite valores `null`.
 - Logging con SLF4J 2.
-- `module-info.java` desde el principio, exportando solo los paquetes públicos.
+- `module-info.java` desde el principio, exportando solo los paquetes públicos. Los paquetes internos van bajo `io.github.hectorespert.jmediasoup.internal` (`.internal.sdp`, `.internal.h264`...) y no se exportan.
+- Los tests se ejecutan dentro del módulo de la librería (whitebox, con `--patch-module`) mediante el plugin `org.gradlex.java-module-testing`. Así ven los paquetes internos y comprueban a la vez los `requires` y `exports`.
 - Ports propios de `sdp-transform` y `h264-profile-level-id` como paquetes internos. No hay alternativa Java aprovechable (ver `0.5.13`). El SDP parseado se representa con `Map<String, Object>`, como el objeto de sdp-transform y el `dict` de pymediasoup.
 - Servidor: mediasoup v3. La CI valida la versión de la imagen (3.19.14), y en la Fase 13 se añade una reciente.
 
@@ -216,14 +217,14 @@ Cada una se confirma y se anota en la sección [Decisiones](#decisiones) de este
 - [x] `0.6.2` Caché de Gradle con `setup-gradle` y `cache-provider: basic` (la caché de GitHub Actions, en lugar de la comercial que usa por defecto). Solo escriben en ella los builds de `main`.
 - [x] `0.6.3` Publicar los informes de tests como artefacto del workflow (`test-reports`, 14 días).
 - [x] `0.6.4` Formateador: Spotless, que forma parte de `./gradlew build`. En Java aplica palantir-java-format, quita los imports sin usar y pone la cabecera de licencia SPDX (salvo en `package-info.java` y `module-info.java`). En los `.gradle.kts` aplica ktlint. En Markdown, YAML, TOML y ficheros de Git quita los espacios al final de línea y asegura el salto final.
-- [x] `0.6.5` Activar actualizaciones automáticas de dependencias. Hecho con Dependabot (`.github/dependabot.yml`): revisa una vez al mes el catálogo y los plugins de Gradle y los SHA de las Actions, abre una PR agrupada por ecosistema y solo propone versiones publicadas hace al menos 14 días (`cooldown`). Las PRs de Actions tocan `.github/workflows/`, así que el merge se hace desde la web.
+- [x] `0.6.5` Activar actualizaciones automáticas de dependencias. Hecho con Dependabot (`.github/dependabot.yml`): revisa una vez al mes el catálogo y los plugins de Gradle y los SHA de las Actions, abre una PR agrupada por ecosistema y solo propone versiones publicadas hace al menos 14 días (`cooldown`). También actualiza el wrapper de Gradle; su commit deja `gradlew.bat` con CRLF en el índice, contra lo que dice `.gitattributes`, y se corrige con `git add --renormalize gradlew.bat`. Las PRs de Actions tocan `.github/workflows/`, así que el merge se hace desde la web.
 
 ### 0.7 Aplicar las decisiones al build
 
-- [ ] `0.7.1` `module-info.java` del módulo `io.github.hectorespert.jmediasoup`.
-- [ ] `0.7.2` Comprobar que los tests se ejecutan en el module path de Gradle.
-- [ ] `0.7.3` Fijar el nombre de los paquetes internos, que `module-info.java` no exporta.
-- [ ] `0.7.4` Añadir JSpecify como `api` y `@NullMarked` en `package-info.java`.
+- [x] `0.7.1` `module-info.java` del módulo `io.github.hectorespert.jmediasoup`, con `requires transitive org.jspecify`. Todavía no exporta nada: javac no deja exportar un paquete que solo tiene `package-info.java`, así que el `exports` del paquete raíz llega con su primer tipo público (`1.1.1`).
+- [x] `0.7.2` Comprobar que los tests se ejecutan en el module path de Gradle. Por defecto Gradle los ejecuta en el classpath; con `org.gradlex.java-module-testing` 1.8.1 se ejecutan dentro del módulo, y `SmokeTest.testsRunInTheLibraryModule` lo comprueba.
+- [x] `0.7.3` Fijar el nombre de los paquetes internos, que `module-info.java` no exporta: `io.github.hectorespert.jmediasoup.internal.*`.
+- [x] `0.7.4` Añadir JSpecify como `api` y `@NullMarked` en `package-info.java` (JSpecify 1.0.1).
 
 **Aceptación de la Fase 0**
 
@@ -238,7 +239,7 @@ Cada una se confirma y se anota en la sección [Decisiones](#decisiones) de este
 
 Origen: `pymediasoup/errors.py`
 
-- [ ] `1.1.1` Excepción base del proyecto (equivalente a `Error`).
+- [ ] `1.1.1` Excepción base del proyecto (equivalente a `Error`). Es el primer tipo público, así que añade `exports io.github.hectorespert.jmediasoup` a `module-info.java`.
 - [ ] `1.1.2` `UnsupportedError`.
 - [ ] `1.1.3` `InvalidStateError`.
 - [ ] `1.1.4` Decidir qué excepción de Java sustituye a cada `TypeError` del original (normalmente `IllegalArgumentException`).

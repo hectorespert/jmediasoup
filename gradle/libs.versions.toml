@@ -1,4 +1,6 @@
 [versions]
+java-module-testing = "1.8.1"
+jspecify = "1.0.1"
 junit-jupiter = "6.1.3"
 ktlint = "1.8.0"
 palantir = "2.102.0"
@@ -6,8 +8,10 @@ spotless = "8.10.4"
 webrtc-java = "0.20.0"
 
 [libraries]
+jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
 webrtc-java = { module = "dev.onvoid.webrtc:webrtc-java", version.ref = "webrtc-java" }
 
 [plugins]
+java-module-testing = { id = "org.gradlex.java-module-testing", version.ref = "java-module-testing" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
