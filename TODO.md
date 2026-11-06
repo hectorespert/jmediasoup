@@ -535,7 +535,7 @@ Origen: `RemoteSdp.ts` de mediasoup-client 3.26 (antes `pymediasoup/handlers/sdp
 - [x] `3.5.13` `addMediaSection`, `replaceMediaSection` y `regenerateBundleMids`.
 - [x] `3.5.14` Tests de añadir, cerrar y reciclar secciones.
 
-**Aceptación de la Fase 3** (cumplida salvo el segundo punto, que pasa a la `5.1.15`)
+**Aceptación de la Fase 3** (cumplida; el segundo punto, con la `5.1.15`)
 
 - El port pasa los casos de prueba de `sdp-transform` que se hayan portado.
 - `RemoteSdp` genera ofertas y respuestas que webrtc-java acepta en un test con peer connections locales: necesita los nativos, así que se comprueba en la `5.1.15`.
@@ -649,19 +649,19 @@ Origen: `pymediasoup/handlers/aiortc_handler.py`
 
 - [x] `5.1.1` Añadir `webrtc-java` como `api`. Los nativos solo para los tests: en uso real los declara el usuario (`0.5.7`). Ya era `api` desde la Fase 1; los nativos van como `testRuntimeOnly`, con el clasificador según `os.name` y `os.arch`.
 - [x] `5.1.2` Gestión compartida de `PeerConnectionFactory`, con su ciclo de vida y su cierre. `WebRtcJavaHandler.Factory`, con las dos variantes de `createFactory` (ver Decisiones). Tras cerrarla, `getNativeRtpCapabilities` falla con `InvalidStateException`.
-- [ ] `5.1.3` Adaptadores de las interfaces de la sección 1.7 sobre webrtc-java.
+- [x] `5.1.3` Adaptadores de las interfaces de la sección 1.7 sobre webrtc-java: movida a `9.4.12`, porque solo queda la del data channel (las de sender y receiver se descartaron en `1.7.2` y `1.7.3`).
 - [x] `5.1.4` Convertir en futuros los callbacks `createOffer`, `createAnswer`, `setLocalDescription` y `setRemoteDescription`: `PeerConnections`, que los completa en un hilo virtual y no en el de señalización.
 - [x] `5.1.5` La `HandlerFactory` de `WebRtcJavaHandler`, con `name` (`WebRtcJava`). `create` falla hasta la `5.1.8`.
 - [x] `5.1.6` `getNativeRtpCapabilities` por dirección (`sendonly` o `recvonly`), con peer connection temporal (según `0.3.17`). Como `Chrome111`: el transceiver de vídeo lleva `scalabilityMode` `L3T3` para que aparezca la extensión Dependency Descriptor, y se añade NACK a Opus (`OrtcUtils.addNackSupportForOpus`). No se porta `validateAndNormalizeRtpCapabilities`, porque los records ya validan, ni `forcedRtpExtensions`, porque webrtc-java no tiene `setHeaderExtensionsToNegotiate`.
 - [x] `5.1.7` `getNativeSctpCapabilities` (`OS` y `MIS` de 1024).
-- [ ] `5.1.8` Constructor: `RemoteSdp` y parámetros de envío por tipo.
-- [ ] `5.1.9` Constructor: configuración de la peer connection con `iceServers` y `iceTransportPolicy`.
-- [ ] `5.1.10` Mapear el estado ICE a `ConnectionState`.
-- [ ] `5.1.11` `close`, liberando los recursos nativos.
-- [ ] `5.1.12` `setupTransport`: extraer DTLS, fijar el rol, avisar por `@connect` y esperar el resultado.
-- [ ] `5.1.13` `assertSendDirection` y `assertRecvDirection`.
+- [x] `5.1.8` Constructor: `RemoteSdp` y parámetros de envío por tipo. Los parámetros de envío no se calculan aquí: como en mediasoup-client 3.26, `send` los pide con `getSendExtendedRtpCapabilities` (`6.2.14`). El rol DTLS local es el opuesto del remoto si mediasoup lo fija, y `client` si es `auto`. Los métodos de fases posteriores fallan con `UnsupportedException` hasta entonces, y `getDataChannelMaxMessageSize` da `null` porque webrtc-java no expone el transporte SCTP.
+- [x] `5.1.9` Constructor: configuración de la peer connection con `iceServers` y `iceTransportPolicy`, más `max-bundle` y `rtcp-mux` obligatorio, como `Chrome111`.
+- [x] `5.1.10` Mapear el estado ICE a `ConnectionState`. Con el estado de la peer connection (`onConnectionChange`), como `Chrome111` cuando el navegador lo tiene, y no con el de ICE. También el estado de recogida ICE y los errores de candidatos. Se avisa al transporte desde el hilo de señalización, porque el transporte solo los pasa a su ejecutor y así no se desordenan.
+- [x] `5.1.11` `close`, liberando los recursos nativos: cierra la peer connection. Cerrar la factory cierra los handlers que siguen abiertos.
+- [x] `5.1.12` `setupTransport`: extraer DTLS, fijar el rol, avisar por `@connect` y esperar el resultado.
+- [x] `5.1.13` `assertSendDirection` y `assertRecvDirection`.
 - [x] `5.1.14` Test con `Device.load` real: las capacidades incluyen Opus y VP8. `WebRtcJavaHandlerFactoryTest`.
-- [ ] `5.1.15` Comprobar que webrtc-java acepta un SDP generado por el writer de la `3.2` (antes `3.2.8`), y las ofertas y respuestas de `RemoteSdp` en peer connections locales (aceptación de la Fase 3), con el fingerprint `sha-512` que elige `RemoteSdp`.
+- [x] `5.1.15` Comprobar que webrtc-java acepta un SDP generado por el writer de la `3.2` (antes `3.2.8`), y las ofertas y respuestas de `RemoteSdp` en peer connections locales (aceptación de la Fase 3), con el fingerprint `sha-512` que elige `RemoteSdp`. `WebRtcJavaHandlerTest`: una oferta de recepción con audio y vídeo, y una respuesta a una oferta de envío con audio y vídeo.
 
 ### 5.2 Recibir
 
