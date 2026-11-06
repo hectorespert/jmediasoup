@@ -6,4 +6,5 @@ module io.github.hectorespert.jmediasoup {
     requires org.slf4j;
 
     exports io.github.hectorespert.jmediasoup;
+    exports io.github.hectorespert.jmediasoup.rtp;
 }

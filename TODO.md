@@ -63,6 +63,9 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 - Modelos con `record` y anotaciones de Jackson. jmediasoup no necesita JSON en tiempo de ejecución: el usuario convierte con su propio `ObjectMapper`, de Jackson 2 o 3. Con Gson harían falta adapters (enums, `OS`/`MIS`, números dentro de `Map`); un `fromMap`/`toMap` propio se puede añadir más adelante sin romper nada.
 - `appData` como `Map<String, Object>` inmutable que admite valores `null`.
 - Logging con SLF4J 2.
+- Java 21 como versión mínima. Podría bajar a 17 sin cambiar otras decisiones (webrtc-java es Java 8), pero se mantiene 21 por el `switch` con patrones, `SequencedMap` y los virtual threads.
+- Modelos (sección 1.3) en subpaquetes exportados por área: `jmediasoup.rtp`, `jmediasoup.sctp` y `jmediasoup.transport`. Lo opcional es `null` y no se rellena con los valores por defecto de pydantic; las listas y mapas ausentes quedan vacíos e inmutables. El constructor valida lo obligatorio y los rangos y formatos de cada campo (payload type, SSRC de 32 bits sin signo, `mimeType`...); las reglas entre campos van en ORTC. Los records que el usuario construye con 4 o más opcionales tienen builder escrito a mano.
+- `parameters` de codec: `Map<String, Object>` que conserva el orden y el tipo JSON de cada valor (texto o número). ORTC los compara con `internal.ParameterValues`, que trata `100`, `100L` y `"100"` como iguales. `RtpCodec` es una interfaz sellada que implementan `RtpCodecCapability` y `RtpCodecParameters`.
 - Excepciones (sección 1.1): base checked `MediasoupClientException extends Exception`, con `UnsupportedException` e `InvalidStateException` como subclases. Los métodos síncronos la declaran; en un `CompletableFuture` llega como causa del fallo (`CompletionException` en `join()`). Un argumento no válido lanza `IllegalArgumentException` y uno obligatorio que llega `null`, `NullPointerException`. Los `Exception` genéricos del original (SDP o transceiver inesperados) lanzan la base.
 - `module-info.java` desde el principio, exportando solo los paquetes públicos. Los paquetes internos van bajo `io.github.hectorespert.jmediasoup.internal` (`.internal.sdp`, `.internal.h264`...) y no se exportan.
 - Los tests se ejecutan dentro del módulo de la librería (whitebox, con `--patch-module`) mediante el plugin `org.gradlex.java-module-testing`. Así ven los paquetes internos y comprueban a la vez los `requires` y `exports`.
@@ -262,24 +265,24 @@ Origen: `pymediasoup/emitter.py`, `pyee`
 
 Origen: `pymediasoup/rtp_parameters.py`
 
-- [ ] `1.3.1` `MediaKind`.
-- [ ] `1.3.2` `RtcpFeedback`.
-- [ ] `1.3.3` `RtpCodecCapability`.
-- [ ] `1.3.4` `RtpCodecParameters`.
-- [ ] `1.3.5` Tipo común de codec para que `matchCodecs` acepte capacidades y parámetros (`Codec` y `RtpCodec` en el original).
-- [ ] `1.3.6` `RtpHeaderExtension` y su `direction`.
-- [ ] `1.3.7` `RtpHeaderExtensionParameters`.
-- [ ] `1.3.8` `RtpCapabilities`.
-- [ ] `1.3.9` `RTX` (SSRC de retransmisión).
-- [ ] `1.3.10` `RtpEncodingParameters`, con todos sus campos opcionales.
-- [ ] `1.3.11` `RtcpParameters`.
-- [ ] `1.3.12` `RtpParameters`.
-- [ ] `1.3.13` `ExtendedCodec`.
-- [ ] `1.3.14` `ExtendedHeaderExtension`.
-- [ ] `1.3.15` `ExtendedRtpCapabilities`.
-- [ ] `1.3.16` Representar los `parameters` de codec con tipos estables al comparar (un `apt` puede llegar como número o como texto).
-- [ ] `1.3.17` Validar en el constructor los campos obligatorios (en el original lo hace pydantic).
-- [ ] `1.3.18` Copias defensivas de listas y mapas (sustituye a `copy(deep=True)`).
+- [x] `1.3.1` `MediaKind`, enum con `value()` y `fromValue()`.
+- [x] `1.3.2` `RtcpFeedback`.
+- [x] `1.3.3` `RtpCodecCapability`.
+- [x] `1.3.4` `RtpCodecParameters`.
+- [x] `1.3.5` Tipo común de codec para que `matchCodecs` acepte capacidades y parámetros (`Codec` y `RtpCodec` en el original): interfaz sellada `RtpCodec`.
+- [x] `1.3.6` `RtpHeaderExtension` y su `direction` (`RtpHeaderExtensionDirection`).
+- [x] `1.3.7` `RtpHeaderExtensionParameters`.
+- [x] `1.3.8` `RtpCapabilities`, con `fecMechanisms` como en pymediasoup.
+- [x] `1.3.9` `RTX` (SSRC de retransmisión): `Rtx`, con el SSRC como `long`.
+- [x] `1.3.10` `RtpEncodingParameters`, con todos sus campos opcionales, builder y `toBuilder()`. Añade `active` de mediasoup-client, y `scaleResolutionDownBy` y `maxFramerate` son `Double` (⚠️ en pymediasoup son `int`). La prioridad es el enum `Priority`.
+- [x] `1.3.11` `RtcpParameters`.
+- [x] `1.3.12` `RtpParameters`, con `msid` de mediasoup-client.
+- [x] `1.3.13` `ExtendedCodec`, público porque lo recibe el handler (`0.5.6`).
+- [x] `1.3.14` `ExtendedHeaderExtension`.
+- [x] `1.3.15` `ExtendedRtpCapabilities`.
+- [x] `1.3.16` Representar los `parameters` de codec con tipos estables al comparar (un `apt` puede llegar como número o como texto): mapa con los tipos JSON y comparación con `internal.ParameterValues`.
+- [x] `1.3.17` Validar en el constructor los campos obligatorios (en el original lo hace pydantic), y también rangos y formatos, con `internal.Checks`.
+- [x] `1.3.18` Copias defensivas de listas y mapas (sustituye a `copy(deep=True)`). Los mapas conservan el orden de inserción.
 
 ### 1.4 Parámetros SCTP
 

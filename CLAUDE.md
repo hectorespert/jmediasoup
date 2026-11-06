@@ -12,6 +12,8 @@ Implement a Java client for [mediasoup](https://mediasoup.org), the counterpart 
 
 ## Commits
 
+Write commit messages as [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/): `type(scope): summary`, with the summary in the imperative and lowercase, and the scope optional. Use `feat` for new library functionality, `fix` for bug fixes, `test`, `docs`, `build` (Gradle, dependencies), `ci` (workflows, Dependabot), `refactor` and `chore`. Scopes name the area touched, such as `rtp`, `sctp`, `transport`, `event` or `ortc`. Mark breaking changes with `!` and a `BREAKING CHANGE:` footer.
+
 Credit Claude with an `Assisted-by:` trailer instead of `Co-Authored-By:`, naming the model that did the work:
 
 ```
@@ -20,7 +22,7 @@ Assisted-by: Claude Opus 5.5 <noreply@anthropic.com>
 
 ## Project state
 
-Phase 1 has started: the module `io.github.hectorespert.jmediasoup` exports the root package (`@NullMarked`), which so far holds the exceptions (`MediasoupClientException`, a checked base, and its subclasses `UnsupportedException` and `InvalidStateException`) and `Subscription`. `internal.event` delivers events to listeners and calls the user's asynchronous handlers (`connect`, `produce`); use it for every event. The Javadoc task leaves the internal packages out. Internal packages go under `io.github.hectorespert.jmediasoup.internal` and are not exported. The WebRTC stack is [webrtc-java](https://github.com/devopvoid/webrtc-java); the results of the spike that validated it, and what they mean for the design, are in section 0.3 of TODO.md.
+Phase 1 has started: the module `io.github.hectorespert.jmediasoup` exports the root package (`@NullMarked`), which so far holds the exceptions (`MediasoupClientException`, a checked base, and its subclasses `UnsupportedException` and `InvalidStateException`) and `Subscription`. The models live in exported subpackages by area (`rtp` so far); their constructors validate through `internal.Checks`. `internal.event` delivers events to listeners and calls the user's asynchronous handlers (`connect`, `produce`); use it for every event. The Javadoc task leaves the internal packages out, patching their compiled classes into the module so that the public sources still resolve. Internal packages go under `io.github.hectorespert.jmediasoup.internal` and are not exported. The WebRTC stack is [webrtc-java](https://github.com/devopvoid/webrtc-java); the results of the spike that validated it, and what they mean for the design, are in section 0.3 of TODO.md.
 
 The design decisions (async model, threading, events, JSON, nullness, logging, JPMS, SDP representation, dependency scopes) are recorded in the "Decisiones" section of TODO.md. Follow them, and ask before departing from one.
 

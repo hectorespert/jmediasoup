@@ -45,9 +45,17 @@ tasks.named<Test>("test") {
     systemProperty("org.slf4j.simpleLogger.defaultLogLevel", "warn")
 }
 
-// The internal packages are not exported, so they stay out of the public Javadoc.
+// The internal packages are not exported, so they stay out of the public Javadoc. Their compiled
+// classes are patched into the module so that the public sources still resolve them.
 tasks.named<Javadoc>("javadoc") {
     exclude("**/internal/**")
+    val classes =
+        sourceSets.main
+            .get()
+            .java.destinationDirectory
+            .get()
+            .asFile
+    (options as StandardJavadocDocletOptions).addStringOption("-patch-module", "io.github.hectorespert.jmediasoup=$classes")
 }
 
 // Runs the tests inside the library module (--patch-module), so they see the
