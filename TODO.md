@@ -56,7 +56,7 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 - Listeners (sección 1.2): `Consumer<T>` para los eventos con valor y `Runnable` para los que no tienen. `onXxx` devuelve una `Subscription` (`AutoCloseable`, `close()` idempotente). En cuanto `close()` vuelve, el listener no recibe nada más, ni siquiera el evento que se está entregando; uno añadido durante una entrega empieza con el siguiente evento. Si un listener lanza una excepción, se registra a nivel ERROR con SLF4J y se sigue con los demás.
 - Handlers asíncronos (sección 1.2): `connect` y `produce` son interfaces propias (`ConnectHandler`, `ProduceHandler` con un record de petición) que devuelven un `CompletionStage`. Si el handler lanza, devuelve `null` o su stage falla, la operación falla con `MediasoupClientException` y la causa original. jmediasoup no pone timeout; lo pone el usuario en su señalización.
 - Tipos de texto cerrado como enums con su valor JSON.
-- La API pública usa los tipos de webrtc-java (`MediaStreamTrack`, `RTCRtpSender`...), como pymediasoup usa los de aiortc. Sender, receiver y data channel tienen abstracciones internas al handler, y `FakeHandler` usa una subclase de prueba de `MediaStreamTrack`. Se necesita el jar de webrtc-java, pero no sus nativos, salvo con `WebRtcJavaHandler`. Deja fuera Android.
+- La API pública usa los tipos de webrtc-java (`MediaStreamTrack`, `RTCRtpSender`...), como pymediasoup usa los de aiortc. Solo el data channel tiene abstracción propia (`handler.DataChannel`, sección 1.7); sender y receiver se exponen como `@Nullable` y son `null` con `FakeHandler`, que usa una subclase de prueba de `MediaStreamTrack`. Se necesita el jar de webrtc-java, pero no sus nativos, salvo con `WebRtcJavaHandler`. Deja fuera Android.
 - Un único artefacto, `jmediasoup`, con el handler pluggable por interfaz. `FakeHandler` solo en tests, como en pymediasoup.
 - Dependencias: webrtc-java, `jackson-annotations` y JSpecify como `api`; SLF4J como `implementation`; `jackson-databind` solo en tests. Los nativos de webrtc-java los declara el usuario, con instrucciones para Gradle y Maven.
 - Nulos con JSpecify: `@NullMarked` en cada paquete y `@Nullable` en lo opcional.
@@ -327,13 +327,13 @@ Origen: `producer.py`, `consumer.py`, `data_producer.py`, `data_consumer.py`
 
 Origen: `pymediasoup/types/webrtc.py` y los tipos de aiortc que usa el original
 
-La API pública usa los tipos de webrtc-java (`0.5.5`). Estas abstracciones son internas al handler y existen para probar sin nativos.
+La API pública usa los tipos de webrtc-java (`0.5.5`). Sender y receiver no necesitan abstracción, porque Producer y Consumer solo los exponen y operan a través del handler con el `localId`. El data channel sí, porque DataProducer y DataConsumer operan sobre él y `RTCDataChannel` no se puede crear sin nativos.
 
 - [x] `1.7.1` Subclase de prueba de `MediaStreamTrack` de webrtc-java, que se instancia sin nativos (según `0.3.16`): `FakeMediaStreamTrack`, en el paquete `fake` de los tests.
-- [ ] `1.7.2` Interfaz interna de sender (`replaceTrack`, parámetros, stats), que da acceso al `RTCRtpSender` nativo si existe.
-- [ ] `1.7.3` Interfaz interna de receiver (track, stats), que da acceso al `RTCRtpReceiver` nativo si existe.
-- [ ] `1.7.4` Interfaz interna de data channel (`label`, `protocol`, `readyState`, `send`, `close`, buffer y eventos).
-- [ ] `1.7.5` Implementaciones falsas de las tres interfaces para los tests.
+- [x] `1.7.2` ~~Interfaz interna de sender~~. Descartada: el resultado del handler lleva un `@Nullable RTCRtpSender`, `null` con `FakeHandler`, como en pymediasoup.
+- [x] `1.7.3` ~~Interfaz interna de receiver~~. Descartada: el resultado del handler lleva un `@Nullable RTCRtpReceiver`.
+- [x] `1.7.4` Interfaz de data channel (`label`, `protocol`, `readyState`, `send`, `close`, buffer y eventos): `handler.DataChannel`, pública porque el handler es pluggable (`0.5.6`), con un `Observer` de eventos. Los mensajes son `DataChannelMessage`, en el paquete raíz, que copia los bytes.
+- [x] `1.7.5` Implementaciones falsas para los tests: `fake.FakeDataChannel`, que el test abre, alimenta y observa.
 
 ### 1.8 JSON
 
@@ -530,12 +530,12 @@ Origen: `pymediasoup/handlers/sdp/remote_sdp.py`
 
 Origen: `pymediasoup/handlers/handler_interface.py`, `pymediasoup/models/handler_interface.py`, `tests/fake_handler.py`
 
-- [ ] `4.1.1` `HandlerInterface`, con todos sus métodos y `CompletableFuture`.
+- [ ] `4.1.1` `HandlerInterface`, con todos sus métodos y `CompletableFuture`, en el paquete `handler` junto a sus opciones y resultados.
 - [ ] `4.1.2` Listeners `@connect` y `@connectionstatechange` del handler.
 - [ ] `4.1.3` `HandlerRunOptions`.
-- [ ] `4.1.4` `HandlerSendOptions` y `HandlerSendResult`.
-- [ ] `4.1.5` `HandlerReceiveOptions` y `HandlerReceiveResult`.
-- [ ] `4.1.6` `HandlerSendDataChannelResult`, `HandlerReceiveDataChannelOptions` y `HandlerReceiveDataChannelResult`.
+- [ ] `4.1.4` `HandlerSendOptions` y `HandlerSendResult`, con `@Nullable RTCRtpSender` (`1.7.2`).
+- [ ] `4.1.5` `HandlerReceiveOptions` y `HandlerReceiveResult`, con el track y `@Nullable RTCRtpReceiver` (`1.7.3`).
+- [ ] `4.1.6` `HandlerSendDataChannelResult`, `HandlerReceiveDataChannelOptions` y `HandlerReceiveDataChannelResult`, con `handler.DataChannel`.
 - [ ] `4.1.7` `HandlerFactory`.
 - [ ] `4.1.8` `FakeHandler`: capacidades nativas fijas.
 - [ ] `4.1.9` `FakeHandler`: `run`, `send` y `receive` sin WebRTC, generando IDs y parámetros.
@@ -812,7 +812,7 @@ Origen: `pymediasoup/data_producer.py`
 Origen: `pymediasoup/data_consumer.py`
 
 - [ ] `9.2.1` Propiedades `id`, `dataProducerId`, `closed`, `sctpStreamParameters`, `readyState`, `label`, `protocol` y `appData`.
-- [ ] `9.2.2` `binaryType` (lectura y escritura), o una alternativa idiomática en Java.
+- [ ] `9.2.2` `binaryType` (lectura y escritura), o una alternativa idiomática en Java. `DataChannelMessage` ya ofrece bytes y texto, así que probablemente baste con documentar que no hace falta.
 - [ ] `9.2.3` `close` y `transportClosed`.
 - [ ] `9.2.4` Eventos `open`, `error`, `message` y `transportclose`.
 - [ ] `9.2.5` Cierre iniciado por el canal.
@@ -847,6 +847,7 @@ Origen: `aiortc_handler.py`, `media_section.py`, `remote_sdp.py`
 - [ ] `9.4.9` `OfferMediaSection`: `sctpmap` antiguo (`oldDataChannelSpec`).
 - [ ] `9.4.10` `RemoteSdp.sendSctpAssociation`.
 - [ ] `9.4.11` `RemoteSdp.receiveSctpAssociation`.
+- [ ] `9.4.12` Implementación de `handler.DataChannel` sobre `RTCDataChannel`: copiar cada `RTCDataChannelBuffer` en un `DataChannelMessage`, traducir `onStateChange` a `onOpen` y `onClose`, y calcular `onBufferedAmountLow` con el umbral, que webrtc-java no tiene.
 
 ### 9.5 Tests
 
