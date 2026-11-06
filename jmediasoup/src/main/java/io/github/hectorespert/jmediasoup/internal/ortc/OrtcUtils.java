@@ -10,11 +10,41 @@ import io.github.hectorespert.jmediasoup.rtp.RtpCodecCapability;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 
 /** Port of {@code handlers/ortc/utils.ts} of mediasoup-client, the ORTC helpers of the handlers. */
 public final class OrtcUtils {
 
     private OrtcUtils() {}
+
+    /**
+     * The stream and track of an {@code a=msid}.
+     *
+     * @param streamId the stream id, or {@code -} for no stream
+     * @param trackId the track id, or {@code null} if absent
+     */
+    public record MsidIds(String streamId, @Nullable String trackId) {}
+
+    /**
+     * Splits an {@code a=msid} value into its stream and track ids.
+     *
+     * @param msid the value, or {@code null}
+     * @return the ids, or {@code null} if there is no stream id
+     */
+    public static @Nullable MsidIds getMsidStreamIdAndTrackId(@Nullable String msid) {
+        if (msid == null) {
+            return null;
+        }
+
+        // The stream id must be an id or '-' (no stream). The track id is optional.
+        String[] parts = msid.trim().split("\\s+");
+
+        if (parts[0].isEmpty()) {
+            return null;
+        }
+
+        return new MsidIds(parts[0], parts.length > 1 ? parts[1] : null);
+    }
 
     /**
      * Adds RTCP NACK support for the Opus codecs, which libwebrtc supports but does not announce.

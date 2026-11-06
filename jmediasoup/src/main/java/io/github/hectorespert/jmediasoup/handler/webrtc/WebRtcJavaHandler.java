@@ -20,8 +20,11 @@ import dev.onvoid.webrtc.RTCPeerConnectionIceErrorEvent;
 import dev.onvoid.webrtc.RTCPeerConnectionState;
 import dev.onvoid.webrtc.RTCRtcpMuxPolicy;
 import dev.onvoid.webrtc.RTCRtpEncodingParameters;
+import dev.onvoid.webrtc.RTCRtpReceiver;
+import dev.onvoid.webrtc.RTCRtpTransceiver;
 import dev.onvoid.webrtc.RTCRtpTransceiverDirection;
 import dev.onvoid.webrtc.RTCRtpTransceiverInit;
+import dev.onvoid.webrtc.RTCSdpType;
 import dev.onvoid.webrtc.RTCSessionDescription;
 import dev.onvoid.webrtc.RTCStatsReport;
 import dev.onvoid.webrtc.media.MediaStreamTrack;
@@ -45,9 +48,12 @@ import io.github.hectorespert.jmediasoup.handler.HandlerSendResult;
 import io.github.hectorespert.jmediasoup.internal.ortc.OrtcUtils;
 import io.github.hectorespert.jmediasoup.internal.sdp.CommonUtils;
 import io.github.hectorespert.jmediasoup.internal.sdp.RemoteSdp;
+import io.github.hectorespert.jmediasoup.internal.sdptransform.JavaScript;
 import io.github.hectorespert.jmediasoup.internal.sdptransform.Parser;
+import io.github.hectorespert.jmediasoup.internal.sdptransform.Writer;
 import io.github.hectorespert.jmediasoup.rtp.ExtendedRtpCapabilities;
 import io.github.hectorespert.jmediasoup.rtp.RtpCapabilities;
+import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
 import io.github.hectorespert.jmediasoup.sctp.NumSctpStreams;
 import io.github.hectorespert.jmediasoup.sctp.SctpCapabilities;
 import io.github.hectorespert.jmediasoup.sctp.SctpParameters;
@@ -59,10 +65,13 @@ import io.github.hectorespert.jmediasoup.transport.IceParameters;
 import io.github.hectorespert.jmediasoup.transport.IceServer;
 import io.github.hectorespert.jmediasoup.transport.IceTransportPolicy;
 import io.github.hectorespert.jmediasoup.transport.TransportDirection;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
@@ -114,6 +123,10 @@ public final class WebRtcJavaHandler implements Handler {
     private final AtomicBoolean closed = new AtomicBoolean();
     // Got transport local and remote parameters.
     private volatile boolean transportReady;
+    // Map of RTCTransceivers indexed by MID.
+    private final Map<String, RTCRtpTransceiver> mapMidTransceiver = new ConcurrentHashMap<>();
+    // The next local id to try for a receiving whose RTP parameters have no MID.
+    private int nextLocalId;
 
     private WebRtcJavaHandler(Factory factory, HandlerOptions options) {
         logger.debug("constructor()");
@@ -391,14 +404,139 @@ public final class WebRtcJavaHandler implements Handler {
         return notImplemented("sendDataChannel");
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>As in mediasoup-client, the local id is the MID that mediasoup gives the consumer, and the
+     * stream of the track is the given one, the one of the {@code a=msid} of mediasoup, or its CNAME.
+     */
     @Override
     public CompletableFuture<List<HandlerReceiveResult>> receive(List<HandlerReceiveOptions> optionsList) {
-        return notImplemented("receive");
+        requireNonNull(optionsList, "optionsList");
+        Map<String, String> mapLocalId = new LinkedHashMap<>();
+        RTCSessionDescription offer;
+        try {
+            assertNotClosed();
+            assertRecvDirection();
+
+            for (HandlerReceiveOptions options : optionsList) {
+                RtpParameters rtpParameters = options.rtpParameters();
+
+                logger.debug("receive() [trackId:{}, kind:{}]", options.trackId(), options.kind());
+
+                String localId = rtpParameters.mid() != null ? rtpParameters.mid() : nextLocalId(mapLocalId);
+
+                mapLocalId.put(options.trackId(), localId);
+
+                // We ignore MSID `trackId` when consuming and always use our computed `trackId` which
+                // matches the `consumer.id`.
+                OrtcUtils.MsidIds msid = OrtcUtils.getMsidStreamIdAndTrackId(rtpParameters.msid());
+                String streamId = options.streamId() != null
+                        ? options.streamId()
+                        : msid != null
+                                ? msid.streamId()
+                                : rtpParameters.rtcp() != null
+                                                && rtpParameters.rtcp().cname() != null
+                                        ? rtpParameters.rtcp().cname()
+                                        : "-";
+
+                remoteSdp.receive(localId, options.kind().value(), rtpParameters, streamId, options.trackId());
+            }
+
+            offer = new RTCSessionDescription(RTCSdpType.OFFER, remoteSdp.getSdp());
+        } catch (MediasoupClientException | RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        logger.debug("receive() | calling pc.setRemoteDescription() [offer:{}]", offer.sdp);
+
+        return PeerConnections.setRemoteDescription(pc, offer)
+                .thenCompose(ignored -> PeerConnections.createAnswer(pc))
+                .thenCompose(createdAnswer -> {
+                    Map<String, Object> localSdpObject = Parser.parse(createdAnswer.sdp);
+
+                    for (HandlerReceiveOptions options : optionsList) {
+                        String localId = mapLocalId.get(options.trackId());
+                        Map<String, Object> answerMediaObject = mediaSections(localSdpObject).stream()
+                                .filter(m -> JavaScript.string(m.get("mid")).equals(localId))
+                                .findFirst()
+                                .orElseThrow(() -> new CompletionException(
+                                        new MediasoupClientException("answer media section not found")));
+
+                        // May need to modify codec parameters in the answer based on codec parameters
+                        // in the offer.
+                        CommonUtils.applyCodecParameters(options.rtpParameters(), answerMediaObject);
+                    }
+
+                    var answer = new RTCSessionDescription(RTCSdpType.ANSWER, Writer.write(localSdpObject));
+
+                    CompletableFuture<Void> ready = transportReady
+                            ? CompletableFuture.completedFuture(null)
+                            : setupTransport(localDtlsRole(), localSdpObject);
+
+                    return ready.thenCompose(ignored -> {
+                        logger.debug("receive() | calling pc.setLocalDescription() [answer:{}]", answer.sdp);
+                        return PeerConnections.setLocalDescription(pc, answer);
+                    });
+                })
+                .thenApply(ignored -> {
+                    List<HandlerReceiveResult> results = new ArrayList<>();
+                    for (HandlerReceiveOptions options : optionsList) {
+                        String localId = mapLocalId.get(options.trackId());
+                        RTCRtpTransceiver transceiver = findTransceiver(localId);
+
+                        if (transceiver == null) {
+                            throw new CompletionException(
+                                    new MediasoupClientException("new RTCRtpTransceiver not found"));
+                        }
+
+                        // Store in the map.
+                        mapMidTransceiver.put(localId, transceiver);
+
+                        RTCRtpReceiver receiver = transceiver.getReceiver();
+                        results.add(new HandlerReceiveResult(localId, receiver.getTrack(), receiver));
+                    }
+                    return List.copyOf(results);
+                });
     }
 
     @Override
     public CompletableFuture<Void> stopReceiving(List<String> localIds) {
-        return notImplemented("stopReceiving");
+        requireNonNull(localIds, "localIds");
+        RTCSessionDescription offer;
+        try {
+            assertRecvDirection();
+
+            if (closed.get()) {
+                return CompletableFuture.completedFuture(null);
+            }
+
+            for (String localId : localIds) {
+                logger.debug("stopReceiving() [localId:{}]", localId);
+
+                RTCRtpTransceiver transceiver = mapMidTransceiver.get(localId);
+
+                if (transceiver == null) {
+                    throw new MediasoupClientException("associated RTCRtpTransceiver not found");
+                }
+
+                remoteSdp.closeMediaSection(localId);
+            }
+
+            offer = new RTCSessionDescription(RTCSdpType.OFFER, remoteSdp.getSdp());
+        } catch (MediasoupClientException | RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        logger.debug("stopReceiving() | calling pc.setRemoteDescription() [offer:{}]", offer.sdp);
+
+        return PeerConnections.setRemoteDescription(pc, offer)
+                .thenCompose(ignored -> PeerConnections.createAnswer(pc))
+                .thenCompose(answer -> {
+                    logger.debug("stopReceiving() | calling pc.setLocalDescription() [answer:{}]", answer.sdp);
+                    return PeerConnections.setLocalDescription(pc, answer);
+                })
+                .thenRun(() -> localIds.forEach(mapMidTransceiver::remove));
     }
 
     @Override
@@ -430,6 +568,30 @@ public final class WebRtcJavaHandler implements Handler {
     @Override
     public @Nullable Integer getDataChannelMaxMessageSize() {
         return null;
+    }
+
+    // A local id that is neither in use nor taken by the receivings being added.
+    private String nextLocalId(Map<String, String> mapLocalId) {
+        String localId;
+        do {
+            localId = String.valueOf(nextLocalId++);
+        } while (mapMidTransceiver.containsKey(localId) || mapLocalId.containsValue(localId));
+        return localId;
+    }
+
+    private @Nullable RTCRtpTransceiver findTransceiver(String mid) {
+        for (RTCRtpTransceiver transceiver : pc.getTransceivers()) {
+            if (mid.equals(transceiver.getMid())) {
+                return transceiver;
+            }
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> mediaSections(Map<String, Object> sdpObject) {
+        Object media = sdpObject.get("media");
+        return media == null ? List.of() : (List<Map<String, Object>>) media;
     }
 
     /** Returns whether the handler is closed. */

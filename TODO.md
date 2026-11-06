@@ -665,18 +665,18 @@ Origen: `pymediasoup/handlers/aiortc_handler.py`
 
 ### 5.2 Recibir
 
-- [ ] `5.2.1` `receive`: asignar `localId`. ⚠️ no copiar: `str(len(map))` puede colisionar tras un `stopReceiving`. Usar un contador, como mediasoup-client.
-- [ ] `5.2.2` `receive`: oferta remota con `RemoteSdp.receive`.
-- [ ] `5.2.3` `receive`: `setRemoteDescription` y `createAnswer`.
-- [ ] `5.2.4` `receive`: `setupTransport` con rol `client` la primera vez.
-- [ ] `5.2.5` `receive`: `setLocalDescription` y localizar el transceiver por `mid`.
-- [ ] `5.2.6` `applyCodecParameters` para Opus. ⚠️ no copiar: el original busca `rmtp` en vez de `fmtp`.
-- [ ] `5.2.7` Devolver track y receiver envueltos en las abstracciones.
-- [ ] `5.2.8` `stopReceiving`: cerrar la sección y renegociar.
+- [x] `5.2.1` `receive`: asignar `localId`. ⚠️ no copiar: `str(len(map))` puede colisionar tras un `stopReceiving`. Usar un contador, como mediasoup-client. El `localId` es el MID que mediasoup da al consumer, como en mediasoup-client 3.26; si no lo hay, un contador que salta los que están en uso (3.26 usa el tamaño del mapa, que tiene el mismo problema).
+- [x] `5.2.2` `receive`: oferta remota con `RemoteSdp.receive`, varias secciones en una negociación (lotes de la `4.5.5`).
+- [x] `5.2.3` `receive`: `setRemoteDescription` y `createAnswer`.
+- [x] `5.2.4` `receive`: `setupTransport` con rol `client` la primera vez, u opuesto al que fije mediasoup.
+- [x] `5.2.5` `receive`: `setLocalDescription` y localizar el transceiver por `mid`.
+- [x] `5.2.6` `applyCodecParameters` para Opus. ⚠️ no copiar: el original busca `rmtp` en vez de `fmtp`. En `CommonUtils`, como en mediasoup-client: `stereo` según `sprop-stereo` de la oferta. ⚠️ no copiar: mediasoup-client escribe `clave=undefined` para un parámetro sin valor; aquí se escribe la clave sola.
+- [x] `5.2.7` Devolver track y receiver envueltos en las abstracciones: sin envolver, los de webrtc-java (`1.7.2`, `1.7.3`). El id del track remoto es el del consumer.
+- [x] `5.2.8` `stopReceiving`: cerrar la sección y renegociar. La primera sección se deshabilita en vez de cerrarse, porque lleva el transporte del BUNDLE; las demás se cierran y webrtc-java retira su transceiver.
 - [ ] `5.2.9` Test E2E: recibir audio de un producer del servidor.
 - [ ] `5.2.10` Test E2E: recibir vídeo de un producer del servidor.
 - [ ] `5.2.11` Test: `connectionState` llega a `connected` y a `closed`.
-- [ ] `5.2.12` `receive`: usar `streamId` de `ConsumerOptions` (o el `producerId` si falta) como stream del `msid`, como mediasoup-client.
+- [x] `5.2.12` `receive`: usar `streamId` de `ConsumerOptions` (o el `producerId` si falta) como stream del `msid`, como mediasoup-client. En 3.26, si falta, es el stream del `msid` de mediasoup, su CNAME o `-` (`OrtcUtils.getMsidStreamIdAndTrackId`), no el `producerId`.
 
 **Aceptación de la Fase 5**
 

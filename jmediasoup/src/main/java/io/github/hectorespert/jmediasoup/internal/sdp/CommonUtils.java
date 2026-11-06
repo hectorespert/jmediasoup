@@ -11,7 +11,9 @@ import io.github.hectorespert.jmediasoup.rtp.MediaKind;
 import io.github.hectorespert.jmediasoup.rtp.RtcpFeedback;
 import io.github.hectorespert.jmediasoup.rtp.RtpCapabilities;
 import io.github.hectorespert.jmediasoup.rtp.RtpCodecCapability;
+import io.github.hectorespert.jmediasoup.rtp.RtpCodecParameters;
 import io.github.hectorespert.jmediasoup.rtp.RtpHeaderExtension;
+import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
 import io.github.hectorespert.jmediasoup.transport.DtlsFingerprint;
 import io.github.hectorespert.jmediasoup.transport.DtlsParameters;
 import io.github.hectorespert.jmediasoup.transport.DtlsRole;
@@ -19,6 +21,7 @@ import io.github.hectorespert.jmediasoup.transport.FingerprintAlgorithm;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -197,6 +200,78 @@ public final class CommonUtils {
                 .findFirst()
                 .map(line -> JavaScript.string(line.get("value")))
                 .orElse("");
+    }
+
+    /**
+     * Modifies the codec parameters of an answer according to those of the offer. Only Opus needs it:
+     * the answer receives in stereo if the offer sends in stereo ({@code sprop-stereo}).
+     *
+     * @param offerRtpParameters the RTP parameters of the offer
+     * @param answerMediaObject the parsed media section of the answer, which is modified
+     */
+    @SuppressWarnings("unchecked")
+    public static void applyCodecParameters(RtpParameters offerRtpParameters, Map<String, Object> answerMediaObject) {
+        for (RtpCodecParameters codec : offerRtpParameters.codecs()) {
+            String mimeType = codec.mimeType().toLowerCase(Locale.ROOT);
+
+            // Avoid parsing codec parameters for unhandled codecs.
+            if (!mimeType.equals("audio/opus")) {
+                continue;
+            }
+
+            boolean hasRtp =
+                    list(answerMediaObject.get("rtp")).stream().anyMatch(rtp -> payloadIs(rtp, codec.payloadType()));
+
+            if (!hasRtp) {
+                continue;
+            }
+
+            // Just in case.
+            answerMediaObject.putIfAbsent("fmtp", new ArrayList<Map<String, Object>>());
+            List<Map<String, Object>> fmtps = (List<Map<String, Object>>) answerMediaObject.get("fmtp");
+
+            Map<String, Object> fmtp = fmtps.stream()
+                    .filter(f -> payloadIs(f, codec.payloadType()))
+                    .findFirst()
+                    .orElse(null);
+
+            if (fmtp == null) {
+                fmtp = new LinkedHashMap<>();
+                fmtp.put("payload", codec.payloadType());
+                fmtp.put("config", "");
+                fmtps.add(fmtp);
+            }
+
+            Map<String, @Nullable Object> parameters = Parser.parseParams(JavaScript.string(fmtp.get("config")));
+
+            Object spropStereo = codec.parameters().get("sprop-stereo");
+
+            if (spropStereo != null) {
+                double value = JavaScript.number(spropStereo);
+                parameters.put("stereo", value != 0 && !Double.isNaN(value) ? 1 : 0);
+            }
+
+            // Write the codec fmtp.config back.
+            var config = new StringBuilder();
+
+            for (Map.Entry<String, @Nullable Object> parameter : parameters.entrySet()) {
+                if (!config.isEmpty()) {
+                    config.append(';');
+                }
+
+                // ⚠️ The original writes "key=undefined" for a parameter without value; write the key alone.
+                config.append(parameter.getKey());
+                if (parameter.getValue() != null) {
+                    config.append('=').append(JavaScript.string(parameter.getValue()));
+                }
+            }
+
+            fmtp.put("config", config.toString());
+        }
+    }
+
+    private static boolean payloadIs(Map<String, Object> line, int payloadType) {
+        return line.get("payload") instanceof Number payload && payload.doubleValue() == payloadType;
     }
 
     @SuppressWarnings("unchecked")

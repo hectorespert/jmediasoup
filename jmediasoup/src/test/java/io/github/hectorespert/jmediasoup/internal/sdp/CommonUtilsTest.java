@@ -14,7 +14,9 @@ import io.github.hectorespert.jmediasoup.rtp.MediaKind;
 import io.github.hectorespert.jmediasoup.rtp.RtcpFeedback;
 import io.github.hectorespert.jmediasoup.rtp.RtpCapabilities;
 import io.github.hectorespert.jmediasoup.rtp.RtpCodecCapability;
+import io.github.hectorespert.jmediasoup.rtp.RtpCodecParameters;
 import io.github.hectorespert.jmediasoup.rtp.RtpHeaderExtension;
+import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
 import io.github.hectorespert.jmediasoup.transport.DtlsFingerprint;
 import io.github.hectorespert.jmediasoup.transport.DtlsParameters;
 import io.github.hectorespert.jmediasoup.transport.DtlsRole;
@@ -255,5 +257,78 @@ class CommonUtilsTest {
 
         assertEquals("gKAr85oLwDym9w05", CommonUtils.getCname(media.getFirst()));
         assertEquals("", CommonUtils.getCname(Map.of()));
+    }
+
+    private static Map<String, Object> answerMediaObject(String fmtpConfig) {
+        Map<String, Object> rtp = new java.util.LinkedHashMap<>(Map.of("payload", 100, "codec", "opus", "rate", 48000));
+        Map<String, Object> media = new java.util.LinkedHashMap<>();
+        media.put("rtp", new java.util.ArrayList<>(List.of(rtp)));
+        if (fmtpConfig != null) {
+            Map<String, Object> fmtp = new java.util.LinkedHashMap<>(Map.of("payload", 100, "config", fmtpConfig));
+            media.put("fmtp", new java.util.ArrayList<>(List.of(fmtp)));
+        }
+        return media;
+    }
+
+    private static RtpParameters offerWithOpus(Map<String, Object> parameters) {
+        return new RtpParameters(
+                null,
+                List.of(new RtpCodecParameters("audio/opus", 100, 48000, 2, parameters, List.of())),
+                List.of(),
+                List.of(),
+                null,
+                null);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String fmtpConfig(Map<String, Object> media) {
+        return (String)
+                ((List<Map<String, Object>>) media.get("fmtp")).getFirst().get("config");
+    }
+
+    @Test
+    void applyCodecParametersReceivesOpusInStereoIfTheOfferSendsInStereo() {
+        Map<String, Object> media = answerMediaObject("minptime=10;useinbandfec=1");
+
+        CommonUtils.applyCodecParameters(offerWithOpus(Map.of("sprop-stereo", 1)), media);
+
+        assertEquals("minptime=10;useinbandfec=1;stereo=1", fmtpConfig(media));
+    }
+
+    @Test
+    void applyCodecParametersReceivesOpusInMonoIfTheOfferSendsInMono() {
+        Map<String, Object> media = answerMediaObject("stereo=1");
+
+        CommonUtils.applyCodecParameters(offerWithOpus(Map.of("sprop-stereo", "0")), media);
+
+        assertEquals("stereo=0", fmtpConfig(media));
+    }
+
+    @Test
+    void applyCodecParametersAddsTheFmtpIfMissing() {
+        Map<String, Object> media = answerMediaObject(null);
+
+        CommonUtils.applyCodecParameters(offerWithOpus(Map.of("sprop-stereo", 1)), media);
+
+        assertEquals("stereo=1", fmtpConfig(media));
+    }
+
+    @Test
+    void applyCodecParametersLeavesTheAnswerWithoutSpropStereoOrOtherCodecs() {
+        Map<String, Object> media = answerMediaObject("useinbandfec=1;usedtx");
+
+        CommonUtils.applyCodecParameters(offerWithOpus(Map.of()), media);
+        CommonUtils.applyCodecParameters(
+                new RtpParameters(
+                        null,
+                        List.of(new RtpCodecParameters("video/VP8", 100, 90000, null, Map.of(), List.of())),
+                        List.of(),
+                        List.of(),
+                        null,
+                        null),
+                media);
+
+        // A parameter without value is written without "=undefined".
+        assertEquals("useinbandfec=1;usedtx", fmtpConfig(media));
     }
 }

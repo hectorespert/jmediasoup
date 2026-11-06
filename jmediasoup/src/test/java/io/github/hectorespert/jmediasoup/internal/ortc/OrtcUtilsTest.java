@@ -5,6 +5,7 @@
 package io.github.hectorespert.jmediasoup.internal.ortc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
 import io.github.hectorespert.jmediasoup.rtp.MediaKind;
@@ -54,5 +55,13 @@ class OrtcUtilsTest {
         assertEquals(
                 List.of(new RtcpFeedback("nack", "pli"), new RtcpFeedback("nack", null)),
                 result.codecs().get(1).rtcpFeedback());
+    }
+
+    @Test
+    void splitsTheMsidIntoStreamAndTrack() {
+        assertEquals(new OrtcUtils.MsidIds("stream", "track"), OrtcUtils.getMsidStreamIdAndTrackId(" stream  track "));
+        assertEquals(new OrtcUtils.MsidIds("-", null), OrtcUtils.getMsidStreamIdAndTrackId("-"));
+        assertNull(OrtcUtils.getMsidStreamIdAndTrackId(""));
+        assertNull(OrtcUtils.getMsidStreamIdAndTrackId(null));
     }
 }
