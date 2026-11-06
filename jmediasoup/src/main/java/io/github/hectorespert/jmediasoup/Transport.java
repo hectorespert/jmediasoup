@@ -220,6 +220,9 @@ public abstract sealed class Transport permits SendTransport, RecvTransport {
         // Change connection state to 'closed' since the handler may not report it.
         connectionState.set(ConnectionState.CLOSED);
 
+        // Close all Producers and Consumers.
+        closeChildren();
+
         executor.execute(() -> {
             // Emit observer event.
             observer.emitClose();
@@ -260,6 +263,9 @@ public abstract sealed class Transport permits SendTransport, RecvTransport {
     public Subscription onIceCandidateError(Consumer<? super RTCPeerConnectionIceErrorEvent> listener) {
         return iceCandidateErrorListeners.add(listener);
     }
+
+    /** Tells the producers or consumers of the transport that it closed. */
+    abstract void closeChildren();
 
     /** Returns the executor where the listeners and handlers of the application run. */
     final Executor executor() {

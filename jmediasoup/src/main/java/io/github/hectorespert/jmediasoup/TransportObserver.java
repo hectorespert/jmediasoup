@@ -4,7 +4,9 @@
  */
 package io.github.hectorespert.jmediasoup;
 
+import io.github.hectorespert.jmediasoup.internal.event.Listeners;
 import io.github.hectorespert.jmediasoup.internal.event.RunnableListeners;
+import java.util.function.Consumer;
 import org.slf4j.Logger;
 
 /**
@@ -14,9 +16,11 @@ import org.slf4j.Logger;
 public final class TransportObserver {
 
     private final RunnableListeners closeListeners;
+    private final Listeners<Producer> newProducerListeners;
 
     TransportObserver(Logger logger) {
         this.closeListeners = new RunnableListeners("observer close", logger);
+        this.newProducerListeners = new Listeners<>("observer newproducer", logger);
     }
 
     /**
@@ -29,11 +33,26 @@ public final class TransportObserver {
         return closeListeners.add(listener);
     }
 
+    /**
+     * Listens for new producers.
+     *
+     * @param listener called with each producer that {@link SendTransport#produce} creates
+     * @return the subscription that removes the listener
+     */
+    public Subscription onNewProducer(Consumer<? super Producer> listener) {
+        return newProducerListeners.add(listener);
+    }
+
     void emitClose() {
         closeListeners.emit();
     }
 
+    void emitNewProducer(Producer producer) {
+        newProducerListeners.emit(producer);
+    }
+
     void clear() {
         closeListeners.clear();
+        newProducerListeners.clear();
     }
 }

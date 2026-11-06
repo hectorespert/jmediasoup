@@ -24,4 +24,9 @@ public final class RecvTransport extends Transport {
             ConnectHandler connectHandler) {
         super(TransportDirection.RECV, options, handlerFactory, getSendExtendedRtpCapabilities, connectHandler);
     }
+
+    @Override
+    void closeChildren() {
+        // No consumers yet.
+    }
 }

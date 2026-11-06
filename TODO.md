@@ -595,15 +595,15 @@ Origen: `pymediasoup/transport.py`
 
 Origen: `pymediasoup/producer.py`, `pymediasoup/transport.py`
 
-- [ ] `4.4.1` `Producer`: propiedades `id`, `localId`, `closed`, `kind`, `rtpSender`, `track`, `rtpParameters`, `paused`, `maxSpatialLayer` y `appData`.
-- [ ] `4.4.2` `Producer.close`.
-- [ ] `4.4.3` `Producer.transportClosed` y evento `transportclose`.
-- [ ] `4.4.4` `Transport.produce`: validaciones de track, dirección y `canProduce`. ⚠️ no copiar: el original no comprueba si el transporte está cerrado.
-- [ ] `4.4.5` `createSendTransport` exige los listeners `connect` y `produce`, y `createRecvTransport` solo `connect` (`0.5.3`). ⚠️ no copiar: la segunda comprobación del original en `produce` mira `connect`.
-- [ ] `4.4.6` `Transport.produce`: flujo con handler y listener, y registro del producer.
-- [ ] `4.4.7` Si falla con el transporte cerrado, parar el track (`TODO` pendiente en el original).
-- [ ] `4.4.8` Conectar `@close` del producer con `handler.stopSending`.
-- [ ] `4.4.9` `Producer.observer` con `close`.
+- [x] `4.4.1` `Producer`: propiedades `id`, `localId`, `closed`, `kind`, `rtpSender`, `track`, `rtpParameters`, `paused`, `maxSpatialLayer` y `appData`. `paused` empieza a `true` si el track está deshabilitado y `disableTrackOnPause` está activo, como en mediasoup-client; `paused` y `maxSpatialLayer` cambian desde las fases 8 y 11. `appData` sin setter, como en el transporte.
+- [x] `4.4.2` `Producer.close`. El observer `close` se emite en el ejecutor del transporte.
+- [x] `4.4.3` `Producer.transportClosed` y evento `transportclose` (`onTransportClose`). Se entrega antes que el observer `close` del transporte.
+- [x] `4.4.4` `Transport.produce`: validaciones de track, dirección y `canProduce`. ⚠️ no copiar: el original no comprueba si el transporte está cerrado. En `SendTransport.produce`, así que la dirección la garantiza el tipo. Fallan en el futuro: `InvalidStateException` si está cerrado o el track ha terminado, `UnsupportedException` si no se puede enviar ese tipo.
+- [x] `4.4.5` `createSendTransport` exige los listeners `connect` y `produce`, y `createRecvTransport` solo `connect` (`0.5.3`). ⚠️ no copiar: la segunda comprobación del original en `produce` mira `connect`. Hecho en la `4.3`: los handlers son parámetros obligatorios.
+- [x] `4.4.6` `Transport.produce`: flujo con handler y listener, y registro del producer. Como mediasoup-client: normaliza los encodings, llama a `handler.send` en la cola y al `ProduceHandler` en el ejecutor, y si falla hace `stopSending`. Un ID vacío falla. Si el transporte se cierra mientras el servidor crea el producer, falla con `InvalidStateException` y no lo registra. No se porta `validateAndNormalizeRtpParameters`: los records ya validan, y los valores por defecto los pone el servidor.
+- [x] `4.4.7` Si falla con el transporte cerrado, parar el track (`TODO` pendiente en el original): movida a `8.2.12`, con el resto de `stopTracks`.
+- [x] `4.4.8` Conectar `@close` del producer con `handler.stopSending`, en la cola; un fallo solo se registra.
+- [x] `4.4.9` `Producer.observer` con `close`. Además, el observer `newproducer` del transporte.
 
 ### 4.5 Consumer básico y Transport.consume
 
@@ -803,6 +803,8 @@ Origen: `producer.py`, `consumer.py`
 - [ ] `8.2.9` Evento y observer `trackended` en `Producer`.
 - [ ] `8.2.10` Evento y observer `trackended` en `Consumer`.
 - [ ] `8.2.11` Retirar el listener del track al destruirlo.
+- [ ] `8.2.12` Si `produce` falla con el transporte cerrado, parar el track según `stopTracks` (antes `4.4.7`).
+- [ ] `8.2.13` Decidir qué es parar un track en webrtc-java, que no tiene `stop()` (`0.3.10`): `dispose()`, que libera el track nativo, o no hacer nada y dejar el track al usuario. Comprobar antes con los nativos qué pasa si se llama dos veces a `dispose()`. Afecta a `8.2.3`, `8.2.5`, `8.2.8` y `8.2.12`.
 
 ### 8.3 Probator RTP y reciclado
 

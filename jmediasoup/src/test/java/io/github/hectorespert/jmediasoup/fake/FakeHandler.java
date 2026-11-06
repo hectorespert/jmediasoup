@@ -45,12 +45,14 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -153,6 +155,17 @@ public final class FakeHandler implements Handler {
      */
     public boolean closed() {
         return closed;
+    }
+
+    /**
+     * Returns the local ids of the tracks being sent or received.
+     *
+     * @return the local ids, in no particular order
+     */
+    public Set<String> localIds() {
+        synchronized (tracks) {
+            return tracks.keySet().stream().map(String::valueOf).collect(Collectors.toUnmodifiableSet());
+        }
     }
 
     /**
