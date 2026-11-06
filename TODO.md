@@ -69,6 +69,7 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 - Excepción a la 0.5.5 (sección 1.5): los servidores ICE son un record propio, `IceServer`, porque es configuración que suele llegar como JSON y `RTCIceServer` de webrtc-java es mutable. El handler lo convierte.
 - JSON (sección 1.8): un valor de enum desconocido falla al leer, con un mensaje claro, en vez de leerse como `null`.
 - ORTC (sección 2.3): donde pymediasoup y mediasoup-client difieren, se sigue a mediasoup-client, que tiene la versión actual del algoritmo. La API sigue siendo la de pymediasoup.
+- Capacidades (sección 2.4): modelo de mediasoup-client 3.26. El handler da capacidades nativas por dirección, `Device.load` calcula unas capacidades extendidas de recepción y otras de envío (con la opción `preferLocalCodecsOrder`), y `canSend` y `canReceive` trabajan sobre las capacidades de envío y de recepción, no sobre las extendidas.
 - `parameters` de codec: `Map<String, Object>` que conserva el orden y el tipo JSON de cada valor (texto o número). ORTC los compara con `internal.ParameterValues`, que trata `100`, `100L` y `"100"` como iguales. `RtpCodec` es una interfaz sellada que implementan `RtpCodecCapability` y `RtpCodecParameters`.
 - Excepciones (sección 1.1): base checked `MediasoupClientException extends Exception`, con `UnsupportedException` e `InvalidStateException` como subclases. Los métodos síncronos la declaran; en un `CompletableFuture` llega como causa del fallo (`CompletionException` en `join()`). Un argumento no válido lanza `IllegalArgumentException` y uno obligatorio que llega `null`, `NullPointerException`. Los `Exception` genéricos del original (SDP o transceiver inesperados) lanzan la base.
 - `module-info.java` desde el principio, exportando solo los paquetes públicos. Los paquetes internos van bajo `io.github.hectorespert.jmediasoup.internal` (`.internal.sdp`, `.internal.h264`...) y no se exportan.
@@ -405,14 +406,18 @@ Origen: `pymediasoup/ortc.py`
 
 ### 2.4 Capacidades extendidas
 
-- [ ] `2.4.1` `getExtendedRtpCapabilities`: codecs, respetando el orden del router.
-- [ ] `2.4.2` `getExtendedRtpCapabilities`: emparejar RTX por `apt`.
-- [ ] `2.4.3` `getExtendedRtpCapabilities`: extensiones de cabecera.
-- [ ] `2.4.4` `getExtendedRtpCapabilities`: invertir `direction` respecto al router.
-- [ ] `2.4.5` `getRecvRtpCapabilities`: codecs y RTX.
-- [ ] `2.4.6` `getRecvRtpCapabilities`: filtrar extensiones no válidas para recibir.
-- [ ] `2.4.7` `canSend`.
-- [ ] `2.4.8` `canReceive`.
+Sigue el modelo de mediasoup-client 3.26: capacidades extendidas separadas para enviar y para recibir, cada una con las capacidades nativas de esa dirección.
+
+- [x] `2.4.1` `getExtendedRtpCapabilities`: codecs en modo estricto, con el orden del router o, con `preferLocalCodecsOrder`, el local. Cada lado lleva sus parámetros negociados (`profile-level-id` de H264). Un codec emparejado sin `preferredPayloadType` lanza `IllegalArgumentException`.
+- [x] `2.4.2` `getExtendedRtpCapabilities`: emparejar RTX por `apt`, comparando su valor numérico, solo si los dos lados lo tienen.
+- [x] `2.4.3` `getExtendedRtpCapabilities`: extensiones de cabecera, en el orden del router.
+- [x] `2.4.4` `getExtendedRtpCapabilities`: invertir `direction` respecto al router; sin dirección queda `sendrecv`.
+- [x] `2.4.5` `getRecvRtpCapabilities` y `getSendRtpCapabilities`: codecs y RTX, con los payload types del router o los locales.
+- [x] `2.4.6` `getRecvRtpCapabilities` y `getSendRtpCapabilities`: filtrar las extensiones no válidas en su dirección.
+- [x] `2.4.7` `canSend`, sobre las capacidades de envío.
+- [x] `2.4.8` `canReceive`, sobre las capacidades de recepción.
+
+Diferencia con mediasoup-client: allí `matchCodecs` modifica las capacidades del router al negociar H264, y el cálculo de recepción en `load` cambia el `profile-level-id` que ve después el de envío. Aquí los modelos son inmutables y cada cálculo parte de las capacidades originales.
 
 ### 2.5 Parámetros de envío
 
@@ -550,8 +555,8 @@ Origen: `pymediasoup/handlers/handler_interface.py`, `pymediasoup/models/handler
 Origen: `pymediasoup/device.py`
 
 - [ ] `4.2.1` Constructor con `HandlerFactory`.
-- [ ] `4.2.2` `load`: obtener capacidades nativas con un handler temporal.
-- [ ] `4.2.3` `load`: calcular capacidades extendidas, `canProduce` y capacidades de recepción.
+- [ ] `4.2.2` `load`: obtener las capacidades nativas de envío y de recepción con un handler temporal.
+- [ ] `4.2.3` `load`: calcular las capacidades extendidas y las capacidades de recepción y de envío (`2.4`), y `canProduce` con `canSend`. Opción `preferLocalCodecsOrder`, de mediasoup-client.
 - [ ] `4.2.4` `load`: capacidades SCTP.
 - [ ] `4.2.5` `load`: cerrar el handler temporal también si hay error. ⚠️ no copiar: el original no lo cierra si falla.
 - [ ] `4.2.6` `load` repetido: decidir si falla como mediasoup-client. El original avisa y vuelve.
@@ -566,7 +571,7 @@ Origen: `pymediasoup/device.py`
 
 Origen: `pymediasoup/transport.py`
 
-- [ ] `4.3.1` Constructor: crear el handler y llamar a `run`. Recibe las opciones internas (`InternalTransportOptions` en el original, antes `1.5.10`): dirección, `HandlerFactory`, capacidades RTP extendidas y `canProduceByKind`.
+- [ ] `4.3.1` Constructor: crear el handler y llamar a `run`. Recibe las opciones internas (`InternalTransportOptions` en el original, antes `1.5.10`): dirección, `HandlerFactory`, capacidades RTP de recepción, la función que calcula las extendidas de envío a partir de las nativas (`getSendExtendedRtpCapabilities` en mediasoup-client) y `canProduceByKind`.
 - [ ] `4.3.2` Cola serializada por transporte para las operaciones de handler y la entrega de eventos (`0.5.2`). ⚠️ no copiar: el original no tiene cola (`NOTE: Mediasoup client enqueue command here`). En Java hay concurrencia real.
 - [ ] `4.3.3` Rechazar las operaciones pendientes de la cola al cerrar.
 - [ ] `4.3.4` Propiedades `id`, `closed`, `direction`, `handler`, `connectionState` y `appData`.
@@ -637,7 +642,7 @@ Origen: `pymediasoup/handlers/aiortc_handler.py`
 - [ ] `5.1.3` Adaptadores de las interfaces de la sección 1.7 sobre webrtc-java.
 - [ ] `5.1.4` Convertir en futuros los callbacks `createOffer`, `createAnswer`, `setLocalDescription` y `setRemoteDescription`.
 - [ ] `5.1.5` `createFactory`, `name`.
-- [ ] `5.1.6` `getNativeRtpCapabilities`, con peer connection temporal (según `0.3.17`).
+- [ ] `5.1.6` `getNativeRtpCapabilities` por dirección (`sendonly` o `recvonly`), con peer connection temporal (según `0.3.17`).
 - [ ] `5.1.7` `getNativeSctpCapabilities` (`OS` y `MIS` de 1024).
 - [ ] `5.1.8` `run`: `RemoteSdp` y parámetros de envío por tipo.
 - [ ] `5.1.9` `run`: configuración de la peer connection con `iceServers` y `iceTransportPolicy`.
@@ -693,6 +698,7 @@ Origen: `AudioStreamTrack` y `VideoStreamTrack` de aiortc, usados en `examples/m
 - [ ] `6.2.11` Test E2E: enviar vídeo y comprobar en el servidor que llega RTP.
 - [ ] `6.2.12` Test E2E: cerrar un producer y crear otro en el mismo transporte.
 - [ ] `6.2.13` `send`: usar `streamId` de `ProducerOptions` como stream del `msid`, para sincronizar los tracks que lo comparten.
+- [ ] `6.2.14` `send`: calcular las capacidades extendidas de envío con las capacidades locales de la oferta, como mediasoup-client, y no con las de `load`.
 
 **Aceptación de la Fase 6**
 
@@ -1172,7 +1178,7 @@ Cubre la API de pymediasoup. `Fase` es la fase donde queda funcional; una propie
 |---|---|
 | `RTP_PROBATOR_MID`, `RTP_PROBATOR_SSRC`, `RTP_PROBATOR_CODEC_PAYLOAD_TYPE` | 2.3 |
 | `matchCodecs`, `isRtxCodec`, `reduceRtcpFeedback`, `matchHeaderExtensions` | 2.3 |
-| `getExtendedRtpCapabilities`, `getRecvRtpCapabilities`, `canSend`, `canReceive` | 2.4 |
+| `getExtendedRtpCapabilities`, `getRecvRtpCapabilities`, `canSend`, `canReceive` (y `getSendRtpCapabilities`, de mediasoup-client) | 2.4 |
 | `getSendingRtpParameters`, `getSendingRemoteRtpParameters`, `reduceCodecs`, `generateProbatorRtpParameters` | 2.5 |
 
 ## handlers/sdp
