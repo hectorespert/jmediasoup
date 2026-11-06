@@ -65,6 +65,7 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 - Logging con SLF4J 2.
 - Java 21 como versión mínima. Podría bajar a 17 sin cambiar otras decisiones (webrtc-java es Java 8), pero se mantiene 21 por el `switch` con patrones, `SequencedMap` y los virtual threads.
 - Modelos (sección 1.3) en subpaquetes exportados por área: `jmediasoup.rtp`, `jmediasoup.sctp` y `jmediasoup.transport`. Lo opcional es `null` y no se rellena con los valores por defecto de pydantic; las listas y mapas ausentes quedan vacíos e inmutables. El constructor valida lo obligatorio y los rangos y formatos de cada campo (payload type, SSRC de 32 bits sin signo, `mimeType`...); las reglas entre campos van en ORTC, salvo las contradicciones dentro de un mismo record que no dependen del contexto (fiabilidad de `SctpStreamParameters`). Los records que el usuario construye con 4 o más opcionales tienen builder escrito a mano.
+- Excepción a la 0.5.5 (sección 1.5): los servidores ICE son un record propio, `IceServer`, porque es configuración que suele llegar como JSON y `RTCIceServer` de webrtc-java es mutable. El handler lo convierte.
 - `parameters` de codec: `Map<String, Object>` que conserva el orden y el tipo JSON de cada valor (texto o número). ORTC los compara con `internal.ParameterValues`, que trata `100`, `100L` y `"100"` como iguales. `RtpCodec` es una interfaz sellada que implementan `RtpCodecCapability` y `RtpCodecParameters`.
 - Excepciones (sección 1.1): base checked `MediasoupClientException extends Exception`, con `UnsupportedException` e `InvalidStateException` como subclases. Los métodos síncronos la declaran; en un `CompletableFuture` llega como causa del fallo (`CompletionException` en `join()`). Un argumento no válido lanza `IllegalArgumentException` y uno obligatorio que llega `null`, `NullPointerException`. Los `Exception` genéricos del original (SDP o transceiver inesperados) lanzan la base.
 - `module-info.java` desde el principio, exportando solo los paquetes públicos. Los paquetes internos van bajo `io.github.hectorespert.jmediasoup.internal` (`.internal.sdp`, `.internal.h264`...) y no se exportan.
@@ -298,18 +299,18 @@ Origen: `pymediasoup/sctp_parameters.py`
 
 Origen: `pymediasoup/models/transport.py`
 
-- [ ] `1.5.1` `IceParameters`, incluido `iceLite`.
-- [ ] `1.5.2` `IceCandidate`, con enums de `protocol`, `type` y `tcpType`.
-- [ ] `1.5.3` `DtlsFingerprint`.
-- [ ] `1.5.4` `DtlsRole`.
-- [ ] `1.5.5` `DtlsParameters`, con rol `auto` por defecto.
-- [ ] `1.5.6` `ConnectionState`.
-- [ ] `1.5.7` `IpVersion`.
-- [ ] `1.5.8` `PlainRtpParameters`.
-- [ ] `1.5.9` `TransportOptions`, con builder.
-- [ ] `1.5.10` Opciones internas de transporte (`InternalTransportOptions`).
-- [ ] `1.5.11` Enum `TransportDirection` (`send`, `recv`).
-- [ ] `1.5.12` Modelo de `RTCIceServer` propio, si `0.5.5` lo requiere.
+- [x] `1.5.1` `IceParameters`, incluido `iceLite`.
+- [x] `1.5.2` `IceCandidate`, con enums de `protocol` (`TransportProtocol`), `type` y `tcpType`. Guarda `address` y el obsoleto `ip`, con al menos uno obligatorio, y `effectiveAddress()` lee el que haya. La prioridad es `long` (32 bits sin signo).
+- [x] `1.5.3` `DtlsFingerprint`, con el enum `FingerprintAlgorithm`.
+- [x] `1.5.4` `DtlsRole`.
+- [x] `1.5.5` `DtlsParameters`. `role` queda `null` si no llega, que significa `auto`.
+- [x] `1.5.6` `ConnectionState`.
+- [x] `1.5.7` `IpVersion`, con valor numérico.
+- [x] `1.5.8` `PlainRtpParameters`.
+- [x] `1.5.9` `TransportOptions`, con builder y `toBuilder()` para añadir los ajustes locales a lo que devuelve el servidor. Sin `additionalSettings` ni `proprietaryConstraints`, que se deciden en `10.2.8`.
+- [x] `1.5.10` Opciones internas de transporte (`InternalTransportOptions`): movida a `4.3.1`, porque necesita el `HandlerFactory` de `4.1.7`.
+- [x] `1.5.11` Enum `TransportDirection` (`send`, `recv`).
+- [x] `1.5.12` Modelo de `RTCIceServer` propio, si `0.5.5` lo requiere: record `IceServer` (`urls`, `username`, `credential`, como en W3C), con la credencial oculta en `toString()`, y enum `IceTransportPolicy`.
 
 ### 1.6 Opciones de productores y consumidores
 
@@ -343,6 +344,7 @@ El usuario convierte los modelos con su propio `ObjectMapper` (`0.5.15`), así q
 - [ ] `1.8.4` Nombres que no siguen camelCase, como `OS` y `MIS` de `NumSctpStreams`.
 - [ ] `1.8.5` Comprobar que el round-trip conserva los tipos de los `parameters` de codec.
 - [ ] `1.8.6` Tests de round-trip con Jackson 2 y con Jackson 3.
+- [ ] `1.8.7` `IceServer.urls`: aceptar también un texto suelto, que el estándar W3C permite (`"urls": "turn:..."`).
 
 ### 1.9 Fixtures
 
@@ -559,7 +561,7 @@ Origen: `pymediasoup/device.py`
 
 Origen: `pymediasoup/transport.py`
 
-- [ ] `4.3.1` Constructor: crear el handler y llamar a `run`.
+- [ ] `4.3.1` Constructor: crear el handler y llamar a `run`. Recibe las opciones internas (`InternalTransportOptions` en el original, antes `1.5.10`): dirección, `HandlerFactory`, capacidades RTP extendidas y `canProduceByKind`.
 - [ ] `4.3.2` Cola serializada por transporte para las operaciones de handler y la entrega de eventos (`0.5.2`). ⚠️ no copiar: el original no tiene cola (`NOTE: Mediasoup client enqueue command here`). En Java hay concurrencia real.
 - [ ] `4.3.3` Rechazar las operaciones pendientes de la cola al cerrar.
 - [ ] `4.3.4` Propiedades `id`, `closed`, `direction`, `handler`, `connectionState` y `appData`.
@@ -568,7 +570,7 @@ Origen: `pymediasoup/transport.py`
 - [ ] `4.3.7` Listener `produce`, obligatorio al crear el transporte de envío, que devuelve el ID del producer: interfaz `ProduceHandler` con un record de petición, llamada con `AsyncHandlers.call`. Un ID vacío también falla.
 - [ ] `4.3.8` `close`: cerrar el handler y avisar a todos los productores y consumidores.
 - [ ] `4.3.9` `observer` con `close`, `newproducer` y `newconsumer`.
-- [ ] `4.3.10` `additionalSettings`: sin campos reservados. ⚠️ no copiar: el original llama a `copy(deep=True)` sobre un `dict`.
+- [ ] `4.3.10` `additionalSettings`: movida a `10.2.8`.
 
 ### 4.4 Producer básico y Transport.produce
 
@@ -883,7 +885,7 @@ Origen: `transport.py`, `aiortc_handler.py`, `remote_sdp.py`
 - [ ] `10.2.5` `Transport.updateIceServers`.
 - [ ] `10.2.6` `handler.updateIceServers` con `setConfiguration`. ⚠️ no copiar: en el original solo registra un aviso.
 - [ ] `10.2.7` `iceTransportPolicy` (`all` y `relay`).
-- [ ] `10.2.8` `additionalSettings` y `proprietaryConstraints`: decidir cuáles tienen sentido en webrtc-java.
+- [ ] `10.2.8` `additionalSettings` y `proprietaryConstraints`: decidir cuáles tienen sentido en webrtc-java y añadirlos a `TransportOptions` con su builder, sin campos reservados por jmediasoup. ⚠️ no copiar: el original llama a `copy(deep=True)` sobre un `dict`.
 - [ ] `10.2.9` `RemoteSdp.updateIceParameters`: quitar `icelite` si ya no aplica.
 - [ ] `10.2.10` Test E2E: reiniciar ICE y seguir recibiendo medios.
 - [ ] `10.2.11` Test E2E: conexión a través de un TURN, si la imagen o el entorno lo permiten.
@@ -1184,7 +1186,9 @@ Cubre la API de pymediasoup. `Fase` es la fase donde queda funcional; una propie
 | `RtpHeaderExtensionParameters`, `RtcpParameters`, `RtpParameters`, `ExtendedRtpCapabilities` | 1.3 |
 | `NumSctpStreams`, `SctpCapabilities`, `SctpParameters`, `SctpStreamParameters` | 1.4 |
 | `IceParameters`, `IceCandidate`, `DtlsFingerprint`, `DtlsRole`, `DtlsParameters`, `ConnectionState` | 1.5 |
-| `IpVersion`, `PlainRtpParameters`, `TransportOptions`, `InternalTransportOptions` | 1.5 |
+| `IpVersion`, `PlainRtpParameters`, `TransportOptions` | 1.5 |
+| `InternalTransportOptions` | 4.3 |
+| `RTCIceServer` de aiortc (`IceServer`) | 1.5 |
 | `ProducerCodecOptions`, `ProducerOptions`, `ConsumerOptions`, `DataProducerOptions`, `DataConsumerOptions` | 1.6 |
 | `MediaStreamTrackKind` | 1.3 (`MediaKind`) |
 | `HandlerRunOptions`, `HandlerSendOptions`, `HandlerSendResult`, `HandlerReceiveOptions`, `HandlerReceiveResult` | 4.1 |

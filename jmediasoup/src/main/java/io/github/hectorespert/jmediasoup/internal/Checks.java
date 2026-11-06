@@ -23,7 +23,7 @@ import org.jspecify.annotations.Nullable;
 public final class Checks {
 
     private static final Pattern MIME_TYPE = Pattern.compile("(audio|video)/[^/\\s]+");
-    private static final long MAX_SSRC = 0xFFFF_FFFFL;
+    private static final long MAX_UINT32 = 0xFFFF_FFFFL;
 
     private Checks() {}
 
@@ -83,17 +83,35 @@ public final class Checks {
         return value;
     }
 
-    /** Checks that an SSRC fits in 32 unsigned bits. */
-    public static long ssrc(long value, String name) {
-        if (value < 0 || value > MAX_SSRC) {
-            throw new IllegalArgumentException(name + " must be between 0 and " + MAX_SSRC + ": " + value);
+    /** Checks that a value fits in 32 unsigned bits, as SSRCs and ICE priorities do. */
+    public static long uint32(long value, String name) {
+        if (value < 0 || value > MAX_UINT32) {
+            throw new IllegalArgumentException(name + " must be between 0 and " + MAX_UINT32 + ": " + value);
         }
         return value;
     }
 
+    /** Checks that an SSRC fits in 32 unsigned bits. */
+    public static long ssrc(long value, String name) {
+        return uint32(value, name);
+    }
+
     /** Checks that an optional SSRC, if present, fits in 32 unsigned bits. */
     public static @Nullable Long ssrc(@Nullable Long value, String name) {
-        return value == null ? null : ssrc(value.longValue(), name);
+        return value == null ? null : uint32(value.longValue(), name);
+    }
+
+    /**
+     * Copies {@code appData} into an unmodifiable map that keeps its order and allows {@code null}
+     * values, with an absent map as empty.
+     */
+    public static Map<String, @Nullable Object> appData(@Nullable Map<String, ?> appData) {
+        if (appData == null) {
+            return Map.of();
+        }
+        var copy = new LinkedHashMap<String, @Nullable Object>();
+        appData.forEach((key, value) -> copy.put(requireNonNull(key, "appData key"), value));
+        return Collections.unmodifiableMap(copy);
     }
 
     /** Checks that a MIME type is {@code audio/subtype} or {@code video/subtype}. */

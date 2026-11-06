@@ -103,4 +103,18 @@ class ChecksTest {
         assertThrows(IllegalArgumentException.class, () -> Checks.atLeast(0.5, 1.0, "scaleResolutionDownBy"));
         assertThrows(IllegalArgumentException.class, () -> Checks.atLeast(Double.NaN, 1.0, "scaleResolutionDownBy"));
     }
+
+    @Test
+    void appDataKeepsNullValuesAndOrder() {
+        var original = new LinkedHashMap<String, Object>();
+        original.put("b", null);
+        original.put("a", 1);
+
+        Map<String, Object> copy = Checks.appData(original);
+
+        assertEquals(List.of("b", "a"), List.copyOf(copy.keySet()));
+        assertNull(copy.get("b"));
+        assertEquals(Map.of(), Checks.appData(null));
+        assertThrows(UnsupportedOperationException.class, () -> copy.put("c", 2));
+    }
 }
