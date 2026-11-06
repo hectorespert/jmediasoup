@@ -22,7 +22,7 @@ Assisted-by: Claude Opus 5.5 <noreply@anthropic.com>
 
 ## Project state
 
-Phases 1 (foundations), 2 (ORTC) and 3 (SDP) are done, except for checking the SDP against webrtc-java, which needs the natives (task 5.1.15). `Device` loads, reports its capabilities and creates transports, which connect, report their state, produce and consume (in batches, as mediasoup-client 3.26 does), so far only against `FakeHandler`. The module `io.github.hectorespert.jmediasoup` exports these packages, all `@NullMarked`:
+Phases 1 (foundations), 2 (ORTC), 3 (SDP) and 4 (Device and Transport with `FakeHandler`) are done, except for checking the SDP against webrtc-java, which needs the natives (task 5.1.15). `Device` loads, reports its capabilities and creates transports, which connect, report their state, produce and consume (in batches, as mediasoup-client 3.26 does), so far only against `FakeHandler`: there is no handler for webrtc-java yet (Phase 5). The module `io.github.hectorespert.jmediasoup` exports these packages, all `@NullMarked`:
 
 - the root package: `Device`; the transports, a sealed `Transport` with `SendTransport` and `RecvTransport`, which run every listener and handler of the application on their own serial executor; the handlers the application passes when creating them (`ConnectHandler`, `ProduceHandler` with `ProduceRequest`); `Producer` and `Consumer`; `DeviceObserver`, `TransportObserver`, `ProducerObserver` and `ConsumerObserver`; the exceptions (`MediasoupClientException`, a checked base, with `UnsupportedException` and `InvalidStateException`), `Subscription`, `DataChannelMessage`, and the producer and consumer options;
 - `rtp`, `sctp` and `transport`: the models, as validated, immutable records;

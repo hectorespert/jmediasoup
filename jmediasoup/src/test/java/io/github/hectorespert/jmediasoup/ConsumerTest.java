@@ -17,11 +17,14 @@ import io.github.hectorespert.jmediasoup.fake.FakeParameters;
 import io.github.hectorespert.jmediasoup.rtp.MediaKind;
 import io.github.hectorespert.jmediasoup.transport.DtlsParameters;
 import io.github.hectorespert.jmediasoup.transport.DtlsRole;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -103,6 +106,49 @@ class ConsumerTest {
         assertTrue(handler(transport).localIds().contains(consumer.localId()));
     }
 
+    // Ports the checks of test_consume in pymediasoup, whose fixtures FakeParameters uses, without the
+    // defaults that pydantic fills (an empty rtcpFeedback parameter, encrypt false): they stay null,
+    // and the server fills them.
+    @Test
+    void theRtpParametersAreThoseOfPymediasoup() {
+        Consumer audio = consume("audio/opus");
+        Consumer video = consume("video/VP8");
+
+        assertNull(audio.rtpParameters().mid());
+        ProducerTest.assertJson("""
+                [{"mimeType": "audio/opus", "payloadType": 100, "clockRate": 48000, "channels": 2,
+                  "rtcpFeedback": [{"type": "transport-cc"}],
+                  "parameters": {"useinbandfec": 1, "foo": "bar"}}]""", audio.rtpParameters().codecs());
+        ProducerTest.assertJson("""
+                [{"uri": "urn:ietf:params:rtp-hdrext:sdes:mid", "id": 1, "parameters": {}},
+                 {"uri": "http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01", "id": 5,
+                  "parameters": {}},
+                 {"uri": "urn:ietf:params:rtp-hdrext:ssrc-audio-level", "id": 10,
+                  "parameters": {}}]""", audio.rtpParameters().headerExtensions());
+        assertEquals(1, audio.rtpParameters().encodings().size());
+        assertFalse(audio.paused());
+
+        assertNull(video.rtpParameters().mid());
+        ProducerTest.assertJson("""
+                [{"mimeType": "video/VP8", "payloadType": 101, "clockRate": 90000,
+                  "rtcpFeedback": [{"type": "nack"}, {"type": "nack", "parameter": "pli"},
+                                   {"type": "ccm", "parameter": "fir"}, {"type": "goog-remb"},
+                                   {"type": "transport-cc"}],
+                  "parameters": {"x-google-start-bitrate": 1500}},
+                 {"mimeType": "video/rtx", "payloadType": 102, "clockRate": 90000, "rtcpFeedback": [],
+                  "parameters": {"apt": 101}}]""", video.rtpParameters().codecs());
+        ProducerTest.assertJson("""
+                [{"uri": "urn:ietf:params:rtp-hdrext:sdes:mid", "id": 1, "parameters": {}},
+                 {"uri": "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time", "id": 4,
+                  "parameters": {}},
+                 {"uri": "http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01", "id": 5,
+                  "parameters": {}},
+                 {"uri": "urn:3gpp:video-orientation", "id": 11, "parameters": {}},
+                 {"uri": "urn:ietf:params:rtp-hdrext:toffset", "id": 12, "parameters": {}}]""", video.rtpParameters().headerExtensions());
+        assertEquals(1, video.rtpParameters().encodings().size());
+        assertFalse(video.paused());
+    }
+
     @Test
     void consumeVideoSucceedsWithoutConnectingAgain() {
         consume("audio/opus");
@@ -162,6 +208,30 @@ class ConsumerTest {
         await(second);
         await(third);
         assertEquals(List.of(1, 2), handler(slow).receiveBatches());
+    }
+
+    @Test
+    void consumesFromManyThreadsAllSucceedInBatches() throws Exception {
+        List<Consumer> consumers;
+        try (var threads = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<Consumer>> futures = new ArrayList<>();
+            for (int i = 0; i < 20; i++) {
+                String codec = i % 2 == 0 ? "audio/opus" : "video/VP8";
+                futures.add(
+                        threads.submit(() -> await(transport.consume(FakeParameters.consumerRemoteParameters(codec)))));
+            }
+            consumers = new ArrayList<>();
+            for (Future<Consumer> future : futures) {
+                consumers.add(future.get(5, TimeUnit.SECONDS));
+            }
+        }
+
+        assertEquals(20, consumers.stream().map(Consumer::localId).distinct().count());
+        assertEquals(
+                20,
+                handler(transport).receiveBatches().stream()
+                        .mapToInt(Integer::intValue)
+                        .sum());
     }
 
     @Test

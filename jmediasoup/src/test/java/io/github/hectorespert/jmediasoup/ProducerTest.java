@@ -7,6 +7,7 @@ package io.github.hectorespert.jmediasoup;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -28,15 +29,19 @@ import io.github.hectorespert.jmediasoup.transport.ConnectionState;
 import io.github.hectorespert.jmediasoup.transport.DtlsParameters;
 import io.github.hectorespert.jmediasoup.transport.DtlsRole;
 import io.github.hectorespert.jmediasoup.transport.TransportDirection;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
 
 /** Ports the produce and producer tests of mediasoup-client ({@code test.ts}) and pymediasoup. */
 class ProducerTest {
@@ -79,6 +84,13 @@ class ProducerTest {
         return assertInstanceOf(FakeHandler.class, transport.handler());
     }
 
+    private static final JsonMapper JSON = JsonMapper.builder().build();
+
+    // Compares a value with the JSON of the original, as trees, so that the key order does not matter.
+    static void assertJson(String expected, Object actual) {
+        assertEquals(JSON.readTree(expected), JSON.valueToTree(actual));
+    }
+
     private Producer produce(FakeMediaStreamTrack track) {
         return await(transport.produce(ProducerOptions.builder(track).build()));
     }
@@ -113,6 +125,58 @@ class ProducerTest {
         assertNull(producer.maxSpatialLayer());
         assertEquals(Map.of("foo", "FOO"), producer.appData());
         assertTrue(handler(transport).localIds().contains(producer.localId()));
+    }
+
+    // Ports the checks of test_produce in pymediasoup, whose fixtures FakeParameters uses, without the
+    // defaults that pydantic fills (an empty rtcpFeedback parameter): they stay null, and the server
+    // fills them.
+    @Test
+    void theRtpParametersAreThoseOfPymediasoup() {
+        Producer audio = produce(FakeMediaStreamTrack.audio());
+        Producer video = await(transport.produce(ProducerOptions.builder(FakeMediaStreamTrack.video())
+                .encodings(List.of(
+                        RtpEncodingParameters.builder().maxBitrate(100000).build(),
+                        RtpEncodingParameters.builder().maxBitrate(500000).build()))
+                .disableTrackOnPause(false)
+                .zeroRtpOnPause(true)
+                .build()));
+
+        assertJson("""
+                [{"mimeType": "audio/opus", "payloadType": 111, "clockRate": 48000, "channels": 2,
+                  "rtcpFeedback": [{"type": "transport-cc"}],
+                  "parameters": {"minptime": 10, "useinbandfec": 1}}]""", audio.rtpParameters().codecs());
+        assertJson("""
+                [{"uri": "urn:ietf:params:rtp-hdrext:sdes:mid", "id": 1, "encrypt": false, "parameters": {}},
+                 {"uri": "urn:ietf:params:rtp-hdrext:ssrc-audio-level", "id": 10, "encrypt": false,
+                  "parameters": {}}]""", audio.rtpParameters().headerExtensions());
+        assertEquals(1, audio.rtpParameters().encodings().size());
+        assertNotNull(audio.rtpParameters().encodings().getFirst().ssrc());
+        assertNotNull(audio.rtpParameters().mid());
+        assertNotNull(audio.rtpParameters().rtcp().cname());
+
+        assertJson("""
+                [{"mimeType": "video/VP8", "payloadType": 96, "clockRate": 90000,
+                  "rtcpFeedback": [{"type": "goog-remb"}, {"type": "transport-cc"},
+                                   {"type": "ccm", "parameter": "fir"}, {"type": "nack"},
+                                   {"type": "nack", "parameter": "pli"}],
+                  "parameters": {"baz": "1234abcd"}},
+                 {"mimeType": "video/rtx", "payloadType": 97, "clockRate": 90000, "rtcpFeedback": [],
+                  "parameters": {"apt": 96}}]""", video.rtpParameters().codecs());
+        assertJson("""
+                [{"uri": "urn:ietf:params:rtp-hdrext:sdes:mid", "id": 1, "encrypt": false, "parameters": {}},
+                 {"uri": "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time", "id": 3, "encrypt": false,
+                  "parameters": {}},
+                 {"uri": "http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01", "id": 5,
+                  "encrypt": false, "parameters": {}},
+                 {"uri": "urn:3gpp:video-orientation", "id": 4, "encrypt": false, "parameters": {}},
+                 {"uri": "urn:ietf:params:rtp-hdrext:toffset", "id": 2, "encrypt": false, "parameters": {}}]""", video.rtpParameters().headerExtensions());
+        assertEquals(2, video.rtpParameters().encodings().size());
+        for (RtpEncodingParameters encoding : video.rtpParameters().encodings()) {
+            assertNotNull(encoding.ssrc());
+            assertNotNull(encoding.rtx());
+        }
+        assertFalse(video.paused());
+        assertTrue(video.appData().isEmpty());
     }
 
     @Test
@@ -373,6 +437,65 @@ class ProducerTest {
         assertEquals(MediaKind.VIDEO, asked.poll(5, TimeUnit.SECONDS));
         pending.get(1).complete("video-id");
         assertEquals("video-id", await(video).id());
+    }
+
+    @Test
+    void producesFromManyThreadsRunOneAtATime() throws Exception {
+        var running = new AtomicInteger();
+        var maxRunning = new AtomicInteger();
+        SendTransport concurrent = device.createSendTransport(
+                FakeParameters.transportRemoteParameters(),
+                dtls -> CompletableFuture.completedFuture(null),
+                request -> {
+                    maxRunning.accumulateAndGet(running.incrementAndGet(), Math::max);
+                    return CompletableFuture.supplyAsync(() -> {
+                        running.decrementAndGet();
+                        return "producer-" + nextId.getAndIncrement();
+                    });
+                });
+
+        List<Producer> producers;
+        try (var threads = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<Producer>> futures = new ArrayList<>();
+            for (int i = 0; i < 20; i++) {
+                var track = i % 2 == 0 ? FakeMediaStreamTrack.audio() : FakeMediaStreamTrack.video();
+                futures.add(threads.submit(() ->
+                        await(concurrent.produce(ProducerOptions.builder(track).build()))));
+            }
+            producers = new ArrayList<>();
+            for (Future<Producer> future : futures) {
+                producers.add(future.get(5, TimeUnit.SECONDS));
+            }
+        }
+
+        assertEquals(1, maxRunning.get());
+        assertEquals(20, producers.stream().map(Producer::id).distinct().count());
+        assertEquals(20, handler(concurrent).localIds().size());
+    }
+
+    @Test
+    void closingTheTransportWhileManyProducesAreInProgressLeavesNoneHanging() throws Exception {
+        SendTransport slow = device.createSendTransport(
+                FakeParameters.transportRemoteParameters(),
+                dtls -> CompletableFuture.completedFuture(null),
+                request -> CompletableFuture.supplyAsync(
+                        () -> "producer-" + nextId.getAndIncrement(),
+                        CompletableFuture.delayedExecutor(1, TimeUnit.MILLISECONDS)));
+        List<CompletableFuture<Producer>> results = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            results.add(slow.produce(
+                    ProducerOptions.builder(FakeMediaStreamTrack.audio()).build()));
+        }
+
+        slow.close();
+
+        for (CompletableFuture<Producer> result : results) {
+            try {
+                assertTrue(await(result).closed());
+            } catch (CompletionException e) {
+                assertInstanceOf(InvalidStateException.class, e.getCause());
+            }
+        }
     }
 
     @Test

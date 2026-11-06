@@ -619,21 +619,21 @@ Origen: `pymediasoup/consumer.py`, `pymediasoup/transport.py`
 
 ### 4.6 Port de la batería de tests
 
-Origen: `tests/__init__.py`
+Origen: `tests/__init__.py`, y `src/test/test.ts` de mediasoup-client, cuyo `FakeHandler` se porta. Los tests de `test.ts` que tocan funciones de fases posteriores (pausa, `replaceTrack`, stats, ICE, data channels) van con ellas. Los que comprueban tipos de argumento o la dirección del transporte no aplican: lo garantizan los records y los tipos `SendTransport` y `RecvTransport`.
 
-- [ ] `4.6.1` `test_create_device`.
-- [ ] `4.6.2` `test_device_load`.
-- [ ] `4.6.3` `test_device_rtp_capabilities`.
-- [ ] `4.6.4` `test_device_sctp_capabilities`.
-- [ ] `4.6.5` `test_device_can_produce_audio` y `test_device_can_produce_video`.
-- [ ] `4.6.6` `test_send_transport`.
-- [ ] `4.6.7` `test_recv_transport`.
-- [ ] `4.6.8` `test_produce`, sin la parte de data channels.
-- [ ] `4.6.9` `test_consume`, sin la parte de data channels.
-- [ ] `4.6.10` Tests de operaciones concurrentes sobre la cola.
-- [ ] `4.6.11` Tests de cierre con operaciones en curso.
+- [x] `4.6.1` `test_create_device`: `DeviceTest.aNewDeviceIsNotLoaded`.
+- [x] `4.6.2` `test_device_load`: `DeviceTest.loadSucceeds` y los casos de error.
+- [x] `4.6.3` `test_device_rtp_capabilities`: `DeviceTest.loadSucceeds`.
+- [x] `4.6.4` `test_device_sctp_capabilities`: `DeviceTest.loadSucceeds`.
+- [x] `4.6.5` `test_device_can_produce_audio` y `test_device_can_produce_video`: `DeviceTest.canProduceAudioAndVideo`.
+- [x] `4.6.6` `test_send_transport`: `TransportTest.createSendTransportSucceeds`.
+- [x] `4.6.7` `test_recv_transport`: `TransportTest.createRecvTransportSucceeds`. La parte de `produce` en un transporte de recepción no aplica: `RecvTransport` no tiene `produce`.
+- [x] `4.6.8` `test_produce`, sin la parte de data channels: `ProducerTest`, con los parámetros RTP esperados en `theRtpParametersAreThoseOfPymediasoup`. Sin los valores por defecto que rellena pydantic (`parameter` vacío en `rtcpFeedback`), que siguen `null` (`1.3`).
+- [x] `4.6.9` `test_consume`, sin la parte de data channels: `ConsumerTest`, con los parámetros RTP esperados en `theRtpParametersAreThoseOfPymediasoup`, también sin los valores por defecto de pydantic (`encrypt`).
+- [x] `4.6.10` Tests de operaciones concurrentes sobre la cola: `OperationQueueTest`, `SerialExecutorTest`, `TransportTest.listenersRunOneAtATimeOnTheExecutor`, el orden de `produce` y los lotes de `consume`, y `produce` y `consume` desde 20 hilos a la vez.
+- [x] `4.6.11` Tests de cierre con operaciones en curso: cerrar mientras el servidor crea un producer, mientras el handler recibe, con `consume` pendientes y con 20 `produce` en marcha, sin que ninguno quede colgado.
 
-**Aceptación de la Fase 4**
+**Aceptación de la Fase 4** (cumplida)
 
 - Los tests portados pasan sin cargar nativos.
 - Las operaciones concurrentes sobre un transporte se ejecutan en orden.
