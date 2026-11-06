@@ -22,13 +22,13 @@ Assisted-by: Claude Opus 5.5 <noreply@anthropic.com>
 
 ## Project state
 
-Phase 1 (foundations) is done; Phase 2 (ORTC) is next. There is no Device or Transport yet. The module `io.github.hectorespert.jmediasoup` exports these packages, all `@NullMarked`:
+Phase 1 (foundations) is done and Phase 2 (ORTC) is in progress. There is no Device or Transport yet. The module `io.github.hectorespert.jmediasoup` exports these packages, all `@NullMarked`:
 
 - the root package: the exceptions (`MediasoupClientException`, a checked base, with `UnsupportedException` and `InvalidStateException`), `Subscription`, `DataChannelMessage`, and the producer and consumer options;
 - `rtp`, `sctp` and `transport`: the models, as validated, immutable records;
 - `handler`: the contract with the WebRTC stack for custom handlers, so far `DataChannel`.
 
-Internal packages go under `io.github.hectorespert.jmediasoup.internal` and are not exported. `internal.Checks` validates the model constructors, `internal.ParameterValues` compares codec parameters, and `internal.event` delivers events to listeners and calls the user's asynchronous handlers (`connect`, `produce`); use it for every event. The Javadoc task leaves the internal packages out, patching their compiled classes into the module so that the public sources still resolve.
+Internal packages go under `io.github.hectorespert.jmediasoup.internal` and are not exported. `internal.Checks` validates the model constructors, `internal.ParameterValues` compares codec parameters, `internal.h264` is the port of h264-profile-level-id, and `internal.event` delivers events to listeners and calls the user's asynchronous handlers (`connect`, `produce`); use it for every event. The Javadoc task leaves the internal packages out, patching their compiled classes into the module so that the public sources still resolve.
 
 Models that travel as JSON carry Jackson annotations and no runtime JSON code: `@JsonInclude(NON_NULL)` and `@JsonIgnoreProperties(ignoreUnknown = true)` on each record, `@JsonProperty(required = true)` on required primitive components, and `@JsonValue`/`@JsonCreator` on the `value()`/`fromValue()` of each enum. Test them with both Jackson 2 and 3 through `json.WithEachJackson`.
 

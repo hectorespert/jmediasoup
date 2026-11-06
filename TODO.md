@@ -368,15 +368,15 @@ Origen: `tests/fake_parameters.py`, `tests/fake_handler.py`
 
 ### 2.1 Port de h264-profile-level-id
 
-Origen: paquete `h264-profile-level-id`. Va en un paquete interno (`0.5.16`). pymediasoup solo usa `isSameProfile` y `generateProfileLevelIdForAnswer`.
+Origen: paquete `h264-profile-level-id`. Va en un paquete interno (`0.5.16`). pymediasoup solo usa `isSameProfile` y `generateProfileLevelIdForAnswer`, pero se porta entero desde `versatica/h264-profile-level-id` 2.3.3, el original en JS que usa mediasoup-client, para poder portar todos sus tests. Está en `internal.h264`.
 
-- [ ] `2.1.1` Constantes de perfiles y niveles.
-- [ ] `2.1.2` Parsear una cadena `profile-level-id`.
-- [ ] `2.1.3` Convertir un perfil y nivel a cadena.
-- [ ] `2.1.4` Leer el parámetro del `fmtp`, con su valor por defecto si falta.
-- [ ] `2.1.5` `isSameProfile`.
-- [ ] `2.1.6` `generateProfileLevelIdForAnswer`.
-- [ ] `2.1.7` Port de los casos de prueba de la librería original.
+- [x] `2.1.1` Constantes de perfiles y niveles: enums `Profile` y `Level` (con su `level_idc`), el record `ProfileLevelId` y las tablas de patrones de perfil y límites de nivel.
+- [x] `2.1.2` Parsear una cadena `profile-level-id`: `parseProfileLevelId`, que solo acepta 6 dígitos hexadecimales (el original, con `parseInt`, acepta signo y basura al final).
+- [x] `2.1.3` Convertir un perfil y nivel a cadena: `profileLevelIdToString`, y también `profileToString` y `levelToString`.
+- [x] `2.1.4` Leer el parámetro del `fmtp`, con su valor por defecto si falta: `parseSdpProfileLevelId`, que acepta el valor como texto o como número porque los `parameters` conservan el tipo JSON.
+- [x] `2.1.5` `isSameProfile`, y también `isSameProfileAndLevel`.
+- [x] `2.1.6` `generateProfileLevelIdForAnswer` (`generateProfileLevelIdStringForAnswer` en el original), con `IllegalArgumentException` donde el original lanza `TypeError`, y `level-asymmetry-allowed` como `true`, `1` o `"1"`. También `supportedLevel`.
+- [x] `2.1.7` Port de los casos de prueba de la librería original: `H264ProfileLevelIdTest`, todos salvo el de un perfil desconocido, que un enum de Java no puede representar, y con casos propios para valores numéricos y con signo.
 
 ### 2.2 Modos de escalabilidad
 
