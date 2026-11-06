@@ -9,6 +9,7 @@ ktlint = "1.8.0"
 palantir = "2.102.0"
 slf4j = "2.0.20"
 spotless = "8.10.4"
+testcontainers = "2.0.5"
 webrtc-java = "0.20.0"
 
 [libraries]
@@ -19,6 +20,7 @@ jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
+testcontainers = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
 webrtc-java = { module = "dev.onvoid.webrtc:webrtc-java", version.ref = "webrtc-java" }
 
 [plugins]

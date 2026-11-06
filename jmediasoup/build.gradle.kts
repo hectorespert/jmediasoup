@@ -95,6 +95,36 @@ tasks.named<Javadoc>("javadoc") {
     (options as StandardJavadocDocletOptions).addStringOption("-patch-module", "io.github.hectorespert.jmediasoup=$classes")
 }
 
+// Integration tests against a mediasoup server in a container, through the public API. They run on
+// the classpath, as most applications use the library, while the unit tests cover the module path.
+// Without Docker (or the podman socket), or outside Linux, they are skipped.
+testing {
+    suites {
+        register<JvmTestSuite>("integrationTest") {
+            useJUnitJupiter(libs.versions.junit.jupiter)
+            dependencies {
+                implementation(project())
+                implementation(libs.testcontainers)
+                implementation(libs.jackson3.databind)
+                runtimeOnly(libs.slf4j.simple)
+                runtimeOnly("dev.onvoid.webrtc:webrtc-java:${libs.versions.webrtc.java.get()}:$webrtcNativeClassifier")
+            }
+            targets.all {
+                testTask.configure {
+                    shouldRunAfter(tasks.test)
+                    systemProperty("org.slf4j.simpleLogger.defaultLogLevel", "warn")
+                }
+            }
+        }
+    }
+}
+
+javaModuleTesting.classpath(testing.suites["integrationTest"])
+
+tasks.named("check") {
+    dependsOn(testing.suites.named("integrationTest"))
+}
+
 // Runs the tests inside the library module (--patch-module), so they see the
 // internal packages and also check the requires and exports of module-info.java.
 javaModuleTesting.whitebox(testing.suites["test"]) {

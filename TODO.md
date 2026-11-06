@@ -51,6 +51,7 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 **Diseño** (sección 0.5)
 
 - API asíncrona con `CompletableFuture`. Quien prefiera estilo bloqueante usa `.join()` en un virtual thread.
+- Tests de integración (sección 7.1): suite `integrationTest` de Gradle con Testcontainers, en el classpath, como usa la librería la mayoría de aplicaciones; los unitarios ya cubren el module path, y Testcontainers no es modular. `check` depende de ella, así que `build` y el CI la ejecutan. Sin Docker, o fuera de Linux mientras falte la `0.4.9`, los tests se omiten. En local con podman basta con activar su socket y apuntar `DOCKER_HOST` a él.
 - Handler de webrtc-java (sección 5.1): `WebRtcJavaHandler` en el paquete exportado `handler.webrtc`. La factory de handlers admite las dos formas de libmediasoupclient: `createFactory(peerConnectionFactory)` usa una `PeerConnectionFactory` de la aplicación, que sigue siendo suya, y `createFactory()` crea una propia con `HeadlessAudioDeviceModule`, que se libera al cerrar la factory (`AutoCloseable`). Los tracks a enviar salen de esa misma `PeerConnectionFactory`. Los callbacks de webrtc-java completan sus futuros en un hilo virtual, así que nada de jmediasoup se ejecuta en el hilo de señalización de la factory. Los tests con nativos van en la tarea `test`, con el clasificador elegido por SO y CPU.
 - Transportes (sección 4.3): dos tipos, `SendTransport` y `RecvTransport`, que heredan de una clase sellada `Transport`, como libmediasoupclient y mediasoup-client-android, en vez del `Transport` único de pymediasoup. Así `produce` solo existe en el de envío y `consume` en el de recepción. Se crean con los handlers sueltos: `createSendTransport(options, connect, produce)` y `createRecvTransport(options, connect)`. `producedata` se añadirá en la Fase 9 con una sobrecarga de cuatro parámetros. `ConnectHandler` devuelve un `CompletionStage<?>` cuyo valor se ignora, para que valga directamente el futuro de la señalización. `appData` es de solo lectura, como en pymediasoup (su setter lanza una excepción); un setter se podría añadir sin romper nada. Los eventos que provoca `close()` (observer `close`, `transportclose`) se entregan después, en el ejecutor del transporte, igual que el `newtransport` del `Device`.
 - Hilos (sección 4.3): cada transporte tiene un ejecutor en serie (`internal.event.SerialExecutor`) sobre hilos virtuales compartidos, donde se ejecuta todo el código del usuario: listeners y handlers. Ninguno corre en un hilo nativo ni en el del que llama, ni dos a la vez, y pueden bloquear sin parar la factory; no heredan thread-locals (`MDC`). Las operaciones (`produce`, `consume`...) pasan además por una cola como la `AwaitQueue` de mediasoup-client (`internal.event.OperationQueue`), que las encadena de una en una y al cerrar rechaza las pendientes con `InvalidStateException`. Los eventos del handler no esperan a la cola: se entregan en cuanto llegan, en el ejecutor en serie, como en mediasoup-client. Clases propias en vez de Guava (`MoreExecutors.newSequentialExecutor`, `ExecutionSequencer`), que se quitó en `0.1.3` y no rechaza lo pendiente. Se usa `ReentrantLock` en vez de `synchronized` para no fijar hilos virtuales en Java 21–23.
@@ -720,13 +721,13 @@ Origen: `AudioStreamTrack` y `VideoStreamTrack` de aiortc, usados en `examples/m
 
 ### 7.1 Entorno de integración
 
-- [ ] `7.1.1` Añadir Testcontainers al catálogo de versiones.
-- [ ] `7.1.2` Crear un source set o tarea `integrationTest`, separado de `test`.
-- [ ] `7.1.3` Hacer que la tarea sea compatible con el configuration cache.
-- [ ] `7.1.4` Arrancar la imagen elegida en `0.4.7` por digest, y esperar a que esté lista.
-- [ ] `7.1.5` Configurar la red y `announcedAddress` según `0.4.8` y `0.4.9`.
-- [ ] `7.1.6` Omitir los tests con un mensaje claro si Docker no está disponible.
-- [ ] `7.1.7` Recoger los logs del contenedor si falla un test.
+- [x] `7.1.1` Añadir Testcontainers al catálogo de versiones: 2.0.5, solo el módulo base. La extensión de JUnit es propia (`MediasoupServer`), para no mezclar la de Testcontainers con JUnit 6.
+- [x] `7.1.2` Crear un source set o tarea `integrationTest`, separado de `test`: una `JvmTestSuite` en `src/integrationTest`, en el classpath (`javaModuleTesting.classpath`), de la que depende `check`.
+- [x] `7.1.3` Hacer que la tarea sea compatible con el configuration cache.
+- [x] `7.1.4` Arrancar la imagen elegida en `0.4.7` por digest, y esperar a que esté lista: espera a `Server started` en el log. Un solo contenedor para todos los tests, sin capacidades.
+- [x] `7.1.5` Configurar la red y `announcedAddress` según `0.4.8` y `0.4.9`: red del host, con mediasoup escuchando y anunciándose en `127.0.0.1`. Solo Linux; macOS y Windows esperan a la `0.4.9`.
+- [x] `7.1.6` Omitir los tests con un mensaje claro si Docker no está disponible.
+- [x] `7.1.7` Recoger los logs del contenedor si falla un test: se escriben en la salida de error del test, que recoge el informe.
 
 ### 7.2 Señalización de los tests
 

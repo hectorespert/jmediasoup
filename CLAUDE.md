@@ -50,9 +50,12 @@ Use the Gradle wrapper (Gradle 9.8.2). There is one subproject, `jmediasoup`.
 ./gradlew clean
 ./gradlew publishToMavenLocal      # publish io.github.hectorespert:jmediasoup to ~/.m2
 ./gradlew spotlessApply          # format all files; `build` fails through spotlessCheck if any is not formatted
+./gradlew integrationTest        # tests against a mediasoup server in a container; `check` and `build` run them too
 ```
 
-Spotless formats Java with palantir-java-format and adds the SPDX licence header, formats the `.gradle.kts` scripts with ktlint, and trims trailing whitespace in Markdown, YAML and TOML. Run `spotlessApply` after editing. Test reports are written to `jmediasoup/build/reports/tests/test/`.
+The integration tests (`src/integrationTest`) start the mediasoup demo image of section 0.4 of TODO.md with Testcontainers, on the host network, and run on the classpath. Without Docker, or outside Linux, they are skipped. With podman, start its socket (`systemctl --user start podman.socket`) and run Gradle with `DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock`. The server logs go to the report of a failed test.
+
+Spotless formats Java with palantir-java-format and adds the SPDX licence header, formats the `.gradle.kts` scripts with ktlint, and trims trailing whitespace in Markdown, YAML and TOML. Run `spotlessApply` after editing. Test reports are written to `jmediasoup/build/reports/tests/test/` and `jmediasoup/build/reports/tests/integrationTest/`.
 
 ## Build setup
 
