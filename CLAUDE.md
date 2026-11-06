@@ -22,9 +22,9 @@ Assisted-by: Claude Opus 5.5 <noreply@anthropic.com>
 
 ## Project state
 
-Phases 1 (foundations), 2 (ORTC) and 3 (SDP) are done, except for checking the SDP against webrtc-java, which needs the natives (task 5.1.15). There is no Device or Transport yet. The module `io.github.hectorespert.jmediasoup` exports these packages, all `@NullMarked`:
+Phases 1 (foundations), 2 (ORTC) and 3 (SDP) are done, except for checking the SDP against webrtc-java, which needs the natives (task 5.1.15). `Device` loads and reports its capabilities, but there is no `Transport` yet. The module `io.github.hectorespert.jmediasoup` exports these packages, all `@NullMarked`:
 
-- the root package: the exceptions (`MediasoupClientException`, a checked base, with `UnsupportedException` and `InvalidStateException`), `Subscription`, `DataChannelMessage`, and the producer and consumer options;
+- the root package: `Device`, the exceptions (`MediasoupClientException`, a checked base, with `UnsupportedException` and `InvalidStateException`), `Subscription`, `DataChannelMessage`, and the producer and consumer options;
 - `rtp`, `sctp` and `transport`: the models, as validated, immutable records;
 - `handler`: the contract with the WebRTC stack for custom handlers, the one of mediasoup-client 3.26: `HandlerFactory` (native capabilities by direction, `create`), `Handler`, which reports to its transport through the `HandlerListener` in its `HandlerOptions`, their options and results, and `DataChannel`.
 

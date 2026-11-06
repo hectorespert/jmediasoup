@@ -557,20 +557,20 @@ Origen: `HandlerInterface.ts` y `FakeHandler.ts` de mediasoup-client 3.26 (antes
 
 ### 4.2 Device
 
-Origen: `pymediasoup/device.py`
+Origen: `pymediasoup/device.py` y `Device.ts` de mediasoup-client 3.26, en `jmediasoup.Device`. Es thread-safe.
 
-- [ ] `4.2.1` Constructor con `HandlerFactory`.
-- [ ] `4.2.2` `load`: obtener las capacidades nativas de envío y de recepción de la `HandlerFactory`.
-- [ ] `4.2.3` `load`: calcular las capacidades extendidas y las capacidades de recepción y de envío (`2.4`), y `canProduce` con `canSend`. Opción `preferLocalCodecsOrder`, de mediasoup-client.
-- [ ] `4.2.4` `load`: capacidades SCTP.
+- [x] `4.2.1` Constructor con `HandlerFactory`.
+- [x] `4.2.2` `load`: obtener las capacidades nativas de envío y de recepción de la `HandlerFactory`.
+- [x] `4.2.3` `load`: calcular las capacidades extendidas y las capacidades de recepción y de envío (`2.4`), y `canProduce` con `canSend`. `preferLocalCodecsOrder` de mediasoup-client como sobrecarga, `load(routerRtpCapabilities, preferLocalCodecsOrder)`. Si falla, el device queda sin cargar y se puede volver a cargar.
+- [x] `4.2.4` `load`: capacidades SCTP, de `HandlerFactory.getNativeSctpCapabilities`.
 - [x] `4.2.5` `load`: cerrar el handler temporal también si hay error: no aplica, porque la factory da las capacidades sin crear un handler (`4.1`).
-- [ ] `4.2.6` `load` repetido: decidir si falla como mediasoup-client. El original avisa y vuelve.
-- [ ] `4.2.7` `loaded`, `handlerName`.
-- [ ] `4.2.8` `rtpCapabilities` y `sctpCapabilities`, con `InvalidStateError` si no está cargado.
-- [ ] `4.2.9` `canProduce`.
-- [ ] `4.2.10` `createSendTransport`.
-- [ ] `4.2.11` `createRecvTransport`. ⚠️ no copiar: el original solo acepta `dict` en recv. Las dos variantes deben aceptar los mismos tipos de entrada.
-- [ ] `4.2.12` `observer` con `newtransport`. ⚠️ no copiar: el original lo documenta pero nunca lo emite.
+- [x] `4.2.6` `load` repetido, o con otro en curso: falla con `InvalidStateException`, como mediasoup-client. ⚠️ no copiar: pymediasoup avisa y vuelve.
+- [x] `4.2.7` `loaded`, `handlerName`. `handlerName` está disponible desde el principio, como en mediasoup-client.
+- [x] `4.2.8` `rtpCapabilities` y `sctpCapabilities`, con `InvalidStateException` si no está cargado. También `recvRtpCapabilities` y `sendRtpCapabilities` de mediasoup-client; `rtpCapabilities` es igual que `recvRtpCapabilities`.
+- [x] `4.2.9` `canProduce(MediaKind)`.
+- [x] `4.2.10` `createSendTransport`: movida a `4.3.11`, porque necesita `Transport`.
+- [x] `4.2.11` `createRecvTransport`: movida a `4.3.12`.
+- [x] `4.2.12` `observer` con `newtransport`: movida a `4.3.13`.
 
 ### 4.3 Transport básico
 
@@ -586,6 +586,9 @@ Origen: `pymediasoup/transport.py`
 - [ ] `4.3.8` `close`: cerrar el handler y avisar a todos los productores y consumidores.
 - [ ] `4.3.9` `observer` con `close`, `newproducer` y `newconsumer`.
 - [ ] `4.3.10` `additionalSettings`: movida a `10.2.8`.
+- [ ] `4.3.11` `Device.createSendTransport` (antes `4.2.10`).
+- [ ] `4.3.12` `Device.createRecvTransport` (antes `4.2.11`). ⚠️ no copiar: el original solo acepta `dict` en recv. Las dos variantes deben aceptar los mismos tipos de entrada.
+- [ ] `4.3.13` `Device.observer` con `newtransport` (antes `4.2.12`). ⚠️ no copiar: el original lo documenta pero nunca lo emite.
 
 ### 4.4 Producer básico y Transport.produce
 
@@ -1091,10 +1094,10 @@ Cubre la API de pymediasoup. `Fase` es la fase donde queda funcional; una propie
 | Constructor (`handlerFactory`) | 4.2 |
 | `load` | 4.2 |
 | `loaded`, `handlerName` | 4.2 |
-| `rtpCapabilities`, `sctpCapabilities` | 4.2 |
+| `rtpCapabilities`, `sctpCapabilities` (y `recvRtpCapabilities`, `sendRtpCapabilities`, de mediasoup-client) | 4.2 |
 | `canProduce` | 4.2 |
-| `createSendTransport`, `createRecvTransport` | 4.2 |
-| `observer`: `newtransport` | 4.2 |
+| `createSendTransport`, `createRecvTransport` | 4.3 |
+| `observer`: `newtransport` | 4.3 |
 
 ## Transport
 
