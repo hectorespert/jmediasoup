@@ -6,6 +6,6 @@
  * java.util.ArrayList}s that keeps the order of the lines, like the object of sdp-transform.
  */
 @NullMarked
-package io.github.hectorespert.jmediasoup.internal.sdp;
+package io.github.hectorespert.jmediasoup.internal.sdptransform;
 
 import org.jspecify.annotations.NullMarked;

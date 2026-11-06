@@ -2,7 +2,7 @@
  * Copyright 2026 Hector Espert
  * SPDX-License-Identifier: Apache-2.0
  */
-package io.github.hectorespert.jmediasoup.internal.sdp;
+package io.github.hectorespert.jmediasoup.internal.sdptransform;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -17,7 +17,7 @@ import org.jspecify.annotations.Nullable;
  * The conversions of JavaScript that sdp-transform relies on, applied to the values of a parsed SDP.
  * A {@code null} value is JavaScript's {@code undefined}, as a missing key is.
  */
-final class JavaScript {
+public final class JavaScript {
 
     private static final Pattern DECIMAL = Pattern.compile("[+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?");
     private static final Pattern INFINITY = Pattern.compile("[+-]?Infinity");
@@ -30,7 +30,7 @@ final class JavaScript {
      *
      * @return the number, or {@link Double#NaN} if it is not one
      */
-    static double number(@Nullable Object value) {
+    public static double number(@Nullable Object value) {
         return switch (value) {
             case null -> Double.NaN;
             case Number number -> number.doubleValue();
@@ -44,7 +44,7 @@ final class JavaScript {
      * Converts a value as {@code String(value)} does. Integers are written exactly, even beyond the
      * 53 bits that a JavaScript number keeps.
      */
-    static String string(@Nullable Object value) {
+    public static String string(@Nullable Object value) {
         return switch (value) {
             case null -> "undefined";
             case String text -> text;
@@ -62,7 +62,7 @@ final class JavaScript {
     }
 
     /** Writes a number as JavaScript does: the shortest digits, with an exponent only if needed. */
-    static String numberToString(double number) {
+    public static String numberToString(double number) {
         if (Double.isNaN(number)) {
             return "NaN";
         }
@@ -86,6 +86,19 @@ final class JavaScript {
                 + "e"
                 + (exponent >= 0 ? "+" : "-")
                 + Math.abs(exponent);
+    }
+
+    /** Returns whether a value is truthy, as {@code if (value)} checks it. */
+    public static boolean truthy(@Nullable Object value) {
+        return switch (value) {
+            case null -> false;
+            case String text -> !text.isEmpty();
+            case Double number -> number != 0 && !number.isNaN();
+            case Float number -> number != 0 && !number.isNaN();
+            case Number number -> number.doubleValue() != 0;
+            case Boolean bool -> bool;
+            default -> true;
+        };
     }
 
     private static double number(String str) {

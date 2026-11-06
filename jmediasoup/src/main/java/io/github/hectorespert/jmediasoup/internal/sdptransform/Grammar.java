@@ -2,7 +2,7 @@
  * Copyright 2026 Hector Espert
  * SPDX-License-Identifier: Apache-2.0
  */
-package io.github.hectorespert.jmediasoup.internal.sdp;
+package io.github.hectorespert.jmediasoup.internal.sdptransform;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -83,18 +83,6 @@ public final class Grammar {
         return o -> format;
     }
 
-    // Whether a value is truthy in JavaScript, as the original formats check with (o.x).
-    static boolean truthy(@Nullable Object value) {
-        return switch (value) {
-            case null -> false;
-            case String text -> !text.isEmpty();
-            case Double number -> number != 0 && !number.isNaN();
-            case Number number -> number.doubleValue() != 0;
-            case Boolean bool -> bool;
-            default -> true;
-        };
-    }
-
     private static Map<Character, List<Rule>> rules() {
         var rules = new LinkedHashMap<Character, List<Rule>>();
         rules.put('v', List.of(value("version", "^(\\d*)$", "%s")));
@@ -151,9 +139,9 @@ public final class Grammar {
                         "rtp",
                         "^rtpmap:(\\d*) ([\\w\\-.]*)(?:\\s*\\/(\\d*)(?:\\s*\\/(\\S*))?)?",
                         List.of("payload", "codec", "rate", "encoding"),
-                        o -> truthy(o.get("encoding"))
+                        o -> JavaScript.truthy(o.get("encoding"))
                                 ? "rtpmap:%d %s/%s/%s"
-                                : truthy(o.get("rate")) ? "rtpmap:%d %s/%s" : "rtpmap:%d %s"),
+                                : JavaScript.truthy(o.get("rate")) ? "rtpmap:%d %s/%s" : "rtpmap:%d %s"),
                 push(
                         // a=fmtp:108 profile-level-id=24;object=23;bitrate=64000
                         // a=fmtp:111 minptime=10; useinbandfec=1
@@ -186,10 +174,10 @@ public final class Grammar {
                         "^extmap:(\\d+)(?:\\/(\\w+))?(?: (urn:ietf:params:rtp-hdrext:encrypt))? (\\S*)(?: (\\S*))?",
                         List.of("value", "direction", "encrypt-uri", "uri", "config"),
                         o -> "extmap:%d"
-                                + (truthy(o.get("direction")) ? "/%s" : "%v")
-                                + (truthy(o.get("encrypt-uri")) ? " %s" : "%v")
+                                + (JavaScript.truthy(o.get("direction")) ? "/%s" : "%v")
+                                + (JavaScript.truthy(o.get("encrypt-uri")) ? " %s" : "%v")
                                 + " %s"
-                                + (truthy(o.get("config")) ? " %s" : "")),
+                                + (JavaScript.truthy(o.get("config")) ? " %s" : "")),
                 // a=extmap-allow-mixed
                 value("extmapAllowMixed", "^(extmap-allow-mixed)", "%s"),
                 push(
@@ -318,7 +306,7 @@ public final class Grammar {
                         "rids",
                         "^rid:([\\d\\w]+) (\\w+)(?: ([\\S| ]*))?",
                         List.of("id", "direction", "params"),
-                        o -> truthy(o.get("params")) ? "rid:%s %s %s" : "rid:%s %s"),
+                        o -> JavaScript.truthy(o.get("params")) ? "rid:%s %s %s" : "rid:%s %s"),
                 push(
                         // a=imageattr:97 send [x=800,y=640,sar=1.1,q=0.6] [x=480,y=320] recv [x=330,y=250]
                         // a=imageattr:* send [x=800,y=640] recv *
@@ -331,7 +319,7 @@ public final class Grammar {
                                 // recv [x=330,y=250]
                                 + "(?:[\\s\\t]+(recv|send)[\\s\\t]+(\\*|\\[\\S+\\](?:[\\s\\t]+\\[\\S+\\])*))?",
                         List.of("pt", "dir1", "attrs1", "dir2", "attrs2"),
-                        o -> "imageattr:%s %s %s" + (truthy(o.get("dir2")) ? " %s %s" : "")),
+                        o -> "imageattr:%s %s %s" + (JavaScript.truthy(o.get("dir2")) ? " %s %s" : "")),
                 object(
                         // a=simulcast:send 1,2,3;~4,~5 recv 6;~7,~8
                         // a=simulcast:recv 1;4,5 send 6;7
@@ -345,7 +333,7 @@ public final class Grammar {
                                 // end
                                 + "$",
                         List.of("dir1", "list1", "dir2", "list2"),
-                        o -> "simulcast:%s %s" + (truthy(o.get("dir2")) ? " %s %s" : "")),
+                        o -> "simulcast:%s %s" + (JavaScript.truthy(o.get("dir2")) ? " %s %s" : "")),
                 object(
                         // old simulcast draft 03 (implemented by Firefox)
                         //   https://tools.ietf.org/html/draft-ietf-mmusic-sdp-simulcast-03

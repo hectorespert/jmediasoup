@@ -2,10 +2,10 @@
  * Copyright 2026 Hector Espert
  * SPDX-License-Identifier: Apache-2.0
  */
-package io.github.hectorespert.jmediasoup.internal.sdp;
+package io.github.hectorespert.jmediasoup.internal.sdptransform;
 
-import static io.github.hectorespert.jmediasoup.internal.sdp.ParserTest.at;
-import static io.github.hectorespert.jmediasoup.internal.sdp.ParserTest.map;
+import static io.github.hectorespert.jmediasoup.internal.sdptransform.ParserTest.at;
+import static io.github.hectorespert.jmediasoup.internal.sdptransform.ParserTest.map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;

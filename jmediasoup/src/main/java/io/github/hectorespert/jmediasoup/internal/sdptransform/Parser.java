@@ -2,7 +2,7 @@
  * Copyright 2026 Hector Espert
  * SPDX-License-Identifier: Apache-2.0
  */
-package io.github.hectorespert.jmediasoup.internal.sdp;
+package io.github.hectorespert.jmediasoup.internal.sdptransform;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
