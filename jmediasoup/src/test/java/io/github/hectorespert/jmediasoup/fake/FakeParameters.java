@@ -7,11 +7,16 @@ package io.github.hectorespert.jmediasoup.fake;
 import io.github.hectorespert.jmediasoup.ConsumerOptions;
 import io.github.hectorespert.jmediasoup.DataConsumerOptions;
 import io.github.hectorespert.jmediasoup.rtp.RtpCapabilities;
+import io.github.hectorespert.jmediasoup.transport.DtlsFingerprint;
+import io.github.hectorespert.jmediasoup.transport.DtlsParameters;
+import io.github.hectorespert.jmediasoup.transport.DtlsRole;
+import io.github.hectorespert.jmediasoup.transport.FingerprintAlgorithm;
 import io.github.hectorespert.jmediasoup.transport.TransportOptions;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import tools.jackson.databind.json.JsonMapper;
@@ -40,6 +45,19 @@ public final class FakeParameters {
     /** The native RTP capabilities of pymediasoup's {@code FakeHandler}. */
     public static RtpCapabilities nativeRtpCapabilities() {
         return read("native-rtp-capabilities", RtpCapabilities.class);
+    }
+
+    /**
+     * The local DTLS parameters of {@code FakeHandler}, {@code generateLocalDtlsParameters} of the
+     * tests of mediasoup-client.
+     */
+    public static DtlsParameters localDtlsParameters() {
+        return new DtlsParameters(
+                DtlsRole.AUTO,
+                List.of(
+                        new DtlsFingerprint(
+                                FingerprintAlgorithm.SHA_256,
+                                "82:5A:68:3D:36:C3:0A:DE:AF:E7:32:43:D2:88:83:57:AC:2D:65:E5:80:C4:B6:FB:AF:1A:A0:21:9F:6D:0C:AD")));
     }
 
     /** The parameters of a new mediasoup transport, {@code generateTransportRemoteParameters}. */

@@ -20,11 +20,13 @@ class TransportEnumsTest {
         assertRoundTrip(FingerprintAlgorithm.values(), FingerprintAlgorithm::value, FingerprintAlgorithm::fromValue);
         assertRoundTrip(DtlsRole.values(), DtlsRole::value, DtlsRole::fromValue);
         assertRoundTrip(ConnectionState.values(), ConnectionState::value, ConnectionState::fromValue);
+        assertRoundTrip(IceGatheringState.values(), IceGatheringState::value, IceGatheringState::fromValue);
         assertRoundTrip(TransportDirection.values(), TransportDirection::value, TransportDirection::fromValue);
         assertRoundTrip(IceTransportPolicy.values(), IceTransportPolicy::value, IceTransportPolicy::fromValue);
 
         assertEquals("sha-256", FingerprintAlgorithm.SHA_256.value());
         assertEquals("disconnected", ConnectionState.DISCONNECTED.value());
+        assertEquals("gathering", IceGatheringState.GATHERING.value());
         assertThrows(IllegalArgumentException.class, () -> DtlsRole.fromValue("AUTO"));
     }
 

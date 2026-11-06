@@ -26,13 +26,13 @@ Phases 1 (foundations), 2 (ORTC) and 3 (SDP) are done, except for checking the S
 
 - the root package: the exceptions (`MediasoupClientException`, a checked base, with `UnsupportedException` and `InvalidStateException`), `Subscription`, `DataChannelMessage`, and the producer and consumer options;
 - `rtp`, `sctp` and `transport`: the models, as validated, immutable records;
-- `handler`: the contract with the WebRTC stack for custom handlers, so far `DataChannel`.
+- `handler`: the contract with the WebRTC stack for custom handlers, the one of mediasoup-client 3.26: `HandlerFactory` (native capabilities by direction, `create`), `Handler`, which reports to its transport through the `HandlerListener` in its `HandlerOptions`, their options and results, and `DataChannel`.
 
 Internal packages go under `io.github.hectorespert.jmediasoup.internal` and are not exported. `internal.Checks` validates the model constructors, `internal.ParameterValues` compares codec parameters, `internal.h264` is the port of h264-profile-level-id, `internal.ortc` is the port of `ortc.py` (following mediasoup-client where they differ), `internal.sdptransform` is the port of sdp-transform, whose parsed SDP is a tree of mutable maps and lists, `internal.sdp` holds the SDP handling of mediasoup-client on top of it, and `internal.event` delivers events to listeners and calls the user's asynchronous handlers (`connect`, `produce`); use it for every event. The Javadoc task leaves the internal packages out, patching their compiled classes into the module so that the public sources still resolve.
 
 Models that travel as JSON carry Jackson annotations and no runtime JSON code: `@JsonInclude(NON_NULL)` and `@JsonIgnoreProperties(ignoreUnknown = true)` on each record, `@JsonProperty(required = true)` on required primitive components, and `@JsonValue`/`@JsonCreator` on the `value()`/`fromValue()` of each enum. Test them with both Jackson 2 and 3 through `json.WithEachJackson`.
 
-Tests that need a track or a data channel use `fake.FakeMediaStreamTrack` and `fake.FakeDataChannel`, test-only implementations that work without the webrtc-java natives. `fake.FakeParameters` returns what a mediasoup server would send, loaded from the JSON files in `src/test/resources/fixtures/`.
+Tests that need a track, a data channel or a handler use `fake.FakeMediaStreamTrack`, `fake.FakeDataChannel` and `fake.FakeHandler` (the port of mediasoup-client's), test-only implementations that work without the webrtc-java natives. `fake.FakeParameters` returns what a mediasoup server would send, loaded from the JSON files in `src/test/resources/fixtures/`.
 
 The WebRTC stack is [webrtc-java](https://github.com/devopvoid/webrtc-java); the results of the spike that validated it, and what they mean for the design, are in section 0.3 of TODO.md.
 

@@ -57,6 +57,7 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 - Handlers asíncronos (sección 1.2): `connect` y `produce` son interfaces propias (`ConnectHandler`, `ProduceHandler` con un record de petición) que devuelven un `CompletionStage`. Si el handler lanza, devuelve `null` o su stage falla, la operación falla con `MediasoupClientException` y la causa original. jmediasoup no pone timeout; lo pone el usuario en su señalización.
 - Tipos de texto cerrado como enums con su valor JSON.
 - La API pública usa los tipos de webrtc-java (`MediaStreamTrack`, `RTCRtpSender`...), como pymediasoup usa los de aiortc. Solo el data channel tiene abstracción propia (`handler.DataChannel`, sección 1.7); sender y receiver se exponen como `@Nullable` y son `null` con `FakeHandler`, que usa una subclase de prueba de `MediaStreamTrack`. Se necesita el jar de webrtc-java, pero no sus nativos, salvo con `WebRtcJavaHandler`. Deja fuera Android.
+- Handler (sección 4.1): contrato de mediasoup-client 3.26 en el paquete `handler`, con los nombres `Handler` y `HandlerFactory`. La factory da las capacidades nativas por dirección y crea handlers ya listos; el handler avisa al transporte por un `HandlerListener` que recibe en sus opciones, y tiene desde el principio todos los métodos de 3.26.
 - Un único artefacto, `jmediasoup`, con el handler pluggable por interfaz. `FakeHandler` solo en tests, como en pymediasoup.
 - Dependencias: webrtc-java, `jackson-annotations` y JSpecify como `api`; SLF4J como `implementation`; `jackson-databind` solo en tests. Los nativos de webrtc-java los declara el usuario, con instrucciones para Gradle y Maven.
 - Nulos con JSpecify: `@NullMarked` en cada paquete y `@Nullable` en lo opcional.
@@ -539,30 +540,30 @@ Origen: `RemoteSdp.ts` de mediasoup-client 3.26 (antes `pymediasoup/handlers/sdp
 
 ## Fase 4: Device y Transport con FakeHandler
 
-### 4.1 HandlerInterface y FakeHandler
+### 4.1 Handler y FakeHandler
 
-Origen: `pymediasoup/handlers/handler_interface.py`, `pymediasoup/models/handler_interface.py`, `tests/fake_handler.py`
+Origen: `HandlerInterface.ts` y `FakeHandler.ts` de mediasoup-client 3.26 (antes `pymediasoup/handlers/handler_interface.py`, `pymediasoup/models/handler_interface.py`, `tests/fake_handler.py`). El contrato es el de mediasoup-client, coherente con la `2.4`: la factory da las capacidades nativas por dirección y crea handlers ya listos, sin `run`. El `FakeHandler` de pymediasoup hereda de `AiortcHandler` y usa la pila real, así que se porta el de mediasoup-client.
 
-- [ ] `4.1.1` `HandlerInterface`, con todos sus métodos y `CompletableFuture`, en el paquete `handler` junto a sus opciones y resultados.
-- [ ] `4.1.2` Listeners `@connect` y `@connectionstatechange` del handler.
-- [ ] `4.1.3` `HandlerRunOptions`.
-- [ ] `4.1.4` `HandlerSendOptions` y `HandlerSendResult`, con `@Nullable RTCRtpSender` (`1.7.2`).
-- [ ] `4.1.5` `HandlerReceiveOptions` y `HandlerReceiveResult`, con el track y `@Nullable RTCRtpReceiver` (`1.7.3`).
-- [ ] `4.1.6` `HandlerSendDataChannelResult`, `HandlerReceiveDataChannelOptions` y `HandlerReceiveDataChannelResult`, con `handler.DataChannel`.
-- [ ] `4.1.7` `HandlerFactory`.
-- [ ] `4.1.8` `FakeHandler`: capacidades nativas fijas.
-- [ ] `4.1.9` `FakeHandler`: `run`, `send` y `receive` sin WebRTC, generando IDs y parámetros.
-- [ ] `4.1.10` `FakeHandler`: permitir simular cambios de estado y fallos.
+- [x] `4.1.1` `Handler`, con todos los métodos de mediasoup-client 3.26 y `CompletableFuture`, en el paquete `handler` junto a sus opciones y resultados. Incluye `pauseSending`, `resumeSending`, `receive`, `stopReceiving`, `pauseReceiving` y `resumeReceiving` por lotes, y `getDataChannelMaxMessageSize`, que la Fase 14 usará sin cambiar la interfaz. Las estadísticas son `RTCStatsReport` y `setRtpEncodingParameters` recibe `RTCRtpEncodingParameters` de webrtc-java (`0.5.5`).
+- [x] `4.1.2` Eventos del handler (`@connect`, `@connectionstatechange`, `@icegatheringstatechange`, `@icecandidateerror`) como un `HandlerListener` que el transporte pasa en `HandlerOptions`; `connect` devuelve un `CompletionStage` que el handler espera. Nuevo enum `transport.IceGatheringState`.
+- [x] `4.1.3` `HandlerOptions` (antes `HandlerRunOptions`): dirección, parámetros ICE, DTLS y SCTP, servidores ICE, política ICE, la función `getSendExtendedRtpCapabilities` y el listener. `additionalSettings` llega con la `10.2.8`.
+- [x] `4.1.4` `HandlerSendOptions` (con `streamId`) y `HandlerSendResult`, con `@Nullable RTCRtpSender` (`1.7.2`).
+- [x] `4.1.5` `HandlerReceiveOptions` (con `streamId`) y `HandlerReceiveResult`, con el track y `@Nullable RTCRtpReceiver` (`1.7.3`).
+- [x] `4.1.6` `HandlerSendDataChannelOptions`, `HandlerSendDataChannelResult`, `HandlerReceiveDataChannelOptions` y `HandlerReceiveDataChannelResult`, con `handler.DataChannel`.
+- [x] `4.1.7` `HandlerFactory`: `name`, `getNativeRtpCapabilities(direction)`, `getNativeSctpCapabilities` (que mediasoup-client 3.26 ya no tiene, pero `Device.sctpCapabilities` de pymediasoup necesita) y `create(options)`.
+- [x] `4.1.8` `FakeHandler`: capacidades nativas fijas (`FakeParameters`) en las dos direcciones, y SCTP con `OS` y `MIS` de 1024.
+- [x] `4.1.9` `FakeHandler`: `send`, `receive` y los data channels sin WebRTC, generando IDs y parámetros. Pide al transporte que conecte antes del primer envío (rol DTLS `server`) o recepción (`client`). ⚠️ no copiar: el original da al data channel un id y devuelve el siguiente; aquí son el mismo.
+- [x] `4.1.10` `FakeHandler`: simular cambios de estado (`setConnectionState`, `setIceGatheringState`) y fallos (`failNextOperation`). Su factory guarda los handlers que crea, para que los tests los manejen.
 
 ### 4.2 Device
 
 Origen: `pymediasoup/device.py`
 
 - [ ] `4.2.1` Constructor con `HandlerFactory`.
-- [ ] `4.2.2` `load`: obtener las capacidades nativas de envío y de recepción con un handler temporal.
+- [ ] `4.2.2` `load`: obtener las capacidades nativas de envío y de recepción de la `HandlerFactory`.
 - [ ] `4.2.3` `load`: calcular las capacidades extendidas y las capacidades de recepción y de envío (`2.4`), y `canProduce` con `canSend`. Opción `preferLocalCodecsOrder`, de mediasoup-client.
 - [ ] `4.2.4` `load`: capacidades SCTP.
-- [ ] `4.2.5` `load`: cerrar el handler temporal también si hay error. ⚠️ no copiar: el original no lo cierra si falla.
+- [x] `4.2.5` `load`: cerrar el handler temporal también si hay error: no aplica, porque la factory da las capacidades sin crear un handler (`4.1`).
 - [ ] `4.2.6` `load` repetido: decidir si falla como mediasoup-client. El original avisa y vuelve.
 - [ ] `4.2.7` `loaded`, `handlerName`.
 - [ ] `4.2.8` `rtpCapabilities` y `sctpCapabilities`, con `InvalidStateError` si no está cargado.
@@ -575,7 +576,7 @@ Origen: `pymediasoup/device.py`
 
 Origen: `pymediasoup/transport.py`
 
-- [ ] `4.3.1` Constructor: crear el handler y llamar a `run`. Recibe las opciones internas (`InternalTransportOptions` en el original, antes `1.5.10`): dirección, `HandlerFactory`, capacidades RTP de recepción, la función que calcula las extendidas de envío a partir de las nativas (`getSendExtendedRtpCapabilities` en mediasoup-client) y `canProduceByKind`.
+- [ ] `4.3.1` Constructor: crear el handler con `HandlerFactory.create`, pasándole un `HandlerListener` que lleve sus eventos a la cola del transporte. Recibe las opciones internas (`InternalTransportOptions` en el original, antes `1.5.10`): dirección, `HandlerFactory`, capacidades RTP de recepción, la función que calcula las extendidas de envío a partir de las nativas (`getSendExtendedRtpCapabilities` en mediasoup-client) y `canProduceByKind`.
 - [ ] `4.3.2` Cola serializada por transporte para las operaciones de handler y la entrega de eventos (`0.5.2`). ⚠️ no copiar: el original no tiene cola (`NOTE: Mediasoup client enqueue command here`). En Java hay concurrencia real.
 - [ ] `4.3.3` Rechazar las operaciones pendientes de la cola al cerrar.
 - [ ] `4.3.4` Propiedades `id`, `closed`, `direction`, `handler`, `connectionState` y `appData`.
@@ -645,11 +646,11 @@ Origen: `pymediasoup/handlers/aiortc_handler.py`
 - [ ] `5.1.2` Gestión compartida de `PeerConnectionFactory`, con su ciclo de vida y su cierre.
 - [ ] `5.1.3` Adaptadores de las interfaces de la sección 1.7 sobre webrtc-java.
 - [ ] `5.1.4` Convertir en futuros los callbacks `createOffer`, `createAnswer`, `setLocalDescription` y `setRemoteDescription`.
-- [ ] `5.1.5` `createFactory`, `name`.
+- [ ] `5.1.5` La `HandlerFactory` de `WebRtcJavaHandler`, con `name`.
 - [ ] `5.1.6` `getNativeRtpCapabilities` por dirección (`sendonly` o `recvonly`), con peer connection temporal (según `0.3.17`).
 - [ ] `5.1.7` `getNativeSctpCapabilities` (`OS` y `MIS` de 1024).
-- [ ] `5.1.8` `run`: `RemoteSdp` y parámetros de envío por tipo.
-- [ ] `5.1.9` `run`: configuración de la peer connection con `iceServers` y `iceTransportPolicy`.
+- [ ] `5.1.8` Constructor: `RemoteSdp` y parámetros de envío por tipo.
+- [ ] `5.1.9` Constructor: configuración de la peer connection con `iceServers` y `iceTransportPolicy`.
 - [ ] `5.1.10` Mapear el estado ICE a `ConnectionState`.
 - [ ] `5.1.11` `close`, liberando los recursos nativos.
 - [ ] `5.1.12` `setupTransport`: extraer DTLS, fijar el rol, avisar por `@connect` y esperar el resultado.
@@ -1160,14 +1161,14 @@ Cubre la API de pymediasoup. `Fase` es la fase donde queda funcional; una propie
 | Eventos `open`, `error`, `message`, `transportclose` | 9.2 |
 | `observer`: `close` | 9.2 |
 
-## HandlerInterface y AiortcHandler (WebRtcJavaHandler)
+## HandlerInterface (Handler) y AiortcHandler (WebRtcJavaHandler)
 
 | Elemento | Fase |
 |---|---|
 | `name`, `createFactory`, `close` | 5.1 |
 | `pc`, `remoteSdp` (accesores internos) | 5.1 |
 | `getNativeRtpCapabilities`, `getNativeSctpCapabilities` | 5.1 |
-| `run` | 5.1 |
+| `run` (constructor del handler en jmediasoup) | 4.1, 5.1 |
 | `_setupTransport`, `_assertSendDirection`, `_assertRecvDirection` | 5.1 |
 | `receive`, `stopReceiving` | 5.2 |
 | `send`, `stopSending` | 6.2 |
@@ -1221,7 +1222,7 @@ Cubre la API de pymediasoup. `Fase` es la fase donde queda funcional; una propie
 | `RTCIceServer` de aiortc (`IceServer`) | 1.5 |
 | `ProducerCodecOptions`, `ProducerOptions`, `ConsumerOptions`, `DataProducerOptions`, `DataConsumerOptions` | 1.6 |
 | `MediaStreamTrackKind` | 1.3 (`MediaKind`) |
-| `HandlerRunOptions`, `HandlerSendOptions`, `HandlerSendResult`, `HandlerReceiveOptions`, `HandlerReceiveResult` | 4.1 |
+| `HandlerRunOptions` (`HandlerOptions`), `HandlerSendOptions`, `HandlerSendResult`, `HandlerReceiveOptions`, `HandlerReceiveResult` | 4.1 |
 | `HandlerSendDataChannelResult`, `HandlerReceiveDataChannelOptions`, `HandlerReceiveDataChannelResult` | 4.1 |
 | `ScalabilityMode`, `parse` (internos) | 2.2 |
 
