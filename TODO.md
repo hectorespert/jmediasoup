@@ -609,13 +609,13 @@ Origen: `pymediasoup/producer.py`, `pymediasoup/transport.py`
 
 Origen: `pymediasoup/consumer.py`, `pymediasoup/transport.py`
 
-- [ ] `4.5.1` `Consumer`: propiedades `id`, `localId`, `producerId`, `closed`, `kind`, `rtpReceiver`, `track`, `rtpParameters`, `paused` y `appData`.
-- [ ] `4.5.2` `Consumer.close`.
-- [ ] `4.5.3` `Consumer.transportClosed` y evento `transportclose`.
-- [ ] `4.5.4` `Transport.consume`: validaciones y `canReceive`.
-- [ ] `4.5.5` `Transport.consume`: flujo con handler y registro del consumer. ⚠️ no copiar: el original no pasa `rtpReceiver` al `Consumer`.
-- [ ] `4.5.6` Conectar `@close` del consumer con `handler.stopReceiving`.
-- [ ] `4.5.7` `Consumer.observer` con `close`.
+- [x] `4.5.1` `Consumer`: propiedades `id`, `localId`, `producerId`, `closed`, `kind`, `rtpReceiver`, `track`, `rtpParameters`, `paused` y `appData`. `kind` sale de `ConsumerOptions` y `paused` empieza a `true` si el track está deshabilitado, como en mediasoup-client. `appData` sin setter.
+- [x] `4.5.2` `Consumer.close`. El observer `close` se emite en el ejecutor del transporte.
+- [x] `4.5.3` `Consumer.transportClosed` y evento `transportclose` (`onTransportClose`).
+- [x] `4.5.4` `Transport.consume`: validaciones y `canReceive`. En `RecvTransport.consume`; los campos los valida `ConsumerOptions`. Fallan en el futuro: `InvalidStateException` si está cerrado, `UnsupportedException("cannot consume this Producer")` si `canReceive` no lo admite.
+- [x] `4.5.5` `Transport.consume`: flujo con handler y registro del consumer. ⚠️ no copiar: el original no pasa `rtpReceiver` al `Consumer`. Por lotes, como mediasoup-client 3.26 (antes `14.1.1`): los `consume` que llegan mientras hay otra operación en curso se negocian juntos en un solo `handler.receive`. Si el lote falla, fallan todos sus `consume`. Al cerrar el transporte fallan los pendientes y los que el handler está recibiendo, sin esperarle. El probator va en la `8.3`.
+- [x] `4.5.6` Conectar `@close` del consumer con `handler.stopReceiving`. También por lotes (`closePendingConsumers`); un fallo solo se registra.
+- [x] `4.5.7` `Consumer.observer` con `close`. Además, el observer `newconsumer` del transporte.
 
 ### 4.6 Port de la batería de tests
 
@@ -1076,7 +1076,7 @@ La publicación en Central Portal se monta en la `7.4`, con la versión `0.1.0`.
 
 Funcionalidades de mediasoup-client (`src/Transport.ts`) que pymediasoup no tiene.
 
-- [ ] `14.1.1` Crear consumers por lotes en una sola renegociación (`createPendingConsumers`).
+- [x] `14.1.1` Crear consumers por lotes en una sola renegociación (`createPendingConsumers`): movida a `4.5.5`, con el cierre por lotes en la `4.5.6`.
 - [ ] `14.1.2` Pausar consumers por lotes (`pausePendingConsumers`).
 - [ ] `14.1.3` Reanudar consumers por lotes (`resumePendingConsumers`).
 - [x] `14.1.4` `Transport.iceGatheringState`: movida a `4.3.4`, con los eventos `icegatheringstatechange` e `icecandidateerror`.

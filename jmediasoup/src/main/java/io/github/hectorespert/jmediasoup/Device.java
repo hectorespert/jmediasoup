@@ -259,8 +259,12 @@ public final class Device {
         requireNonNull(options, "options");
         requireNonNull(connect, "connect");
         Loaded current = assertLoaded();
-        return emitNewTransport(
-                new RecvTransport(options, handlerFactory, current.getSendExtendedRtpCapabilities(), connect));
+        return emitNewTransport(new RecvTransport(
+                options,
+                handlerFactory,
+                current.getSendExtendedRtpCapabilities(),
+                current.recvRtpCapabilities(),
+                connect));
     }
 
     private <T extends Transport> T emitNewTransport(T transport) {

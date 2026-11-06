@@ -82,6 +82,9 @@ public final class FakeHandler implements Handler {
     // DataChannel id value counter. It must be incremented for each new DataChannel.
     private final AtomicInteger nextSctpStreamId = new AtomicInteger();
     private final AtomicReference<@Nullable Throwable> nextFailure = new AtomicReference<>();
+    // The number of receivings in each call to receive and stopReceiving.
+    private final List<Integer> receiveBatches = new CopyOnWriteArrayList<>();
+    private final List<Integer> stopReceivingBatches = new CopyOnWriteArrayList<>();
     private volatile boolean closed;
     // Got transport local and remote parameters.
     private volatile boolean transportReady;
@@ -166,6 +169,24 @@ public final class FakeHandler implements Handler {
         synchronized (tracks) {
             return tracks.keySet().stream().map(String::valueOf).collect(Collectors.toUnmodifiableSet());
         }
+    }
+
+    /**
+     * Returns how many receivings each call to {@link #receive} asked for.
+     *
+     * @return the sizes, in the order of the calls
+     */
+    public List<Integer> receiveBatches() {
+        return List.copyOf(receiveBatches);
+    }
+
+    /**
+     * Returns how many receivings each call to {@link #stopReceiving} stopped, while not closed.
+     *
+     * @return the sizes, in the order of the calls
+     */
+    public List<Integer> stopReceivingBatches() {
+        return List.copyOf(stopReceivingBatches);
     }
 
     /**
@@ -295,6 +316,7 @@ public final class FakeHandler implements Handler {
 
     @Override
     public CompletableFuture<List<HandlerReceiveResult>> receive(List<HandlerReceiveOptions> optionsList) {
+        receiveBatches.add(optionsList.size());
         return start().thenCompose(ignored -> setupTransport(DtlsRole.CLIENT)).thenApply(ignored -> {
             var results = new ArrayList<HandlerReceiveResult>();
             for (HandlerReceiveOptions receiveOptions : optionsList) {
@@ -314,6 +336,7 @@ public final class FakeHandler implements Handler {
         if (closed) {
             return CompletableFuture.completedFuture(null);
         }
+        stopReceivingBatches.add(localIds.size());
         return run(() -> {
             localIds.forEach(localId -> tracks.remove(localId(localId)));
             return null;
