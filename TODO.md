@@ -71,7 +71,7 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 - ORTC (sección 2.3): donde pymediasoup y mediasoup-client difieren, se sigue a mediasoup-client, que tiene la versión actual del algoritmo. La API sigue siendo la de pymediasoup.
 - Capacidades (sección 2.4): modelo de mediasoup-client 3.26. El handler da capacidades nativas por dirección, `Device.load` calcula unas capacidades extendidas de recepción y otras de envío (con la opción `preferLocalCodecsOrder`), y `canSend` y `canReceive` trabajan sobre las capacidades de envío y de recepción, no sobre las extendidas.
 - `parameters` de codec: `Map<String, Object>` que conserva el orden y el tipo JSON de cada valor (texto o número). ORTC los compara con `internal.ParameterValues`, que trata `100`, `100L` y `"100"` como iguales. `RtpCodec` es una interfaz sellada que implementan `RtpCodecCapability` y `RtpCodecParameters`.
-- Excepciones (sección 1.1): base checked `MediasoupClientException extends Exception`, con `UnsupportedException` e `InvalidStateException` como subclases. Los métodos síncronos la declaran; en un `CompletableFuture` llega como causa del fallo (`CompletionException` en `join()`). Un argumento no válido lanza `IllegalArgumentException` y uno obligatorio que llega `null`, `NullPointerException`. Los `Exception` genéricos del original (SDP o transceiver inesperados) lanzan la base.
+- Excepciones (sección 1.1): base checked `MediasoupClientException extends Exception`, con `UnsupportedException` e `InvalidStateException` como subclases. Los métodos síncronos la declaran; en un `CompletableFuture` llega como causa del fallo (`CompletionException` en `join()`). Un argumento no válido lanza `IllegalArgumentException` y uno obligatorio que llega `null`, `NullPointerException`. Los `Exception` genéricos del original (SDP o transceiver inesperados) lanzan la base. Un codec elegido en `ProducerOptions.codec` que no se puede enviar lanza `UnsupportedException` (sección 2.5), aunque el original lanza `TypeError`.
 - `module-info.java` desde el principio, exportando solo los paquetes públicos. Los paquetes internos van bajo `io.github.hectorespert.jmediasoup.internal` (`.internal.sdp`, `.internal.h264`...) y no se exportan.
 - Los tests se ejecutan dentro del módulo de la librería (whitebox, con `--patch-module`) mediante el plugin `org.gradlex.java-module-testing`. Así ven los paquetes internos y comprueban a la vez los `requires` y `exports`.
 - Ports propios de `sdp-transform` y `h264-profile-level-id` como paquetes internos. No hay alternativa Java aprovechable (ver `0.5.13`). El SDP parseado se representa con `Map<String, Object>`, como el objeto de sdp-transform y el `dict` de pymediasoup.
@@ -421,19 +421,19 @@ Diferencia con mediasoup-client: allí `matchCodecs` modifica las capacidades de
 
 ### 2.5 Parámetros de envío
 
-- [ ] `2.5.1` `getSendingRtpParameters`: codecs y RTX.
-- [ ] `2.5.2` `getSendingRtpParameters`: extensiones de cabecera.
-- [ ] `2.5.3` `getSendingRemoteRtpParameters`: usar los parámetros remotos del codec.
-- [ ] `2.5.4` `getSendingRemoteRtpParameters`: reducir el feedback (Transport-CC, si no REMB, si no ninguno).
-- [ ] `2.5.5` `reduceCodecs` sin codec indicado: el primero y su RTX.
-- [ ] `2.5.6` `reduceCodecs` con codec indicado, comparando en modo estricto como mediasoup-client. ⚠️ no copiar: el `break` solo se ejecuta si hay RTX, así que sin RTX sigue añadiendo coincidencias.
-- [ ] `2.5.7` `reduceCodecs`: error si no hay coincidencia.
-- [ ] `2.5.8` `generateProbatorRtpParameters`.
+- [x] `2.5.1` `getSendingRtpParameters`: codecs y RTX, con los payload types y parámetros locales. `mid` y encodings vacíos, y RTCP vacío como en mediasoup-client.
+- [x] `2.5.2` `getSendingRtpParameters`: extensiones de cabecera que se pueden enviar, del tipo pedido o sin tipo. ⚠️ no copiar: pymediasoup descarta las que no tienen tipo.
+- [x] `2.5.3` `getSendingRemoteRtpParameters`: usar los parámetros remotos del codec.
+- [x] `2.5.4` `getSendingRemoteRtpParameters`: reducir el feedback (Transport-CC, si no REMB, si no ninguno).
+- [x] `2.5.5` `reduceCodecs` sin codec indicado: el primero y su RTX.
+- [x] `2.5.6` `reduceCodecs` con codec indicado, comparando en modo estricto como mediasoup-client. ⚠️ no copiar: el `break` solo se ejecuta si hay RTX, así que sin RTX sigue añadiendo coincidencias.
+- [x] `2.5.7` `reduceCodecs`: `UnsupportedException` si no hay coincidencia o la lista está vacía.
+- [x] `2.5.8` `generateProbatorRtpParameters`. Sin codecs de vídeo lanza `IllegalArgumentException`.
 
-**Aceptación de la Fase 2**
+**Aceptación de la Fase 2** (cumplida)
 
-- Cada función de `ortc.py` tiene tests, incluidos H264, VP9, RTX y el caso sin coincidencias.
-- Los resultados con los fixtures coinciden con los de pymediasoup o mediasoup-client, salvo los bugs marcados.
+- Cada función de `ortc.py` tiene tests, incluidos H264, VP9, RTX y el caso sin coincidencias (`OrtcMatchingTest`, `OrtcCapabilitiesTest`, `OrtcSendingTest`, `ScalabilityModeTest` y `H264ProfileLevelIdTest`).
+- Los resultados con los fixtures coinciden con los de pymediasoup o mediasoup-client, salvo los bugs marcados. Los valores esperados se han sacado leyendo el código de mediasoup-client 3.26, sin ejecutarlo.
 
 ## Fase 3: SDP
 

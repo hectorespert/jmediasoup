@@ -4,6 +4,7 @@
  */
 package io.github.hectorespert.jmediasoup.internal.ortc;
 
+import io.github.hectorespert.jmediasoup.UnsupportedException;
 import io.github.hectorespert.jmediasoup.internal.ParameterValues;
 import io.github.hectorespert.jmediasoup.internal.h264.H264ProfileLevelId;
 import io.github.hectorespert.jmediasoup.rtp.ExtendedCodec;
@@ -11,11 +12,15 @@ import io.github.hectorespert.jmediasoup.rtp.ExtendedHeaderExtension;
 import io.github.hectorespert.jmediasoup.rtp.ExtendedRtpCapabilities;
 import io.github.hectorespert.jmediasoup.rtp.MediaKind;
 import io.github.hectorespert.jmediasoup.rtp.RtcpFeedback;
+import io.github.hectorespert.jmediasoup.rtp.RtcpParameters;
 import io.github.hectorespert.jmediasoup.rtp.RtpCapabilities;
 import io.github.hectorespert.jmediasoup.rtp.RtpCodec;
 import io.github.hectorespert.jmediasoup.rtp.RtpCodecCapability;
+import io.github.hectorespert.jmediasoup.rtp.RtpCodecParameters;
+import io.github.hectorespert.jmediasoup.rtp.RtpEncodingParameters;
 import io.github.hectorespert.jmediasoup.rtp.RtpHeaderExtension;
 import io.github.hectorespert.jmediasoup.rtp.RtpHeaderExtensionDirection;
+import io.github.hectorespert.jmediasoup.rtp.RtpHeaderExtensionParameters;
 import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -24,7 +29,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -45,6 +52,12 @@ public final class Ortc {
 
     /** The payload type of the RTP probator codec. */
     public static final int RTP_PROBATOR_CODEC_PAYLOAD_TYPE = 127;
+
+    private static final String TRANSPORT_WIDE_CC_URI =
+            "http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01";
+    private static final String ABS_SEND_TIME_URI = "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time";
+    private static final String TRANSPORT_CC = "transport-cc";
+    private static final String GOOG_REMB = "goog-remb";
 
     private static final Pattern RTX_MIME_TYPE = Pattern.compile(".+/rtx", Pattern.CASE_INSENSITIVE);
 
@@ -269,6 +282,167 @@ public final class Ortc {
                 .anyMatch(codec -> Objects.equals(codec.preferredPayloadType(), payloadType));
     }
 
+    /**
+     * Returns the RTP parameters for sending media of a kind, with the local payload types and
+     * codec parameters. The MID and the encodings are left empty, and so is the RTCP.
+     *
+     * @param kind the media kind
+     * @param extendedRtpCapabilities the extended capabilities for sending
+     * @return the codecs, each followed by its RTX codec if it has one, and the header extensions
+     *     that can be sent
+     */
+    public static RtpParameters getSendingRtpParameters(
+            MediaKind kind, ExtendedRtpCapabilities extendedRtpCapabilities) {
+        return sendingRtpParameters(kind, extendedRtpCapabilities, false);
+    }
+
+    /**
+     * Returns the RTP parameters for sending media of a kind as the remote SDP answer needs them:
+     * like {@link #getSendingRtpParameters}, but with the codec parameters of the router, and with
+     * the RTCP feedback reduced to one congestion control mechanism: transport-cc if the
+     * transport-wide-cc header extension can be sent, otherwise REMB if abs-send-time can, and
+     * otherwise none.
+     *
+     * @param kind the media kind
+     * @param extendedRtpCapabilities the extended capabilities for sending
+     * @return the RTP parameters for the remote SDP answer
+     */
+    public static RtpParameters getSendingRemoteRtpParameters(
+            MediaKind kind, ExtendedRtpCapabilities extendedRtpCapabilities) {
+        RtpParameters rtpParameters = sendingRtpParameters(kind, extendedRtpCapabilities, true);
+        Set<String> uris = rtpParameters.headerExtensions().stream()
+                .map(RtpHeaderExtensionParameters::uri)
+                .collect(Collectors.toSet());
+        Set<String> removed;
+        if (uris.contains(TRANSPORT_WIDE_CC_URI)) {
+            removed = Set.of(GOOG_REMB);
+        } else if (uris.contains(ABS_SEND_TIME_URI)) {
+            removed = Set.of(TRANSPORT_CC);
+        } else {
+            removed = Set.of(TRANSPORT_CC, GOOG_REMB);
+        }
+        List<RtpCodecParameters> codecs = rtpParameters.codecs().stream()
+                .map(codec -> new RtpCodecParameters(
+                        codec.mimeType(),
+                        codec.payloadType(),
+                        codec.clockRate(),
+                        codec.channels(),
+                        codec.parameters(),
+                        codec.rtcpFeedback().stream()
+                                .filter(feedback -> !removed.contains(feedback.type()))
+                                .toList()))
+                .toList();
+        return new RtpParameters(
+                rtpParameters.mid(),
+                codecs,
+                rtpParameters.headerExtensions(),
+                rtpParameters.encodings(),
+                rtpParameters.rtcp(),
+                rtpParameters.msid());
+    }
+
+    /**
+     * Reduces the codecs of {@link #getSendingRtpParameters} or {@link
+     * #getSendingRemoteRtpParameters} to the one to send, followed by its RTX codec if it has one.
+     *
+     * @param codecs the codecs, each followed by its RTX codec if it has one
+     * @param capCodec the codec the user chose, compared in strict mode, or {@code null} to take the
+     *     first one
+     * @return the codec to send and its RTX codec
+     * @throws UnsupportedException if there are no codecs or none matches the chosen one
+     */
+    public static List<RtpCodecParameters> reduceCodecs(
+            List<RtpCodecParameters> codecs, @Nullable RtpCodecCapability capCodec) throws UnsupportedException {
+        for (int i = 0; i < codecs.size(); i++) {
+            if (capCodec == null || matchCodecs(codecs.get(i), capCodec, true) != null) {
+                if (i + 1 < codecs.size() && isRtxCodec(codecs.get(i + 1))) {
+                    return List.of(codecs.get(i), codecs.get(i + 1));
+                }
+                return List.of(codecs.get(i));
+            }
+        }
+        throw new UnsupportedException("no matching codec found");
+    }
+
+    /**
+     * Returns the RTP parameters of the consumer for the RTP probator: the first codec of the
+     * video, with the probator payload type, and its header extensions.
+     *
+     * @param videoRtpParameters the RTP parameters of a video producer
+     * @return the RTP parameters with the probator MID, SSRC and CNAME
+     * @throws IllegalArgumentException if the video RTP parameters have no codecs
+     */
+    public static RtpParameters generateProbatorRtpParameters(RtpParameters videoRtpParameters) {
+        if (videoRtpParameters.codecs().isEmpty()) {
+            throw new IllegalArgumentException("the video RTP parameters have no codecs");
+        }
+        RtpCodecParameters codec = videoRtpParameters.codecs().getFirst();
+        return new RtpParameters(
+                RTP_PROBATOR_MID,
+                List.of(new RtpCodecParameters(
+                        codec.mimeType(),
+                        RTP_PROBATOR_CODEC_PAYLOAD_TYPE,
+                        codec.clockRate(),
+                        codec.channels(),
+                        codec.parameters(),
+                        codec.rtcpFeedback())),
+                videoRtpParameters.headerExtensions(),
+                List.of(RtpEncodingParameters.builder().ssrc(RTP_PROBATOR_SSRC).build()),
+                new RtcpParameters("probator", null, null),
+                null);
+    }
+
+    private static RtpParameters sendingRtpParameters(
+            MediaKind kind, ExtendedRtpCapabilities extendedRtpCapabilities, boolean remote) {
+        var codecs = new ArrayList<RtpCodecParameters>();
+        for (ExtendedCodec extendedCodec : extendedRtpCapabilities.codecs()) {
+            if (extendedCodec.kind() != kind) {
+                continue;
+            }
+            codecs.add(new RtpCodecParameters(
+                    extendedCodec.mimeType(),
+                    extendedCodec.localPayloadType(),
+                    extendedCodec.clockRate(),
+                    extendedCodec.channels(),
+                    remote ? extendedCodec.remoteParameters() : extendedCodec.localParameters(),
+                    extendedCodec.rtcpFeedback()));
+
+            Integer rtxPayloadType = extendedCodec.localRtxPayloadType();
+            if (rtxPayloadType != null) {
+                codecs.add(new RtpCodecParameters(
+                        kind.value() + "/rtx",
+                        rtxPayloadType,
+                        extendedCodec.clockRate(),
+                        null,
+                        Map.of("apt", extendedCodec.localPayloadType()),
+                        List.of()));
+            }
+        }
+
+        var headerExtensions = new ArrayList<RtpHeaderExtensionParameters>();
+        for (ExtendedHeaderExtension extendedExtension : extendedRtpCapabilities.headerExtensions()) {
+            // Leave out the header extensions of another kind and those that cannot be sent.
+            MediaKind extensionKind = extendedExtension.kind();
+            if ((extensionKind != null && extensionKind != kind)
+                    || !isValid(extendedExtension.direction(), RtpHeaderExtensionDirection.SENDONLY)) {
+                continue;
+            }
+            headerExtensions.add(new RtpHeaderExtensionParameters(
+                    extendedExtension.uri(), extendedExtension.sendId(), extendedExtension.encrypt(), Map.of()));
+        }
+
+        return new RtpParameters(null, codecs, headerExtensions, List.of(), new RtcpParameters(null, null, null), null);
+    }
+
+    // Whether a header extension in the given direction is valid when only sending or only
+    // receiving; an absent direction is sendrecv.
+    private static boolean isValid(
+            @Nullable RtpHeaderExtensionDirection extensionDirection, RtpHeaderExtensionDirection direction) {
+        return extensionDirection == null
+                || extensionDirection == RtpHeaderExtensionDirection.SENDRECV
+                || extensionDirection == direction;
+    }
+
     private static ExtendedCodec extendedCodec(
             RtpCapabilities localCaps,
             RtpCapabilities remoteCaps,
@@ -359,9 +533,7 @@ public final class Ortc {
         for (ExtendedHeaderExtension extendedExtension : extendedRtpCapabilities.headerExtensions()) {
             RtpHeaderExtensionDirection extensionDirection = extendedExtension.direction();
             // Leave out the header extensions that are not valid in this direction.
-            if (extensionDirection != null
-                    && extensionDirection != RtpHeaderExtensionDirection.SENDRECV
-                    && extensionDirection != direction) {
+            if (!isValid(extensionDirection, direction)) {
                 continue;
             }
             headerExtensions.add(new RtpHeaderExtension(
