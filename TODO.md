@@ -68,6 +68,7 @@ Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas f
 - Opciones (sección 1.6): `ProducerOptions`, `ConsumerOptions`, `DataProducerOptions`, `DataConsumerOptions` y `ProducerCodecOptions` van en el paquete raíz, junto a las clases que las usan. Las que solo construye el usuario y no se serializan tienen sus flags como `boolean` con el valor por defecto del original en el builder. De mediasoup-client se añaden `opusNack` y `streamId`; `onRtpSender` y `onRtpReceiver` quedan para la Fase 14.
 - Excepción a la 0.5.5 (sección 1.5): los servidores ICE son un record propio, `IceServer`, porque es configuración que suele llegar como JSON y `RTCIceServer` de webrtc-java es mutable. El handler lo convierte.
 - JSON (sección 1.8): un valor de enum desconocido falla al leer, con un mensaje claro, en vez de leerse como `null`.
+- ORTC (sección 2.3): donde pymediasoup y mediasoup-client difieren, se sigue a mediasoup-client, que tiene la versión actual del algoritmo. La API sigue siendo la de pymediasoup.
 - `parameters` de codec: `Map<String, Object>` que conserva el orden y el tipo JSON de cada valor (texto o número). ORTC los compara con `internal.ParameterValues`, que trata `100`, `100L` y `"100"` como iguales. `RtpCodec` es una interfaz sellada que implementan `RtpCodecCapability` y `RtpCodecParameters`.
 - Excepciones (sección 1.1): base checked `MediasoupClientException extends Exception`, con `UnsupportedException` e `InvalidStateException` como subclases. Los métodos síncronos la declaran; en un `CompletableFuture` llega como causa del fallo (`CompletionException` en `join()`). Un argumento no válido lanza `IllegalArgumentException` y uno obligatorio que llega `null`, `NullPointerException`. Los `Exception` genéricos del original (SDP o transceiver inesperados) lanzan la base.
 - `module-info.java` desde el principio, exportando solo los paquetes públicos. Los paquetes internos van bajo `io.github.hectorespert.jmediasoup.internal` (`.internal.sdp`, `.internal.h264`...) y no se exportan.
@@ -390,15 +391,15 @@ Origen: `pymediasoup/scalability_modes.py`
 
 Origen: `pymediasoup/ortc.py`
 
-- [ ] `2.3.1` Constantes `RTP_PROBATOR_MID`, `RTP_PROBATOR_SSRC` y `RTP_PROBATOR_CODEC_PAYLOAD_TYPE`.
-- [ ] `2.3.2` `isRtxCodec`.
-- [ ] `2.3.3` `matchCodecs`: `mimeType` (sin distinguir mayúsculas), `clockRate` y `channels`.
-- [ ] `2.3.4` `matchCodecs`: H264, `packetization-mode`.
-- [ ] `2.3.5` `matchCodecs`: H264 estricto, `isSameProfile`.
-- [ ] `2.3.6` `matchCodecs`: H264 con `modify`, usando `generateProfileLevelIdForAnswer`. ⚠️ no copiar: el original muta el codec de entrada; aquí se devuelve el resultado sin mutar.
-- [ ] `2.3.7` `matchCodecs`: VP9 estricto, `profile-id`.
-- [ ] `2.3.8` `reduceRtcpFeedback`.
-- [ ] `2.3.9` `matchHeaderExtensions`.
+- [x] `2.3.1` Constantes `RTP_PROBATOR_MID`, `RTP_PROBATOR_SSRC` y `RTP_PROBATOR_CODEC_PAYLOAD_TYPE`, en `internal.ortc.Ortc`.
+- [x] `2.3.2` `isRtxCodec`, sin distinguir mayúsculas, como mediasoup-client.
+- [x] `2.3.3` `matchCodecs`: `mimeType` (sin distinguir mayúsculas), `clockRate` y `channels`. Un codec de audio sin `channels` cuenta como 1 y en vídeo se ignoran, como hace mediasoup-client al normalizar.
+- [x] `2.3.4` `matchCodecs`: H264, `packetization-mode`, que como en mediasoup-client solo se compara en modo estricto (pymediasoup lo compara siempre).
+- [x] `2.3.5` `matchCodecs`: H264 estricto, `isSameProfile`.
+- [x] `2.3.6` `matchCodecs`: H264 con `modify`, usando `generateProfileLevelIdForAnswer`. ⚠️ no copiar: el original muta el codec de entrada. Aquí `matchCodecs` devuelve un `CodecMatch` (o `null` si no coinciden) con los parámetros negociados de los dos codecs, como mediasoup-client cuando modifica ambos.
+- [x] `2.3.7` `matchCodecs`: VP9 estricto, `profile-id`, con 0 por defecto y comparando número y texto.
+- [x] `2.3.8` `reduceRtcpFeedback`, con un `parameter` vacío equivalente a ausente.
+- [x] `2.3.9` `matchHeaderExtensions`, que como en mediasoup-client solo compara `kind` si los dos lo tienen.
 
 ### 2.4 Capacidades extendidas
 
@@ -418,7 +419,7 @@ Origen: `pymediasoup/ortc.py`
 - [ ] `2.5.3` `getSendingRemoteRtpParameters`: usar los parámetros remotos del codec.
 - [ ] `2.5.4` `getSendingRemoteRtpParameters`: reducir el feedback (Transport-CC, si no REMB, si no ninguno).
 - [ ] `2.5.5` `reduceCodecs` sin codec indicado: el primero y su RTX.
-- [ ] `2.5.6` `reduceCodecs` con codec indicado. ⚠️ no copiar: el `break` solo se ejecuta si hay RTX, así que sin RTX sigue añadiendo coincidencias.
+- [ ] `2.5.6` `reduceCodecs` con codec indicado, comparando en modo estricto como mediasoup-client. ⚠️ no copiar: el `break` solo se ejecuta si hay RTX, así que sin RTX sigue añadiendo coincidencias.
 - [ ] `2.5.7` `reduceCodecs`: error si no hay coincidencia.
 - [ ] `2.5.8` `generateProbatorRtpParameters`.
 
