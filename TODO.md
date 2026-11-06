@@ -443,26 +443,28 @@ Origen: paquete `sdp-transform`
 
 Va en un paquete interno (`0.5.16`), y el SDP parseado es un `Map<String, Object>` mutable que conserva el orden de inserción (`0.5.12`).
 
-- [ ] `3.1.1` Estructura de la gramática, con regex, nombre, campos y formato por tipo de línea.
-- [ ] `3.1.2` Parser de líneas y separación entre sesión y secciones `m=`.
-- [ ] `3.1.3` Conversión numérica de campos, con la misma regla que el original.
-- [ ] `3.1.4` Líneas de sesión: `v`, `o`, `s`, `i`, `u`, `e`, `p`, `z`, `r`, `t`, `c`, `b`.
-- [ ] `3.1.5` Línea `m=` con tipo, puerto, protocolo y payloads.
-- [ ] `3.1.6` `a=rtpmap`, `a=fmtp`, `a=rtcp` y `a=rtcp-fb`.
-- [ ] `3.1.7` `a=extmap`, `a=extmap-allow-mixed`.
-- [ ] `3.1.8` `a=ice-ufrag`, `a=ice-pwd`, `a=ice-lite`, `a=ice-options`.
-- [ ] `3.1.9` `a=candidate`, `a=end-of-candidates`, `a=remote-candidates`.
-- [ ] `3.1.10` `a=fingerprint`, `a=setup`, `a=crypto`, `a=connection`.
-- [ ] `3.1.11` `a=mid`, `a=msid`, `a=msid-semantic`, `a=group`.
-- [ ] `3.1.12` `a=ssrc`, `a=ssrc-group`.
-- [ ] `3.1.13` Dirección (`sendrecv`, `sendonly`, `recvonly`, `inactive`), `a=rtcp-mux`, `a=rtcp-rsize`.
-- [ ] `3.1.14` `a=ptime`, `a=maxptime`, `a=framerate`.
-- [ ] `3.1.15` `a=rid`, `a=simulcast`, `a=simulcast:` del borrador 03.
-- [ ] `3.1.16` `a=sctp-port`, `a=max-message-size`, `a=sctpmap`.
-- [ ] `3.1.17` Resto de atributos de la gramática original, y conservar los desconocidos en `invalid`.
-- [ ] `3.1.18` `parseParams`. El `profile-level-id` debe quedar como texto (ver `extractRtpCapabilities` en el original).
-- [ ] `3.1.19` `parsePayloads`.
-- [ ] `3.1.20` Port de los casos de prueba de parseo de la librería original.
+Portado de `clux/sdp-transform` 3.0.0, la versión que usa mediasoup-client 3.26, en `internal.sdp` (`Grammar` y `Parser`). Las regex son las del original; en Java `\s` y `\S` solo cubren espacios ASCII.
+
+- [x] `3.1.1` Estructura de la gramática, con regex, nombre, campos y formato por tipo de línea (`Grammar.Rule`). Los formatos son funciones del mapa de valores, como en el original.
+- [x] `3.1.2` Parser de líneas y separación entre sesión y secciones `m=`. Acepta `\r\n`, `\r` y `\n`, e ignora las líneas que no son `x=...` con una minúscula.
+- [x] `3.1.3` Conversión numérica de campos, con la misma regla que el original (`String(Number(v)) === v`). Los números se guardan como los lee Jackson: `Integer`, `Long` o `BigInteger` según el tamaño, y `Double` si tienen decimales.
+- [x] `3.1.4` Líneas de sesión: `v`, `o`, `s`, `i`, `u`, `e`, `p`, `z`, `r`, `t`, `c`, `b`.
+- [x] `3.1.5` Línea `m=` con tipo, puerto, protocolo y payloads.
+- [x] `3.1.6` `a=rtpmap`, `a=fmtp`, `a=rtcp` y `a=rtcp-fb`.
+- [x] `3.1.7` `a=extmap`, `a=extmap-allow-mixed`.
+- [x] `3.1.8` `a=ice-ufrag`, `a=ice-pwd`, `a=ice-lite`, `a=ice-options`.
+- [x] `3.1.9` `a=candidate`, `a=end-of-candidates`, `a=remote-candidates`.
+- [x] `3.1.10` `a=fingerprint`, `a=setup`, `a=crypto`, `a=connection`.
+- [x] `3.1.11` `a=mid`, `a=msid`, `a=msid-semantic`, `a=group`.
+- [x] `3.1.12` `a=ssrc`, `a=ssrc-group`.
+- [x] `3.1.13` Dirección (`sendrecv`, `sendonly`, `recvonly`, `inactive`), `a=rtcp-mux`, `a=rtcp-rsize`.
+- [x] `3.1.14` `a=ptime`, `a=maxptime`, `a=framerate`.
+- [x] `3.1.15` `a=rid`, `a=simulcast`, `a=simulcast:` del borrador 03.
+- [x] `3.1.16` `a=sctp-port`, `a=max-message-size`, `a=sctpmap`.
+- [x] `3.1.17` Resto de atributos de la gramática original (`imageattr`, `source-filter`, `ts-refclk`, `mediaclk`, BFCP...), y conservar los desconocidos en `invalid`. También `parseRemoteCandidates`, `parseImageAttributes` y `parseSimulcastStreamList`.
+- [x] `3.1.18` `parseParams`. Una clave sin valor queda con `null`, como el `undefined` del original; las utilidades de la `3.3` lo cambian a `''`, como hace mediasoup-client al validar las capacidades. El paso de `profile-level-id` a texto también va en la `3.3` (`3.3.2`), porque el original lo hace en `extractRtpCapabilities`, no en `parseParams`.
+- [x] `3.1.19` `parsePayloads`, convirtiendo como el `Number` de JavaScript (`NaN` para lo que no es un número).
+- [x] `3.1.20` Port de los casos de prueba de parseo de la librería original (`ParserTest`, sin las comprobaciones del writer, que van en la `3.2.6`, y `CoverageTest`), con sus SDP en `src/test/resources/sdp/`.
 
 ### 3.2 Port de sdp-transform: generador
 
@@ -471,7 +473,7 @@ Va en un paquete interno (`0.5.16`), y el SDP parseado es un `Map<String, Object
 - [ ] `3.2.3` Orden de líneas de cada sección `m=`.
 - [ ] `3.2.4` Omitir los campos ausentes.
 - [ ] `3.2.5` Fin de línea `\r\n`.
-- [ ] `3.2.6` Port de los casos de prueba de escritura.
+- [ ] `3.2.6` Port de los casos de prueba de escritura, incluidas las comprobaciones del writer de `parse.test.js` (`icelite`, `jsep`).
 - [ ] `3.2.7` Round-trip parse y write con el SDP guardado en `0.3.6`.
 - [ ] `3.2.8` Comprobar que webrtc-java acepta un SDP generado por el port.
 
@@ -480,7 +482,7 @@ Va en un paquete interno (`0.5.16`), y el SDP parseado es un `Map<String, Object
 Origen: `pymediasoup/handlers/sdp/common_utils.py`, `unified_plan_utils.py`
 
 - [ ] `3.3.1` `extractRtpCapabilities`: codecs, solo de la primera sección de cada tipo.
-- [ ] `3.3.2` `extractRtpCapabilities`: parámetros desde `fmtp`.
+- [ ] `3.3.2` `extractRtpCapabilities`: parámetros desde `fmtp`, con `profile-level-id` como texto y las claves sin valor (`null` en `parseParams`) como `''`.
 - [ ] `3.3.3` `extractRtpCapabilities`: `rtcp-fb`.
 - [ ] `3.3.4` `extractRtpCapabilities`: extensiones de cabecera, omitiendo las cifradas.
 - [ ] `3.3.5` `extractDtlsParameters`: sección activa y fingerprint de sesión o de media. ⚠️ no copiar: compara con `"activate"`, y el valor correcto es `"active"`.
