@@ -22,7 +22,7 @@ Assisted-by: Claude Opus 5.5 <noreply@anthropic.com>
 
 ## Project state
 
-Phases 1 (foundations) and 2 (ORTC) are done, and Phase 3 (SDP) is in progress. There is no Device or Transport yet. The module `io.github.hectorespert.jmediasoup` exports these packages, all `@NullMarked`:
+Phases 1 (foundations), 2 (ORTC) and 3 (SDP) are done, except for checking the SDP against webrtc-java, which needs the natives (task 5.1.15). There is no Device or Transport yet. The module `io.github.hectorespert.jmediasoup` exports these packages, all `@NullMarked`:
 
 - the root package: the exceptions (`MediasoupClientException`, a checked base, with `UnsupportedException` and `InvalidStateException`), `Subscription`, `DataChannelMessage`, and the producer and consumer options;
 - `rtp`, `sctp` and `transport`: the models, as validated, immutable records;
@@ -60,3 +60,4 @@ Spotless formats Java with palantir-java-format and adds the SPDX licence header
 - Declare dependency versions in the version catalog, `gradle/libs.versions.toml`, and reference them as `libs.*` from the build script.
 - The `java-library` plugin is applied, so `api` dependencies are exposed to consumers and `implementation` dependencies are not.
 - The configuration cache is on (`gradle.properties`), so custom tasks and build logic have to be compatible with it.
+- `compileJava` records the project version in the module descriptor, where `RemoteSdp` reads it.

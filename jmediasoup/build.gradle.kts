@@ -43,6 +43,13 @@ spotless {
     }
 }
 
+// The module descriptor records the version, which the library reads at runtime (RemoteSdp writes it
+// in the origin of the SDP).
+val moduleVersion = version.toString()
+tasks.named<JavaCompile>("compileJava") {
+    options.javaModuleVersion = moduleVersion
+}
+
 tasks.named<Test>("test") {
     useJUnitPlatform()
     // slf4j-simple also receives the logs of Gradle's test worker, which are noise at INFO.

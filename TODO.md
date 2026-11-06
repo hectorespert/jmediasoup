@@ -515,27 +515,27 @@ Origen: `RemoteMediaSection.ts` de mediasoup-client 3.26 (antes `pymediasoup/han
 
 ### 3.5 RemoteSdp
 
-Origen: `pymediasoup/handlers/sdp/remote_sdp.py`
+Origen: `RemoteSdp.ts` de mediasoup-client 3.26 (antes `pymediasoup/handlers/sdp/remote_sdp.py`), en `internal.sdp.RemoteSdp`. Los `Error` del original (sección inexistente) lanzan `MediasoupClientException`. `send` con opciones de codec llega en la `11.1`, `muxMediaSectionSimulcast` en la `11.3` y `sendSctpAssociation` y `receiveSctpAssociation` en la `9.4`.
 
-- [ ] `3.5.1` Constructor con el SDP base (`origin`, `name`, `timing`).
-- [ ] `3.5.2` Indicador `ice-lite`.
-- [ ] `3.5.3` Fingerprint. ⚠️ no copiar: el filtro `sha-256` existe porque aiortc solo soporta ese; revisar qué acepta webrtc-java.
-- [ ] `3.5.4` Grupo `BUNDLE` y `msid-semantic`.
-- [ ] `3.5.5` `updateIceParameters`.
-- [ ] `3.5.6` `updateDtlsRole`.
-- [ ] `3.5.7` `getNextMediaSectionIdx` y `MediaSectionIdx`.
-- [ ] `3.5.8` `send`.
-- [ ] `3.5.9` `receive`.
-- [ ] `3.5.10` `disableMediaSection`.
-- [ ] `3.5.11` `closeMediaSection`, sin cerrar nunca la primera sección.
-- [ ] `3.5.12` `getSdp`, incrementando `sessionVersion`.
-- [ ] `3.5.13` `addMediaSection`, `replaceMediaSection` y `regenerateBundleMids`.
-- [ ] `3.5.14` Tests de añadir, cerrar y reciclar secciones.
+- [x] `3.5.1` Constructor con el SDP base (`origin`, `name`, `timing`) y `a=ice-options:ice2`. El usuario del `origin` es `jmediasoup-v<versión>`, con la versión que el build graba en el descriptor del módulo (`jmediasoup` si no la hay).
+- [x] `3.5.2` Indicador `ice-lite`.
+- [x] `3.5.3` Fingerprint: el último de los parámetros DTLS, como mediasoup-client. ⚠️ no copiar: pymediasoup filtra `sha-256` porque aiortc solo soporta ese; libwebrtc acepta los demás. Se comprueba con webrtc-java en la `5.1.15`.
+- [x] `3.5.4` Grupo `BUNDLE` y `msid-semantic`.
+- [x] `3.5.5` `updateIceParameters`.
+- [x] `3.5.6` `updateDtlsRole`, sustituyendo los parámetros DTLS en vez de modificarlos.
+- [x] `3.5.7` `getNextMediaSectionIdx` y `MediaSectionIdx`.
+- [x] `3.5.8` `send`, quitando la extensión Dependency Descriptor salvo con AV1 o H264.
+- [x] `3.5.9` `receive`, reciclando solo secciones cerradas del mismo tipo.
+- [x] `3.5.10` `disableMediaSection`, con `pauseMediaSection`, `resumeSendingMediaSection` y `resumeReceivingMediaSection` de mediasoup-client.
+- [x] `3.5.11` `closeMediaSection`, sin cerrar nunca la primera sección.
+- [x] `3.5.12` `getSdp`, incrementando `sessionVersion`.
+- [x] `3.5.13` `addMediaSection`, `replaceMediaSection` y `regenerateBundleMids`.
+- [x] `3.5.14` Tests de añadir, cerrar y reciclar secciones.
 
-**Aceptación de la Fase 3**
+**Aceptación de la Fase 3** (cumplida salvo el segundo punto, que pasa a la `5.1.15`)
 
 - El port pasa los casos de prueba de `sdp-transform` que se hayan portado.
-- `RemoteSdp` genera ofertas y respuestas que webrtc-java acepta en un test con peer connections locales.
+- `RemoteSdp` genera ofertas y respuestas que webrtc-java acepta en un test con peer connections locales: necesita los nativos, así que se comprueba en la `5.1.15`.
 
 ## Fase 4: Device y Transport con FakeHandler
 
@@ -655,7 +655,7 @@ Origen: `pymediasoup/handlers/aiortc_handler.py`
 - [ ] `5.1.12` `setupTransport`: extraer DTLS, fijar el rol, avisar por `@connect` y esperar el resultado.
 - [ ] `5.1.13` `assertSendDirection` y `assertRecvDirection`.
 - [ ] `5.1.14` Test con `Device.load` real: las capacidades incluyen Opus y VP8.
-- [ ] `5.1.15` Comprobar que webrtc-java acepta un SDP generado por el writer de la `3.2` (antes `3.2.8`).
+- [ ] `5.1.15` Comprobar que webrtc-java acepta un SDP generado por el writer de la `3.2` (antes `3.2.8`), y las ofertas y respuestas de `RemoteSdp` en peer connections locales (aceptación de la Fase 3), con el fingerprint `sha-512` que elige `RemoteSdp`.
 
 ### 5.2 Recibir
 
