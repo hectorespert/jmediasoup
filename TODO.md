@@ -51,7 +51,7 @@ Goal: a Java client for [mediasoup](https://mediasoup.org) with the same feature
 **Design** (section 0.5)
 
 - Asynchronous API with `CompletableFuture`. Whoever prefers a blocking style calls `.join()` on a virtual thread.
-- Integration tests (section 7.1): an `integrationTest` Gradle suite with Testcontainers, on the classpath, as most applications use the library; the unit tests already cover the module path, and Testcontainers is not modular. `check` depends on it, so `build` and the CI run it. Without Docker, or outside Linux until `0.4.9` is done, the tests are skipped. Locally with podman, it is enough to enable its socket and point `DOCKER_HOST` at it.
+- Integration tests (section 7.1): an `integrationTest` Gradle suite with Testcontainers, on the classpath, as most applications use the library; the unit tests already cover the module path, and Testcontainers is not modular. `check` depends on it, so `build` and the CI run it. Without Docker, or outside Linux until `0.4.9` is done, the tests are skipped. Locally with podman, it is enough to enable its socket and point `DOCKER_HOST` at it. The tests talk to the demo through its protoo signaling (section 7.2), and the media that jmediasoup receives before it can send comes from an ffmpeg container that publishes as a broadcaster (`5.2.9`).
 - webrtc-java handler (section 5.1): `WebRtcJavaHandler` in the exported package `handler.webrtc`. The handler factory supports both forms of libmediasoupclient: `createFactory(peerConnectionFactory)` uses a `PeerConnectionFactory` of the application, which stays the application's, and `createFactory()` creates its own with `HeadlessAudioDeviceModule`, released when the factory is closed (`AutoCloseable`). The tracks to send come from that same `PeerConnectionFactory`. The webrtc-java callbacks complete their futures on a virtual thread, so nothing of jmediasoup runs on the signaling thread of the factory. The tests with natives go in the `test` task, with the classifier picked by OS and CPU.
 - Transports (section 4.3): two types, `SendTransport` and `RecvTransport`, which extend a sealed class `Transport`, like libmediasoupclient and mediasoup-client-android, instead of the single `Transport` of pymediasoup. So `produce` only exists on the send one and `consume` on the receive one. They are created with the handlers as separate arguments: `createSendTransport(options, connect, produce)` and `createRecvTransport(options, connect)`. `producedata` will be added in Phase 9 with a four-parameter overload. `ConnectHandler` returns a `CompletionStage<?>` whose value is ignored, so that the signaling future can be returned directly. `appData` is read-only, as in pymediasoup (its setter raises an exception); a setter could be added without breaking anything. The events that `close()` causes (the `close` observer, `transportclose`) are delivered afterwards, on the transport executor, like the `newtransport` of the `Device`.
 - Threading (section 4.3): each transport has a serial executor (`internal.event.SerialExecutor`) over shared virtual threads, where all the user code runs: listeners and handlers. None of it runs on a native thread or on the caller's, nor two at once, and it can block without stopping the factory; it does not inherit thread-locals (`MDC`). Operations (`produce`, `consume`...) also go through a queue like the `AwaitQueue` of mediasoup-client (`internal.event.OperationQueue`), which chains them one at a time and on close rejects the pending ones with `InvalidStateException`. Handler events do not wait for the queue: they are delivered as soon as they arrive, on the serial executor, as in mediasoup-client. Our own classes instead of Guava (`MoreExecutors.newSequentialExecutor`, `ExecutionSequencer`), which was removed in `0.1.3` and does not reject what is pending. `ReentrantLock` is used instead of `synchronized` so as not to pin virtual threads on Java 21–23.
@@ -674,9 +674,9 @@ Origin: `pymediasoup/handlers/aiortc_handler.py`
 - [x] `5.2.6` `applyCodecParameters` for Opus. ⚠️ do not copy: the original looks for `rmtp` instead of `fmtp`. In `CommonUtils`, like mediasoup-client: `stereo` from the `sprop-stereo` of the offer. ⚠️ do not copy: mediasoup-client writes `key=undefined` for a parameter without a value; here the key is written alone.
 - [x] `5.2.7` Return the track and the receiver wrapped in the abstractions: unwrapped, those of webrtc-java (`1.7.2`, `1.7.3`). The id of the remote track is the consumer id.
 - [x] `5.2.8` `stopReceiving`: close the section and renegotiate. The first section is disabled instead of closed, because it carries the BUNDLE transport; the others are closed and webrtc-java removes their transceiver.
-- [ ] `5.2.9` E2E test: receive audio from a producer of the server.
-- [ ] `5.2.10` E2E test: receive video from a producer of the server.
-- [ ] `5.2.11` Test: `connectionState` reaches `connected` and `closed`.
+- [ ] `5.2.9` E2E test: receive audio from a producer of the server. The server only consumes for a peer the producers of the other peers, and jmediasoup cannot send yet, so an ffmpeg container, pinned by digest, publishes the media as a broadcaster of the demo, through its REST API and a `PlainTransport`.
+- [ ] `5.2.10` E2E test: receive video from a producer of the server, from the same ffmpeg container.
+- [x] `5.2.11` Test: `connectionState` reaches `connected` and `closed`. `DemoPeerTest`: a receive transport consumes the producer of another peer, without media, and connects to the server through ICE and DTLS.
 - [x] `5.2.12` `receive`: use the `streamId` of `ConsumerOptions` (or the `producerId` if missing) as the `msid` stream, like mediasoup-client. In 3.26, if missing, it is the stream of the `msid` from mediasoup, its CNAME or `-` (`OrtcUtils.getMsidStreamIdAndTrackId`), not the `producerId`.
 
 **Phase 5 acceptance**
@@ -731,15 +731,15 @@ Origin: the `AudioStreamTrack` and `VideoStreamTrack` of aiortc, used in `exampl
 
 ### 7.2 Test signaling
 
-This client is only for the tests and adapts to the signaling of the chosen image.
+This client is only for the tests and adapts to the signaling of the chosen image: protoo over a WebSocket (section 0.4). It lives in `src/integrationTest`: `ProtooClient` speaks protoo, and `DemoPeer` has a method for each request of the demo, returning the jmediasoup models.
 
-- [ ] `7.2.1` WebSocket or HTTP client, depending on the image.
-- [ ] `7.2.2` Get the RTP capabilities of the router.
-- [ ] `7.2.3` Create WebRTC transports.
-- [ ] `7.2.4` Connect transports (`connect`).
-- [ ] `7.2.5` Create a producer on the server (`produce`).
-- [ ] `7.2.6` Create and resume a consumer on the server.
-- [ ] `7.2.7` Query the server stats to check that RTP arrives.
+- [x] `7.2.1` WebSocket or HTTP client, depending on the image: `ProtooClient`, on `java.net.http.WebSocket` and Jackson 3, with requests, responses and notifications in both directions. It rejects the requests it has no handler for, such as the `newDataConsumer` of the bot of the demo.
+- [x] `7.2.2` Get the RTP capabilities of the router: `DemoPeer.routerRtpCapabilities`, which loads a `Device` of `WebRtcJavaHandler`.
+- [x] `7.2.3` Create WebRTC transports: `DemoPeer.createWebRtcTransport`, with the direction in `appData.direction`, as `TransportOptions`.
+- [x] `7.2.4` Connect transports (`connect`): `DemoPeer.connectWebRtcTransport`, for the `ConnectHandler`.
+- [x] `7.2.5` Create a producer on the server (`produce`): `DemoPeer.produce`. The server creates the producer even if no media arrives.
+- [x] `7.2.6` Create and resume a consumer on the server: the server creates it, paused, for every producer of the other peers once the peer has joined and has a consumer transport, and resumes it when the peer accepts the `newConsumer` request. `DemoPeer.nextConsumer` hands it over as `ConsumerOptions`, and the test accepts it after consuming it.
+- [x] `7.2.7` Query the server stats to check that RTP arrives: `DemoPeer.transportStats`, `producerStats` and `consumerStats`, the stats of mediasoup as JSON. Checking that RTP arrives comes with media, in `5.2.9`, `5.2.10` and `6.2.10`.
 
 ### 7.3 Loopback E2E test
 
