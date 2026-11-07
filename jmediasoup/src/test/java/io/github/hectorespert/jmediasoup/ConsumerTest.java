@@ -159,7 +159,9 @@ class ConsumerTest {
         assertEquals(1, connects.size());
         assertEquals(MediaKind.VIDEO, consumer.kind());
         assertEquals("video", consumer.track().getKind());
-        assertEquals(2, handler(transport).localIds().size());
+        flush(transport);
+        // And the consumer for RTP probation.
+        assertEquals(3, handler(transport).localIds().size());
     }
 
     @Test
@@ -210,7 +212,9 @@ class ConsumerTest {
         await(first);
         await(second);
         await(third);
-        assertEquals(List.of(1, 2), handler(slow).receiveBatches());
+        flush(slow);
+        // The video consumer creates the consumer for RTP probation after its batch.
+        assertEquals(List.of(1, 2, 1), handler(slow).receiveBatches());
     }
 
     @Test
