@@ -177,6 +177,16 @@ final class DemoPeer implements AutoCloseable {
     }
 
     /**
+     * {@code closeProducer}, a notification in this demo: the server closes the producer without
+     * answering.
+     *
+     * @param producerId the producer
+     */
+    void closeProducer(String producerId) {
+        protoo.notify("closeProducer", Map.of("producerId", producerId));
+    }
+
+    /**
      * Waits for the server to create a consumer for this peer.
      *
      * @param timeout how long to wait

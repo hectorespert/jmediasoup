@@ -18,6 +18,7 @@ import dev.onvoid.webrtc.RTCOfferOptions;
 import dev.onvoid.webrtc.RTCPeerConnection;
 import dev.onvoid.webrtc.RTCPeerConnectionIceErrorEvent;
 import dev.onvoid.webrtc.RTCPeerConnectionState;
+import dev.onvoid.webrtc.RTCPriorityType;
 import dev.onvoid.webrtc.RTCRtcpMuxPolicy;
 import dev.onvoid.webrtc.RTCRtpEncodingParameters;
 import dev.onvoid.webrtc.RTCRtpReceiver;
@@ -26,6 +27,7 @@ import dev.onvoid.webrtc.RTCRtpTransceiverDirection;
 import dev.onvoid.webrtc.RTCRtpTransceiverInit;
 import dev.onvoid.webrtc.RTCSdpType;
 import dev.onvoid.webrtc.RTCSessionDescription;
+import dev.onvoid.webrtc.RTCSignalingState;
 import dev.onvoid.webrtc.RTCStatsReport;
 import dev.onvoid.webrtc.media.MediaStreamTrack;
 import dev.onvoid.webrtc.media.MediaType;
@@ -45,14 +47,21 @@ import io.github.hectorespert.jmediasoup.handler.HandlerSendDataChannelOptions;
 import io.github.hectorespert.jmediasoup.handler.HandlerSendDataChannelResult;
 import io.github.hectorespert.jmediasoup.handler.HandlerSendOptions;
 import io.github.hectorespert.jmediasoup.handler.HandlerSendResult;
+import io.github.hectorespert.jmediasoup.internal.ortc.Ortc;
 import io.github.hectorespert.jmediasoup.internal.ortc.OrtcUtils;
 import io.github.hectorespert.jmediasoup.internal.sdp.CommonUtils;
 import io.github.hectorespert.jmediasoup.internal.sdp.RemoteSdp;
+import io.github.hectorespert.jmediasoup.internal.sdp.UnifiedPlanUtils;
 import io.github.hectorespert.jmediasoup.internal.sdptransform.JavaScript;
 import io.github.hectorespert.jmediasoup.internal.sdptransform.Parser;
 import io.github.hectorespert.jmediasoup.internal.sdptransform.Writer;
 import io.github.hectorespert.jmediasoup.rtp.ExtendedRtpCapabilities;
+import io.github.hectorespert.jmediasoup.rtp.MediaKind;
+import io.github.hectorespert.jmediasoup.rtp.Priority;
+import io.github.hectorespert.jmediasoup.rtp.RtcpParameters;
 import io.github.hectorespert.jmediasoup.rtp.RtpCapabilities;
+import io.github.hectorespert.jmediasoup.rtp.RtpCodecParameters;
+import io.github.hectorespert.jmediasoup.rtp.RtpEncodingParameters;
 import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
 import io.github.hectorespert.jmediasoup.sctp.NumSctpStreams;
 import io.github.hectorespert.jmediasoup.sctp.SctpCapabilities;
@@ -70,6 +79,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -113,7 +123,6 @@ public final class WebRtcJavaHandler implements Handler {
     // Remote SDP handler.
     private final RemoteSdp remoteSdp;
     // Callback to request sending extended RTP capabilities on demand.
-    @SuppressWarnings("unused")
     private final Function<RtpCapabilities, ExtendedRtpCapabilities> getSendExtendedRtpCapabilities;
     // Initial server side DTLS role. If not 'auto', it will force the opposite value in client side.
     private final @Nullable DtlsRole forcedLocalDtlsRole;
@@ -127,6 +136,8 @@ public final class WebRtcJavaHandler implements Handler {
     private final Map<String, RTCRtpTransceiver> mapMidTransceiver = new ConcurrentHashMap<>();
     // The next local id to try for a receiving whose RTP parameters have no MID.
     private int nextLocalId;
+    // The stream of the tracks to send, as the MediaStream of mediasoup-client.
+    private final String sendStreamId = UUID.randomUUID().toString();
 
     private WebRtcJavaHandler(Factory factory, HandlerOptions options) {
         logger.debug("constructor()");
@@ -359,14 +370,338 @@ public final class WebRtcJavaHandler implements Handler {
         return notImplemented("getTransportStats");
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>As in mediasoup-client, the local id is the MID of the transceiver, and the stream of the
+     * {@code msid} of the RTP parameters is the given one or, if none, the one that all the tracks of
+     * the handler share. Simulcast, more than one encoding, is not supported yet, and the codec options
+     * are ignored.
+     */
     @Override
     public CompletableFuture<HandlerSendResult> send(HandlerSendOptions options) {
-        return notImplemented("send");
+        requireNonNull(options, "options");
+        MediaStreamTrack track = options.track();
+        MediaKind kind;
+        RTCRtpTransceiver transceiver;
+        RemoteSdp.MediaSectionIdx mediaSectionIdx;
+        try {
+            assertNotClosed();
+            assertSendDirection();
+
+            logger.debug(
+                    "send() [kind:{}, track.id:{}, streamId:{}]", track.getKind(), track.getId(), options.streamId());
+
+            // The answer cannot negotiate simulcast yet (section 11.3 of TODO.md).
+            if (options.encodings().size() > 1) {
+                throw new UnsupportedException("simulcast is not supported yet");
+            }
+
+            // The answer cannot apply them yet (section 11.1 of TODO.md).
+            if (options.codecOptions() != null) {
+                logger.warn("send() | codecOptions are not supported yet, ignoring them");
+            }
+
+            kind = MediaKind.fromValue(track.getKind());
+
+            var init = new RTCRtpTransceiverInit();
+            init.direction = RTCRtpTransceiverDirection.SEND_ONLY;
+            init.streamIds = List.of(sendStreamId);
+            init.sendEncodings = options.encodings().stream()
+                    .map(WebRtcJavaHandler::toRtcRtpEncodingParameters)
+                    .toList();
+            transceiver = pc.addTransceiver(track, init);
+
+            mediaSectionIdx = remoteSdp.getNextMediaSectionIdx();
+        } catch (MediasoupClientException | RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        return PeerConnections.createOffer(pc, new RTCOfferOptions())
+                .exceptionallyCompose(error -> {
+                    stopQuietly(transceiver);
+                    return CompletableFuture.failedFuture(error);
+                })
+                // Through a completed future, so that what negotiateSending() throws also cleans up.
+                .thenCompose(offer -> CompletableFuture.completedFuture(offer)
+                        .thenCompose(ignored -> negotiateSending(options, kind, transceiver, mediaSectionIdx, offer))
+                        .exceptionallyCompose(
+                                error -> cleanUpSending(error, kind, transceiver, mediaSectionIdx, offer)));
+    }
+
+    // Leaves the peer connection in sync with the remote SDP after a failed send(), and fails with the
+    // cause of the failure.
+    private CompletableFuture<HandlerSendResult> cleanUpSending(
+            Throwable error,
+            MediaKind kind,
+            RTCRtpTransceiver transceiver,
+            RemoteSdp.MediaSectionIdx mediaSectionIdx,
+            RTCSessionDescription offer) {
+        Throwable cause = error instanceof CompletionException && error.getCause() != null ? error.getCause() : error;
+
+        if (closed.get()) {
+            return CompletableFuture.failedFuture(cause);
+        }
+
+        return CompletableFuture.completedFuture(offer)
+                .thenCompose(ignored -> abortSending(kind, transceiver, mediaSectionIdx, offer))
+                .handle((ignored, abortError) -> {
+                    if (abortError != null) {
+                        logger.warn("send() | failed to close the section", abortError);
+                    }
+                    return abortError;
+                })
+                .thenCompose(abortError ->
+                        abortError != null ? rollbackSending(transceiver) : CompletableFuture.completedFuture(null))
+                .thenCompose(ignored -> CompletableFuture.failedFuture(cause));
+    }
+
+    // The part of send() after the offer: the RTP parameters, the local and the remote descriptions.
+    private CompletableFuture<HandlerSendResult> negotiateSending(
+            HandlerSendOptions options,
+            MediaKind kind,
+            RTCRtpTransceiver transceiver,
+            RemoteSdp.MediaSectionIdx mediaSectionIdx,
+            RTCSessionDescription offer) {
+        Map<String, Object> offerSdpObject = Parser.parse(offer.sdp);
+
+        if (JavaScript.truthy(offerSdpObject.get("extmapAllowMixed"))) {
+            remoteSdp.setSessionExtmapAllowMixed();
+        }
+
+        // With the capabilities of this offer, and not with the native ones of the device.
+        RtpCapabilities nativeRtpCapabilities = getLocalRtpCapabilities(offerSdpObject);
+
+        ExtendedRtpCapabilities sendExtendedRtpCapabilities =
+                getSendExtendedRtpCapabilities.apply(nativeRtpCapabilities);
+
+        // Generic sending RTP parameters.
+        RtpParameters sendingRtpParameters = Ortc.getSendingRtpParameters(kind, sendExtendedRtpCapabilities);
+
+        // Generic sending RTP parameters suitable for the SDP remote answer.
+        RtpParameters sendingRemoteRtpParameters =
+                Ortc.getSendingRemoteRtpParameters(kind, sendExtendedRtpCapabilities);
+
+        List<RtpCodecParameters> codecs;
+        List<RtpCodecParameters> remoteCodecs;
+        try {
+            codecs = Ortc.reduceCodecs(sendingRtpParameters.codecs(), options.codec());
+            remoteCodecs = Ortc.reduceCodecs(sendingRemoteRtpParameters.codecs(), options.codec());
+        } catch (UnsupportedException e) {
+            throw new CompletionException(e);
+        }
+
+        RtpParameters answerRtpParameters = new RtpParameters(
+                sendingRemoteRtpParameters.mid(),
+                remoteCodecs,
+                sendingRemoteRtpParameters.headerExtensions(),
+                sendingRemoteRtpParameters.encodings(),
+                sendingRemoteRtpParameters.rtcp(),
+                sendingRemoteRtpParameters.msid());
+
+        CompletableFuture<Void> ready = transportReady
+                ? CompletableFuture.completedFuture(null)
+                : setupTransport(localDtlsRole(), offerSdpObject);
+
+        return ready.thenCompose(ignored -> {
+                    logger.debug("send() | calling pc.setLocalDescription() [offer:{}]", offer.sdp);
+                    return PeerConnections.setLocalDescription(pc, offer);
+                })
+                .thenCompose(ignored -> {
+                    // We can now get the transceiver.mid.
+                    String localId = transceiver.getMid();
+
+                    RtpParameters rtpParameters;
+                    RTCSessionDescription answer;
+                    try {
+                        RTCSessionDescription localDescription = pc.getLocalDescription();
+                        if (localId == null || localDescription == null) {
+                            throw new MediasoupClientException(
+                                    "no local description " + localId + " " + (localDescription == null) + " "
+                                            + java.util.Arrays.stream(pc.getTransceivers())
+                                                    .map(t -> t.getMid() + "/" + t.stopped())
+                                                    .toList());
+                        }
+
+                        Map<String, Object> localSdpObject = Parser.parse(localDescription.sdp);
+
+                        // By MID, since the index of the section may not be the one of the remote SDP.
+                        Map<String, Object> offerMediaObject = mediaSections(localSdpObject).stream()
+                                .filter(m -> JavaScript.string(m.get("mid")).equals(localId))
+                                .findFirst()
+                                .orElseThrow(() -> new MediasoupClientException("offer media section not found"));
+
+                        // Set RTCP CNAME.
+                        RtcpParameters rtcp = sendingRtpParameters.rtcp();
+                        var cnameRtcp = new RtcpParameters(
+                                CommonUtils.getCname(offerMediaObject),
+                                rtcp != null ? rtcp.reducedSize() : null,
+                                rtcp != null ? rtcp.mux() : null);
+
+                        // Set RTP encodings by parsing the SDP offer, and complete them with the given
+                        // one if any.
+                        List<RtpEncodingParameters> encodings =
+                                UnifiedPlanUtils.getRtpEncodings(offerMediaObject, codecs);
+                        if (options.encodings().size() == 1) {
+                            List<RtpEncodingParameters> merged = new ArrayList<>(encodings);
+                            merged.set(
+                                    0,
+                                    merge(
+                                            encodings.getFirst(),
+                                            options.encodings().getFirst()));
+                            encodings = List.copyOf(merged);
+                        }
+
+                        rtpParameters = new RtpParameters(
+                                localId,
+                                codecs,
+                                sendingRtpParameters.headerExtensions(),
+                                encodings,
+                                cnameRtcp,
+                                (options.streamId() != null ? options.streamId() : sendStreamId) + " "
+                                        + options.track().getId());
+
+                        remoteSdp.send(offerMediaObject, mediaSectionIdx.reuseMid(), answerRtpParameters);
+
+                        answer = new RTCSessionDescription(RTCSdpType.ANSWER, remoteSdp.getSdp());
+                    } catch (MediasoupClientException e) {
+                        throw new CompletionException(e);
+                    }
+
+                    logger.debug("send() | calling pc.setRemoteDescription() [answer:{}]", answer.sdp);
+
+                    return PeerConnections.setRemoteDescription(pc, answer).thenApply(ignored2 -> {
+                        // Store in the map.
+                        mapMidTransceiver.put(localId, transceiver);
+
+                        return new HandlerSendResult(localId, rtpParameters, transceiver.getSender());
+                    });
+                });
+    }
+
+    // Completes the negotiation of a failed send() with its section closed, as stopSending() does.
+    // mediasoup-client rolls the offer back and stops the transceiver instead, but libwebrtc keeps the
+    // index of the section that the offer gave to the transceiver, and gives it the section of the next
+    // send() that gets the same index, which then has no MID.
+    private CompletableFuture<Void> abortSending(
+            MediaKind kind,
+            RTCRtpTransceiver transceiver,
+            RemoteSdp.MediaSectionIdx mediaSectionIdx,
+            RTCSessionDescription offer) {
+        CompletableFuture<Void> applied = pc.getSignalingState() == RTCSignalingState.HAVE_LOCAL_OFFER
+                ? CompletableFuture.completedFuture(null)
+                : PeerConnections.setLocalDescription(pc, offer);
+
+        return applied.thenCompose(ignored -> {
+            RTCSessionDescription answer;
+            try {
+                String mid = transceiver.getMid();
+                RTCSessionDescription localDescription = pc.getLocalDescription();
+                if (mid == null || localDescription == null) {
+                    throw new MediasoupClientException("no local description");
+                }
+
+                Map<String, Object> localSdpObject = Parser.parse(localDescription.sdp);
+                Map<String, Object> offerMediaObject = mediaSections(localSdpObject).stream()
+                        .filter(m -> JavaScript.string(m.get("mid")).equals(mid))
+                        .findFirst()
+                        .orElseThrow(() -> new MediasoupClientException("offer media section not found"));
+
+                // Any codec does for a section that is closed.
+                RtpParameters answerRtpParameters = Ortc.getSendingRemoteRtpParameters(
+                        kind, getSendExtendedRtpCapabilities.apply(getLocalRtpCapabilities(localSdpObject)));
+
+                remoteSdp.send(offerMediaObject, mediaSectionIdx.reuseMid(), answerRtpParameters);
+
+                pc.removeTrack(transceiver.getSender());
+
+                remoteSdp.closeMediaSection(mid);
+
+                // The DTLS role of the answer, if no send() got to connect the transport, which the
+                // next one will do with the same role.
+                if (!transportReady) {
+                    remoteSdp.updateDtlsRole(localDtlsRole() == DtlsRole.CLIENT ? DtlsRole.SERVER : DtlsRole.CLIENT);
+                }
+
+                answer = new RTCSessionDescription(RTCSdpType.ANSWER, remoteSdp.getSdp());
+            } catch (MediasoupClientException | RuntimeException e) {
+                throw new CompletionException(e);
+            }
+
+            logger.debug("send() | closing the section, calling pc.setRemoteDescription() [answer:{}]", answer.sdp);
+
+            return PeerConnections.setRemoteDescription(pc, answer);
+        });
+    }
+
+    // The last resort if the section cannot be closed: rolls the offer back and stops the transceiver,
+    // as mediasoup-client does, which leaves the next send() that gets the same index without a MID.
+    private CompletableFuture<Void> rollbackSending(RTCRtpTransceiver transceiver) {
+        CompletableFuture<Void> rollback;
+        try {
+            rollback = pc.getSignalingState() == RTCSignalingState.HAVE_LOCAL_OFFER
+                    ? PeerConnections.setLocalDescription(pc, new RTCSessionDescription(RTCSdpType.ROLLBACK, ""))
+                    : CompletableFuture.completedFuture(null);
+        } catch (RuntimeException e) {
+            rollback = CompletableFuture.completedFuture(null);
+        }
+
+        return rollback.handle((ignored, error) -> {
+            stopQuietly(transceiver);
+            return null;
+        });
+    }
+
+    private static void stopQuietly(RTCRtpTransceiver transceiver) {
+        try {
+            transceiver.stop();
+        } catch (RuntimeException e) {
+            logger.debug("failed to stop the transceiver", e);
+        }
     }
 
     @Override
     public CompletableFuture<Void> stopSending(String localId) {
-        return notImplemented("stopSending");
+        requireNonNull(localId, "localId");
+        try {
+            assertSendDirection();
+
+            logger.debug("stopSending() [localId:{}]", localId);
+
+            if (closed.get()) {
+                return CompletableFuture.completedFuture(null);
+            }
+
+            RTCRtpTransceiver transceiver = mapMidTransceiver.get(localId);
+
+            if (transceiver == null) {
+                throw new MediasoupClientException("associated RTCRtpTransceiver not found");
+            }
+
+            transceiver.getSender().replaceTrack(null);
+
+            pc.removeTrack(transceiver.getSender());
+
+            boolean mediaSectionClosed = remoteSdp.closeMediaSection(transceiver.getMid());
+
+            if (mediaSectionClosed) {
+                transceiver.stop();
+            }
+        } catch (MediasoupClientException | RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        return PeerConnections.createOffer(pc, new RTCOfferOptions())
+                .thenCompose(offer -> {
+                    logger.debug("stopSending() | calling pc.setLocalDescription() [offer:{}]", offer.sdp);
+                    return PeerConnections.setLocalDescription(pc, offer);
+                })
+                .thenCompose(ignored -> {
+                    var answer = new RTCSessionDescription(RTCSdpType.ANSWER, remoteSdp.getSdp());
+                    logger.debug("stopSending() | calling pc.setRemoteDescription() [answer:{}]", answer.sdp);
+                    return PeerConnections.setRemoteDescription(pc, answer);
+                })
+                .thenRun(() -> mapMidTransceiver.remove(localId));
     }
 
     @Override
@@ -705,6 +1040,87 @@ public final class WebRtcJavaHandler implements Handler {
             case GATHERING -> IceGatheringState.GATHERING;
             case COMPLETE -> IceGatheringState.COMPLETE;
         };
+    }
+
+    // The fields that the transports keep in the encodings to send (SendTransport.normalizeEncodings).
+    static RTCRtpEncodingParameters toRtcRtpEncodingParameters(RtpEncodingParameters encoding) {
+        var rtcEncoding = new RTCRtpEncodingParameters();
+        rtcEncoding.rid = encoding.rid();
+        rtcEncoding.active = encoding.active();
+        rtcEncoding.maxBitrate = encoding.maxBitrate();
+        rtcEncoding.maxFramerate = encoding.maxFramerate();
+        rtcEncoding.scaleResolutionDownBy = encoding.scaleResolutionDownBy();
+        rtcEncoding.scalabilityMode = encoding.scalabilityMode();
+        rtcEncoding.adaptivePtime = encoding.adaptivePtime();
+        rtcEncoding.bitratePriority = encoding.priority() != null ? toBitratePriority(encoding.priority()) : null;
+        rtcEncoding.networkPriority =
+                encoding.networkPriority() != null ? toRtcPriorityType(encoding.networkPriority()) : null;
+        return rtcEncoding;
+    }
+
+    // As the browsers: relative to the default bitrate priority of WebRTC, which is low.
+    private static double toBitratePriority(Priority priority) {
+        return switch (priority) {
+            case VERY_LOW -> 0.5;
+            case LOW -> 1.0;
+            case MEDIUM -> 2.0;
+            case HIGH -> 4.0;
+        };
+    }
+
+    private static RTCPriorityType toRtcPriorityType(Priority priority) {
+        return switch (priority) {
+            case VERY_LOW -> RTCPriorityType.VERY_LOW;
+            case LOW -> RTCPriorityType.LOW;
+            case MEDIUM -> RTCPriorityType.MEDIUM;
+            case HIGH -> RTCPriorityType.HIGH;
+        };
+    }
+
+    // The encoding of the SDP with the fields that the given one has, as the Object.assign of
+    // mediasoup-client.
+    static RtpEncodingParameters merge(RtpEncodingParameters sdpEncoding, RtpEncodingParameters given) {
+        RtpEncodingParameters.Builder builder = sdpEncoding.toBuilder();
+        if (given.active() != null) {
+            builder.active(given.active());
+        }
+        if (given.ssrc() != null) {
+            builder.ssrc(given.ssrc());
+        }
+        if (given.rid() != null) {
+            builder.rid(given.rid());
+        }
+        if (given.codecPayloadType() != null) {
+            builder.codecPayloadType(given.codecPayloadType());
+        }
+        if (given.rtx() != null) {
+            builder.rtx(given.rtx());
+        }
+        if (given.dtx() != null) {
+            builder.dtx(given.dtx());
+        }
+        if (given.scalabilityMode() != null) {
+            builder.scalabilityMode(given.scalabilityMode());
+        }
+        if (given.scaleResolutionDownBy() != null) {
+            builder.scaleResolutionDownBy(given.scaleResolutionDownBy());
+        }
+        if (given.maxBitrate() != null) {
+            builder.maxBitrate(given.maxBitrate());
+        }
+        if (given.maxFramerate() != null) {
+            builder.maxFramerate(given.maxFramerate());
+        }
+        if (given.adaptivePtime() != null) {
+            builder.adaptivePtime(given.adaptivePtime());
+        }
+        if (given.priority() != null) {
+            builder.priority(given.priority());
+        }
+        if (given.networkPriority() != null) {
+            builder.networkPriority(given.networkPriority());
+        }
+        return builder.build();
     }
 
     private static <T> CompletableFuture<T> notImplemented(String method) {

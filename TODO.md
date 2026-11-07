@@ -699,20 +699,21 @@ They are test fixtures (`src/testFixtures`, the `java-test-fixtures` plugin), sh
 
 ### 6.2 Sending
 
-- [ ] `6.2.1` `send`: copy and reduce the RTP parameters according to the codec.
-- [ ] `6.2.2` `send`: `addTransceiver` in `sendonly`.
-- [ ] `6.2.3` `send`: `createOffer` and `setupTransport` with the `server` role the first time.
-- [ ] `6.2.4` `send`: `setLocalDescription` and get the `mid`.
-- [ ] `6.2.5` `send`: find the offer section by `mid` instead of relying only on the index.
-- [ ] `6.2.6` `send`: CNAME and encodings from the local SDP.
-- [ ] `6.2.7` `send`: `RemoteSdp.send` and `setRemoteDescription`.
-- [ ] `6.2.8` `send`: reuse the `mid` of a closed section.
-- [ ] `6.2.9` A real `stopSending`. ⚠️ do not copy: in the original it does nothing because aiortc has no `removeTrack`.
-- [ ] `6.2.10` E2E test: send audio and check on the server that RTP arrives.
-- [ ] `6.2.11` E2E test: send video and check on the server that RTP arrives.
-- [ ] `6.2.12` E2E test: close a producer and create another one on the same transport.
-- [ ] `6.2.13` `send`: use the `streamId` of `ProducerOptions` as the `msid` stream, to synchronize the tracks that share it.
-- [ ] `6.2.14` `send`: compute the extended send capabilities with the local capabilities of the offer, like mediasoup-client, and not with those of `load`.
+- [x] `6.2.1` `send`: copy and reduce the RTP parameters according to the codec.
+- [x] `6.2.2` `send`: `addTransceiver` in `sendonly`, with the given encoding. More than one encoding fails with `UnsupportedException` until simulcast (`11.3.1`), and the codec options are ignored with a warning until `11.1.13`.
+- [x] `6.2.3` `send`: `createOffer` and `setupTransport` the first time, with the DTLS role that mediasoup forces or else `client`, as mediasoup-client 3.26 does (pymediasoup uses `server`).
+- [x] `6.2.4` `send`: `setLocalDescription` and get the `mid`.
+- [x] `6.2.5` `send`: find the offer section by `mid` instead of relying only on the index.
+- [x] `6.2.6` `send`: CNAME and encodings from the local SDP.
+- [x] `6.2.7` `send`: `RemoteSdp.send` and `setRemoteDescription`.
+- [x] `6.2.8` `send`: reuse the `mid` of a closed section.
+- [x] `6.2.9` A real `stopSending`. ⚠️ do not copy: in the original it does nothing because aiortc has no `removeTrack`.
+- [x] `6.2.10` E2E test: send audio and check on the server that RTP arrives.
+- [x] `6.2.11` E2E test: send video and check on the server that RTP arrives.
+- [x] `6.2.12` E2E test: close a producer and create another one on the same transport.
+- [x] `6.2.13` `send`: use the `streamId` of `ProducerOptions` as the `msid` stream, to synchronize the tracks that share it.
+- [x] `6.2.14` `send`: compute the extended send capabilities with the local capabilities of the offer, like mediasoup-client, and not with those of `load`.
+- [x] `6.2.15` A failed `send` completes the negotiation with its section closed, as `stopSending` does, and the next one reuses it. ⚠️ do not copy: mediasoup-client rolls the offer back and stops the transceiver, but libwebrtc keeps the index of the section that the offer gave the stopped transceiver, and gives it the section of the next `send` with the same index, whose transceiver then has no MID. The rollback is kept as a last resort if closing the section fails.
 
 **Phase 6 acceptance**
 
@@ -954,6 +955,7 @@ Origin: `media_section.py`
 - [ ] `11.1.10` Check in the answer SDP that each option is applied.
 - [ ] `11.1.11` `applyCodecParameters` with `sprop-stereo`.
 - [ ] `11.1.12` `opusNack`, from mediasoup-client.
+- [ ] `11.1.13` Remove the warning with which `send` ignores the codec options, and pass them to `RemoteSdp.send`.
 
 ### 11.2 Codec selection and encodings
 
@@ -970,7 +972,7 @@ Origin: `aiortc_handler.py`, `unified_plan_utils.py`
 
 Origin: `aiortc_handler.py`, `media_section.py`. aiortc does not support simulcast, so mediasoup-client (`Chrome111.ts`) has to be the reference.
 
-- [ ] `11.3.1` Pass `sendEncodings` in `addTransceiver`.
+- [ ] `11.3.1` Remove the `UnsupportedException` of `send` with more than one encoding, and port the `rid` and `L1Tn` that `Chrome111` sets on each one. `send` already passes a single encoding in `sendEncodings`.
 - [ ] `11.3.2` `AnswerMediaSection`: `simulcast` and `rids`.
 - [ ] `11.3.3` `AnswerMediaSection`: `simulcast_03` from the draft.
 - [ ] `11.3.4` Add `S1T3` to each encoding with VP8 or H264. Review whether `numTemporalLayers` or `scalabilityMode` should be applied to the native encoding.
