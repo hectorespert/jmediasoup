@@ -33,7 +33,7 @@ Internal packages go under `io.github.hectorespert.jmediasoup.internal` and are 
 
 Models that travel as JSON carry Jackson annotations and no runtime JSON code: `@JsonInclude(NON_NULL)` and `@JsonIgnoreProperties(ignoreUnknown = true)` on each record, `@JsonProperty(required = true)` on required primitive components, and `@JsonValue`/`@JsonCreator` on the `value()`/`fromValue()` of each enum. Test them with both Jackson 2 and 3 through `json.WithEachJackson`.
 
-Tests that need a track, a data channel or a handler use `fake.FakeMediaStreamTrack`, `fake.FakeDataChannel` and `fake.FakeHandler` (the port of mediasoup-client's), test-only implementations that work without the webrtc-java natives. `fake.FakeParameters` returns what a mediasoup server would send, loaded from the JSON files in `src/test/resources/fixtures/`.
+Tests that send real media use the sources of the test fixtures (`src/testFixtures`, module `io.github.hectorespert.jmediasoup.testfixtures`): `ToneAudioSource` and `ColorVideoSource`, which push a tone and green frames to the custom sources of webrtc-java. They are shared by `test` and `integrationTest` and are not published. Tests that need a track, a data channel or a handler use `fake.FakeMediaStreamTrack`, `fake.FakeDataChannel` and `fake.FakeHandler` (the port of mediasoup-client's), test-only implementations that work without the webrtc-java natives. `fake.FakeParameters` returns what a mediasoup server would send, loaded from the JSON files in `src/test/resources/fixtures/`.
 
 The WebRTC stack is [webrtc-java](https://github.com/devopvoid/webrtc-java); the results of the spike that validated it, and what they mean for the design, are in section 0.3 of TODO.md.
 

@@ -690,10 +690,12 @@ Origin: `pymediasoup/handlers/aiortc_handler.py`
 
 Origin: the `AudioStreamTrack` and `VideoStreamTrack` of aiortc, used in `examples/mediasoup.py`
 
-- [ ] `6.1.1` Silent audio source on `CustomAudioSource`.
-- [ ] `6.1.2` Video source with fixed-color frames on `CustomVideoSource`.
-- [ ] `6.1.3` Steady timing of both sources.
-- [ ] `6.1.4` Stop the sources on close.
+They are test fixtures (`src/testFixtures`, the `java-test-fixtures` plugin), shared by `test` and `integrationTest` and left out of the publication, as in pymediasoup, where the sources come from aiortc and not from the library. They are a module of their own, `io.github.hectorespert.jmediasoup.testfixtures`, which the whitebox tests require.
+
+- [x] `6.1.1` Silent audio source on `CustomAudioSource`: a 440 Hz tone instead, `ToneAudioSource`, 16-bit mono PCM at 48 kHz, so that the receiver can tell that audio arrives (silence is what libwebrtc plays when nothing arrives).
+- [x] `6.1.2` Video source with fixed-color frames on `CustomVideoSource`: `ColorVideoSource`, 320x240 in green.
+- [x] `6.1.3` Steady timing of both sources: each one pushes from its own thread at a fixed rate, 10 ms of audio and 30 frames per second. `TestMediaSourcesTest` checks the rate, the size, the color and the tone through local tracks.
+- [x] `6.1.4` Stop the sources on close: `close()` stops the thread and disposes the native source.
 
 ### 6.2 Sending
 

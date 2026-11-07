@@ -1,5 +1,6 @@
 plugins {
     `java-library`
+    `java-test-fixtures`
     `maven-publish`
     id("com.diffplug.spotless")
     alias(libs.plugins.java.module.testing)
@@ -39,6 +40,9 @@ dependencies {
     api(libs.jspecify)
     api(libs.webrtc.java)
     implementation(libs.slf4j.api)
+
+    // Media sources for the tests that send, shared by test and integrationTest and not published.
+    testFixturesApi(libs.webrtc.java)
 
     testImplementation(libs.jackson2.databind)
     testImplementation(libs.jackson3.databind)
@@ -104,6 +108,7 @@ testing {
             useJUnitJupiter(libs.versions.junit.jupiter)
             dependencies {
                 implementation(project())
+                implementation(testFixtures(project()))
                 implementation(libs.testcontainers)
                 implementation(libs.jackson3.databind)
                 runtimeOnly(libs.slf4j.simple)
@@ -129,10 +134,16 @@ tasks.named("check") {
 // internal packages and also check the requires and exports of module-info.java.
 javaModuleTesting.whitebox(testing.suites["test"]) {
     requires.add("com.fasterxml.jackson.databind")
+    requires.add("io.github.hectorespert.jmediasoup.testfixtures")
     requires.add("org.junit.jupiter.api")
     requires.add("org.junit.jupiter.params")
     requires.add("tools.jackson.databind")
 }
+
+// The test fixtures are only for the tests of this project.
+val javaComponent = components["java"] as AdhocComponentWithVariants
+javaComponent.withVariantsFromConfiguration(configurations["testFixturesApiElements"]) { skip() }
+javaComponent.withVariantsFromConfiguration(configurations["testFixturesRuntimeElements"]) { skip() }
 
 publishing {
     publications {
