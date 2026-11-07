@@ -158,10 +158,48 @@ val javaComponent = components["java"] as AdhocComponentWithVariants
 javaComponent.withVariantsFromConfiguration(configurations["testFixturesApiElements"]) { skip() }
 javaComponent.withVariantsFromConfiguration(configurations["testFixturesRuntimeElements"]) { skip() }
 
+// The licence and the notice, with the licences of the ported projects, go in every jar, as MIT and ISC
+// require them in every copy.
+val legalFiles = rootProject.layout.projectDirectory.files("LICENSE", "NOTICE")
+tasks.withType<Jar>().configureEach {
+    metaInf {
+        from(legalFiles)
+    }
+}
+
 publishing {
     publications {
         create<MavenPublication>("maven") {
             from(components["java"])
+            pom {
+                name = "jmediasoup"
+                description = "Java client for mediasoup"
+                url = "https://github.com/hectorespert/jmediasoup"
+                inceptionYear = "2026"
+                licenses {
+                    license {
+                        name = "Apache-2.0"
+                        url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
+                        distribution = "repo"
+                    }
+                }
+                developers {
+                    developer {
+                        id = "hectorespert"
+                        name = "Hector Espert"
+                        url = "https://github.com/hectorespert"
+                    }
+                }
+                scm {
+                    connection = "scm:git:https://github.com/hectorespert/jmediasoup.git"
+                    developerConnection = "scm:git:ssh://git@github.com/hectorespert/jmediasoup.git"
+                    url = "https://github.com/hectorespert/jmediasoup"
+                }
+                issueManagement {
+                    system = "GitHub"
+                    url = "https://github.com/hectorespert/jmediasoup/issues"
+                }
+            }
         }
     }
 }
