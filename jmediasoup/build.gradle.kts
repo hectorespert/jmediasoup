@@ -245,3 +245,9 @@ nmcpAggregation {
 dependencies {
     nmcpAggregation(project(path))
 }
+
+// A release runs build and the upload in the same invocation; the upload waits for build, so that a
+// failing test stops it before anything reaches Maven Central, where a version cannot be removed.
+tasks.named("nmcpPublishAggregationToCentralPortal") {
+    mustRunAfter(tasks.named("build"))
+}
