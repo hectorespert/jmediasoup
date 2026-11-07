@@ -57,6 +57,8 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
     }
+    withSourcesJar()
+    withJavadocJar()
 }
 
 spotless {
@@ -87,7 +89,8 @@ tasks.named<Test>("test") {
 }
 
 // The internal packages are not exported, so they stay out of the public Javadoc. Their compiled
-// classes are patched into the module so that the public sources still resolve them.
+// classes are patched into the module so that the public sources still resolve them. The types of the
+// JDK and webrtc-java link to their Javadoc, and any warning fails the build.
 tasks.named<Javadoc>("javadoc") {
     exclude("**/internal/**")
     val classes =
@@ -96,7 +99,17 @@ tasks.named<Javadoc>("javadoc") {
             .java.destinationDirectory
             .get()
             .asFile
-    (options as StandardJavadocDocletOptions).addStringOption("-patch-module", "io.github.hectorespert.jmediasoup=$classes")
+    val webrtcJavaVersion =
+        libs.versions.webrtc.java
+            .get()
+    with(options as StandardJavadocDocletOptions) {
+        addStringOption("-patch-module", "io.github.hectorespert.jmediasoup=$classes")
+        links(
+            "https://docs.oracle.com/en/java/javase/21/docs/api/",
+            "https://javadoc.io/doc/dev.onvoid.webrtc/webrtc-java/$webrtcJavaVersion/",
+        )
+        addBooleanOption("Xwerror", true)
+    }
 }
 
 // Integration tests against a mediasoup server in a container, through the public API. They run on

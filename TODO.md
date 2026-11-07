@@ -762,7 +762,7 @@ This client is only for the tests and adapts to the signaling of the chosen imag
 - [x] `7.4.2` ~~Minimal runnable example.~~ Dropped: the project does not include an example; the usage section of the README (`7.4.3`) shows the code.
 - [x] `7.4.3` Usage section in the README, with the supported platforms and the limitations. The usage examples talk to the server through a generic `signaling`, the platforms are the classifiers of webrtc-java with what CI tests, and the installation already shows `0.1.0`.
 - [x] `7.4.4` Compute the version from git with axion-release: a `vX.Y.Z` tag gives `X.Y.Z`, and any other commit the next minor version with `-SNAPSHOT` (`incrementMinor`). Checked with the configuration cache, in a shallow clone as on GitHub Actions, and on a tag checkout. A pre-release tag such as `v0.1.1-rc1` gives that version. It replaces the fixed version of `0.2.2`.
-- [ ] `7.4.5` Generate the sources and Javadoc jars.
+- [x] `7.4.5` Generate the sources and Javadoc jars, which `assemble` builds and the publication includes. The sources jar has all the code, internal packages included, so that a debugger can step into them; the Javadoc only the exported packages. The Javadoc links the types of the JDK 21 and webrtc-java to their Javadoc (docs.oracle.com and javadoc.io), so generating it needs those sites to answer, and any warning fails it (`-Xwerror`).
 - [ ] `7.4.6` Complete the POM metadata (name, URL, license, developers, SCM), and include `LICENSE` and `NOTICE` in `META-INF/` of the jars, which do not carry them today. MIT and ISC require the notice and the license of the originals to go with every copy.
 - [ ] `7.4.7` GPG signing in the build.
 - [ ] `7.4.8` Publish to Central Portal from the build.
