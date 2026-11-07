@@ -728,7 +728,7 @@ They are test fixtures (`src/testFixtures`, the `java-test-fixtures` plugin), sh
 - [x] `7.1.2` Create an `integrationTest` source set or task, separate from `test`: a `JvmTestSuite` in `src/integrationTest`, on the classpath (`javaModuleTesting.classpath`), which `check` depends on.
 - [x] `7.1.3` Make the task compatible with the configuration cache.
 - [x] `7.1.4` Start the image chosen in `0.4.7` by digest, and wait until it is ready: it waits for `Server started` in the log. A single container for all the tests, without capabilities.
-- [x] `7.1.5` Configure the network and `announcedAddress` per `0.4.8` and `0.4.9`: host network, with mediasoup listening on and announcing `127.0.0.1`. Linux only; macOS and Windows wait for `0.4.9`.
+- [x] `7.1.5` Configure the network and `announcedAddress` per `0.4.8` and `0.4.9`: host network, with mediasoup listening on and announcing `127.0.0.1`. Linux only; macOS and Windows wait for `0.4.9`. The demo runs one worker per CPU on `44444` and the next ports, in the ephemeral range of Linux (32768–60999), and in CI another socket of the runner once took `44446` first; the container rewrites its config to run one worker on `24444`, with the plain transports on `20000`–`20999`.
 - [x] `7.1.6` Skip the tests with a clear message if Docker is not available.
 - [x] `7.1.7` Collect the container logs if a test fails: they are written to the error output of the test, which the report collects.
 

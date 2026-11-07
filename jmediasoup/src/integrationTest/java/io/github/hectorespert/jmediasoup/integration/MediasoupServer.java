@@ -30,6 +30,9 @@ public final class MediasoupServer implements BeforeAllCallback, ParameterResolv
     static final DockerImageName IMAGE = DockerImageName.parse(
             "docker.io/mmahdisonic/mediasoup-demo@sha256:2e60f70cf77ed9ac8b3ef2adfcdb9df6666412c6c543831d5d97bdc37609c8c2");
 
+    /** The port of the WebRTC server of the single worker, outside the ephemeral range of Linux. */
+    private static final int WEBRTC_SERVER_PORT = 24444;
+
     private static final ExtensionContext.Namespace NAMESPACE =
             ExtensionContext.Namespace.create(MediasoupServer.class);
 
@@ -95,9 +98,20 @@ public final class MediasoupServer implements BeforeAllCallback, ParameterResolv
     @SuppressWarnings("resource")
     private static Server start() {
         GenericContainer<?> container = new GenericContainer<>(IMAGE)
-                // The workers listen on 44444 and the next ports, one per CPU, so the container uses
-                // the host network instead of publishing them (0.4.8).
+                // The workers listen on their own ports and the plain transports on a range of ports,
+                // so the container uses the host network instead of publishing them (0.4.8).
                 .withNetworkMode("host")
+                // The demo has one worker per CPU, on 44444 and the next ports, which are in the
+                // ephemeral range of Linux (32768-60999), where any outgoing connection of the host
+                // can take one first. One worker on 24444, and the plain transports below it too.
+                .withCommand(
+                        "sh",
+                        "-c",
+                        "sed -i -e 's/port: 44444/port: " + WEBRTC_SERVER_PORT + "/'"
+                                + " -e 's/numWorkers: .*/numWorkers: 1,/' /app/config.mjs"
+                                + " && exec mediasoup-demo-server")
+                .withEnv("MEDIASOUP_MIN_PORT", "20000")
+                .withEnv("MEDIASOUP_MAX_PORT", "20999")
                 .withEnv("MEDIASOUP_LISTEN_IP", "127.0.0.1")
                 .withEnv("MEDIASOUP_ANNOUNCED_ADDRESS", "127.0.0.1")
                 .withEnv("DEBUG", "*INFO* *WARN* *ERROR*")
