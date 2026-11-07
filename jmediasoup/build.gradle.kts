@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "io.github.hectorespert"
-version = "0.1.0-SNAPSHOT"
+version = rootProject.version
 
 repositories {
     mavenCentral()

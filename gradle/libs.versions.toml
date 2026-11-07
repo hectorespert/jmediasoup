@@ -2,6 +2,7 @@
 jackson-annotations = "2.22"
 jackson2 = "2.22.4"
 jackson3 = "3.2.4"
+axion-release = "1.21.4"
 java-module-testing = "1.8.1"
 jspecify = "1.0.1"
 junit-jupiter = "6.1.3"
@@ -24,5 +25,6 @@ testcontainers = { module = "org.testcontainers:testcontainers", version.ref = "
 webrtc-java = { module = "dev.onvoid.webrtc:webrtc-java", version.ref = "webrtc-java" }
 
 [plugins]
+axion-release = { id = "pl.allegro.tech.build.axion-release", version.ref = "axion-release" }
 java-module-testing = { id = "org.gradlex.java-module-testing", version.ref = "java-module-testing" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
