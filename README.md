@@ -2,7 +2,7 @@
 
 Java client for [mediasoup](https://mediasoup.org), the counterpart of what [pymediasoup](https://github.com/Huddle01/pymediasoup) is for Python. Its API follows the official JavaScript client, [mediasoup-client](https://mediasoup.org/documentation/v3/mediasoup-client/api/), and it uses [webrtc-java](https://github.com/devopvoid/webrtc-java) as the WebRTC stack.
 
-> **Status:** the first release, `0.1.0`, is coming. It sends and receives audio and video; see [Limitations](#limitations) for what is not supported yet.
+> **Status:** the first release, `0.1.0`, is on Maven Central. It sends and receives audio and video; see [Limitations](#limitations) for what is not supported yet.
 
 ## Installation
 
@@ -34,7 +34,7 @@ Maven:
 </dependency>
 ```
 
-jmediasoup logs through [SLF4J](https://www.slf4j.org); add a binding to see its logs. It is a JPMS module, `io.github.hectorespert.jmediasoup`, and also works on the classpath.
+jmediasoup logs through [SLF4J](https://www.slf4j.org); add a binding to see its logs. It is a JPMS module, `io.github.hectorespert.jmediasoup`, and also works on the classpath. On the module path, nothing requires the natives, an automatic module named after the classifier, so add it to the module graph when launching the application, for example with `--add-modules webrtc.linux.x86_64`.
 
 ## Usage
 
