@@ -208,14 +208,23 @@ publishing {
 }
 
 // Signs the publication with the armored key in the signingInMemoryKey property, and its passphrase in
-// signingInMemoryKeyPassword. Without the key, a snapshot is published unsigned, but a release fails,
-// so that nothing reaches Maven Central unsigned.
-val signingKey = providers.gradleProperty("signingInMemoryKey").orNull
-val signingKeyPassword = providers.gradleProperty("signingInMemoryKeyPassword").orNull
+// signingInMemoryKeyPassword. If the key holds only a signing subkey, without the secret of the primary
+// key, signingInMemoryKeyId names it (its last 8 hex digits). Without the key, a snapshot is published
+// unsigned, but a release fails, so that nothing reaches Maven Central unsigned. Empty values count as
+// absent, as CI passes them when a secret is not set.
+fun signingProperty(name: String) = providers.gradleProperty(name).orNull?.takeIf { it.isNotBlank() }
+
+val signingKey = signingProperty("signingInMemoryKey")
+val signingKeyId = signingProperty("signingInMemoryKeyId")
+val signingKeyPassword = signingProperty("signingInMemoryKeyPassword")
 val isSnapshot = version.toString().endsWith("-SNAPSHOT")
 signing {
     if (signingKey != null) {
-        useInMemoryPgpKeys(signingKey, signingKeyPassword)
+        if (signingKeyId != null) {
+            useInMemoryPgpKeys(signingKeyId, signingKey, signingKeyPassword)
+        } else {
+            useInMemoryPgpKeys(signingKey, signingKeyPassword)
+        }
     }
     isRequired = signingKey != null || !isSnapshot
     sign(publishing.publications["maven"])
