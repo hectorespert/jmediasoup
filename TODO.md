@@ -28,7 +28,7 @@ Goal: a Java client for [mediasoup](https://mediasoup.org) with the same feature
 | B: parity | [9](#phase-9-data-channels) | Data channels |
 | B: parity | [10](#phase-10-stats-and-ice) | Stats and ICE |
 | B: parity | [11](#phase-11-codecs-and-encodings) | Codecs, simulcast and SVC |
-| B: parity | [12](#phase-12-examples-and-media-utilities) | Examples and media utilities |
+| B: parity | [12](#phase-12-media-utilities) | Media utilities |
 | B: parity | [13](#phase-13-release) | Release |
 | C: extras | [14](#phase-14-beyond-pymediasoup-optional) | Beyond pymediasoup |
 
@@ -759,8 +759,8 @@ This client is only for the tests and adapts to the signaling of the chosen imag
 ### 7.4 MVP delivery
 
 - [x] `7.4.1` Run `integrationTest` in CI: `check` depends on it, so the `build` of the CI runs it.
-- [ ] `7.4.2` Minimal runnable example.
-- [ ] `7.4.3` Usage section in the README, with the supported platforms and the limitations.
+- [x] `7.4.2` ~~Minimal runnable example.~~ Dropped: the project does not include an example; the usage section of the README (`7.4.3`) shows the code.
+- [x] `7.4.3` Usage section in the README, with the supported platforms and the limitations. The usage examples talk to the server through a generic `signaling`, the platforms are the classifiers of webrtc-java with what CI tests, and the installation already shows `0.1.0`.
 - [ ] `7.4.4` Compute the version from git with `gradle-git-versioning`: a `vX.Y.Z` tag gives `X.Y.Z`, and any other commit the next minor version with `-SNAPSHOT`. Check that it works with the configuration cache. It replaces the fixed version of `0.2.2`.
 - [ ] `7.4.5` Generate the sources and Javadoc jars.
 - [ ] `7.4.6` Complete the POM metadata (name, URL, license, developers, SCM), and include `LICENSE` and `NOTICE` in `META-INF/` of the jars, which do not carry them today. MIT and ISC require the notice and the license of the originals to go with every copy.
@@ -1004,7 +1004,7 @@ Origin: `producer.py`, `aiortc_handler.py`
 - Simulcast works end to end with VP8.
 - The codec options show in the SDP and, when possible, in the media.
 
-## Phase 12: examples and media utilities
+## Phase 12: media utilities
 
 ### 12.1 Media utilities
 
@@ -1016,38 +1016,22 @@ Origin: `aiortc.contrib.media`, used in `examples/mediasoup.py`
 - [ ] `12.1.4` `MediaPlayer`: play audio from a file.
 - [ ] `12.1.5` `MediaPlayer`: play video from a file. Decide the dependency.
 - [ ] `12.1.6` Decide whether they go in a separate artifact so as not to add dependencies to the library.
+- [ ] `12.1.7` Publish version `0.6.0`.
 
 ### 12.2 Port of the example
 
-Origin: `examples/mediasoup.py`
-
-- [ ] `12.2.1` Create the `examples` subproject.
-- [ ] `12.2.2` WebSocket connection with `java.net.http`.
-- [ ] `12.2.3` Requests and responses (`_send_request`, `_wait_for`, `recv_msg_task`).
-- [ ] `12.2.4` Command-line parameters.
-- [ ] `12.2.5` `load`, with `getRouterRtpCapabilities`.
-- [ ] `12.2.6` `createSendTransport`, with `createWebRtcTransport` and `connectWebRtcTransport`.
-- [ ] `12.2.7` `produce` and `producedata` listeners.
-- [ ] `12.2.8` `join`.
-- [ ] `12.2.9` `produce` of audio and video.
-- [ ] `12.2.10` `produceData`.
-- [ ] `12.2.11` `createRecvTransport`.
-- [ ] `12.2.12` Handle `newConsumer` with `consume`.
-- [ ] `12.2.13` Handle `newDataConsumer` with `consumeData`.
-- [ ] `12.2.14` Orderly shutdown.
-- [ ] `12.2.15` README of the example, saying which server it runs against.
-- [ ] `12.2.16` Publish version `0.6.0`.
+Dropped: the project does not include examples, and the README shows how to use the library. The port of `examples/mediasoup.py` that was planned here (an `examples` subproject with the WebSocket signaling of the demo) is not done.
 
 **Phase 12 acceptance**
 
-- The example exchanges audio, video and data with the server it is written for.
+- The utilities play and record the media of a session with the server.
 
 ## Phase 13: release
 
 ### 13.1 Documentation
 
 - [ ] `13.1.1` Javadoc for the whole public API.
-- [ ] `13.1.2` Complete README: installation, usage and examples.
+- [ ] `13.1.2` Complete README: installation and usage of the whole API.
 - [ ] `13.1.3` Guide to using the natives per platform, with the dependency for Gradle and for Maven (`0.5.7`).
 - [ ] `13.1.4` Table of differences with pymediasoup and mediasoup-client.
 - [ ] `13.1.5` Review that `LICENSE` and `NOTICE` are complete.

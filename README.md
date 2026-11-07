@@ -1,20 +1,144 @@
 # jmediasoup
 
-Java client for [mediasoup](https://mediasoup.org), the counterpart of what [pymediasoup](https://github.com/Huddle01/pymediasoup) is for Python.
+Java client for [mediasoup](https://mediasoup.org), the counterpart of what [pymediasoup](https://github.com/Huddle01/pymediasoup) is for Python. Its API follows the official JavaScript client, [mediasoup-client](https://mediasoup.org/documentation/v3/mediasoup-client/api/), and it uses [webrtc-java](https://github.com/devopvoid/webrtc-java) as the WebRTC stack.
 
-> **Status:** not implemented yet and not published. This repository still contains only the empty project skeleton.
+> **Status:** the first release, `0.1.0`, is coming. It sends and receives audio and video; see [Limitations](#limitations) for what is not supported yet.
 
-## Roadmap
+## Installation
 
-The plan to reach an MVP and then feature parity with pymediasoup is in [TODO.md](TODO.md).
+jmediasoup needs Java 21 or later. Besides jmediasoup, add the webrtc-java natives for each platform the application runs on (see [Platforms](#platforms)).
 
-## Maven coordinates
+Gradle:
 
-Planned coordinates, not yet available on Maven Central:
-
+```kotlin
+dependencies {
+    implementation("io.github.hectorespert:jmediasoup:0.1.0")
+    runtimeOnly("dev.onvoid.webrtc:webrtc-java:0.20.0:linux-x86_64")
+}
 ```
-io.github.hectorespert:jmediasoup
+
+Maven:
+
+```xml
+<dependency>
+    <groupId>io.github.hectorespert</groupId>
+    <artifactId>jmediasoup</artifactId>
+    <version>0.1.0</version>
+</dependency>
+<dependency>
+    <groupId>dev.onvoid.webrtc</groupId>
+    <artifactId>webrtc-java</artifactId>
+    <version>0.20.0</version>
+    <classifier>linux-x86_64</classifier>
+    <scope>runtime</scope>
+</dependency>
 ```
+
+jmediasoup logs through [SLF4J](https://www.slf4j.org); add a binding to see its logs. It is a JPMS module, `io.github.hectorespert.jmediasoup`, and also works on the classpath.
+
+## Usage
+
+mediasoup does not define how a client talks to the server, so each application brings its own signaling. In the examples below, `signaling` stands for it: it sends a request to the application server and returns a `CompletableFuture` with the response, already converted to the jmediasoup models. The models carry Jackson annotations, so Jackson 2 or 3 can read them from the JSON of mediasoup.
+
+### Load the device
+
+A `Device` represents the endpoint that connects to a mediasoup router. Load it with the RTP capabilities of the router:
+
+```java
+WebRtcJavaHandler.Factory factory = WebRtcJavaHandler.createFactory();
+Device device = new Device(factory);
+
+RtpCapabilities routerRtpCapabilities = signaling.request("getRouterRtpCapabilities").join();
+device.load(routerRtpCapabilities).join();
+```
+
+`WebRtcJavaHandler.createFactory()` creates its own webrtc-java `PeerConnectionFactory`, without audio devices. To use one of the application, pass it to `createFactory(peerConnectionFactory)`. The tracks to send must come from the same `PeerConnectionFactory`.
+
+### Send
+
+Create a send transport with the parameters of a WebRTC transport created on the server. The transport calls the `connect` handler the first time it needs to connect, and the `produce` handler each time it sends a new track, so that the application creates the producer on the server and returns its id:
+
+```java
+TransportOptions sendOptions = signaling.request("createWebRtcTransport", "send").join();
+
+SendTransport sendTransport = device.createSendTransport(
+        sendOptions,
+        dtlsParameters -> signaling.request("connectWebRtcTransport", sendOptions.id(), dtlsParameters),
+        request -> signaling.request("produce", sendOptions.id(), request.kind(), request.rtpParameters()));
+
+PeerConnectionFactory peerConnectionFactory = factory.peerConnectionFactory();
+CustomVideoSource videoSource = new CustomVideoSource();
+VideoTrack videoTrack = peerConnectionFactory.createVideoTrack("video", videoSource);
+
+Producer producer = sendTransport.produce(ProducerOptions.builder(videoTrack).build()).join();
+```
+
+The application then pushes frames to the source with `videoSource.pushFrame(frame)`, and audio to a `CustomAudioSource` with `pushAudio`. `ProducerOptions` also takes the codec to send, among those of `device.sendRtpCapabilities()`, and a single encoding with its `maxBitrate` and the rest of the RTP encoding parameters.
+
+### Receive
+
+Create a receive transport, and consume each producer that the server announces with the parameters of the consumer it created:
+
+```java
+TransportOptions recvOptions = signaling.request("createWebRtcTransport", "recv").join();
+
+RecvTransport recvTransport = device.createRecvTransport(
+        recvOptions,
+        dtlsParameters -> signaling.request("connectWebRtcTransport", recvOptions.id(), dtlsParameters));
+
+ConsumerOptions consumerOptions = signaling.request("consume", recvOptions.id(), device.recvRtpCapabilities()).join();
+Consumer consumer = recvTransport.consume(consumerOptions).join();
+
+if (consumer.track() instanceof VideoTrack track) {
+    track.addSink(frame -> System.out.println(frame.buffer.getWidth() + "x" + frame.buffer.getHeight()));
+}
+```
+
+Audio tracks take an `AudioTrackSink` in the same way.
+
+### Events and closing
+
+Transports report their connection state, and producers and consumers report when their transport closes. Listeners run one at a time on an executor of each transport, never on the threads of webrtc-java:
+
+```java
+sendTransport.onConnectionStateChange(state -> System.out.println("send transport " + state));
+consumer.onTransportClose(() -> System.out.println("consumer closed with its transport"));
+```
+
+Closing a producer or a consumer stops sending or receiving it; tell the server too. Closing a transport closes its producers and consumers. Close the factory last: it disposes the `PeerConnectionFactory` if it created it:
+
+```java
+producer.close();
+sendTransport.close();
+recvTransport.close();
+factory.close();
+```
+
+## Platforms
+
+webrtc-java publishes natives for these platforms, as classifiers of `dev.onvoid.webrtc:webrtc-java`. The CI of jmediasoup runs its tests, against a mediasoup server, only on Linux x86_64 so far.
+
+| Classifier | Status |
+|---|---|
+| `linux-x86_64` | Tested in CI |
+| `linux-aarch64` | Natives available, not tested |
+| `linux-aarch32` | Natives available, not tested |
+| `macos-x86_64` | Natives available, not tested |
+| `macos-aarch64` | Natives available, not tested |
+| `windows-x86_64` | Natives available, not tested |
+| `windows-aarch64` | Natives available, not tested |
+
+## Limitations
+
+`0.1.0` covers the basic flow: load the device, send and receive audio and video, and close. These are not supported yet:
+
+- Simulcast and SVC: `produce` with more than one encoding fails with `UnsupportedException`.
+- Codec options (`ProducerCodecOptions`, such as `opusStereo` or `videoGoogleStartBitrate`): they are ignored, with a warning.
+- Pausing and resuming producers and consumers, and replacing the track of a producer.
+- Data channels (`produceData` and `consumeData`).
+- Stats, ICE restart and updating the ICE servers.
+
+[TODO.md](TODO.md) holds the plan up to parity with pymediasoup and mediasoup-client.
 
 ## License
 
