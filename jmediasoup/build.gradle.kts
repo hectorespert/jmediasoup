@@ -2,6 +2,9 @@ plugins {
     `java-library`
     `java-test-fixtures`
     `maven-publish`
+    signing
+    alias(libs.plugins.nmcp)
+    alias(libs.plugins.nmcp.aggregation)
     id("com.diffplug.spotless")
     alias(libs.plugins.java.module.testing)
 }
@@ -202,4 +205,34 @@ publishing {
             }
         }
     }
+}
+
+// Signs the publication with the armored key in the signingInMemoryKey property, and its passphrase in
+// signingInMemoryKeyPassword. Without the key, a snapshot is published unsigned, but a release fails,
+// so that nothing reaches Maven Central unsigned.
+val signingKey = providers.gradleProperty("signingInMemoryKey").orNull
+val signingKeyPassword = providers.gradleProperty("signingInMemoryKeyPassword").orNull
+val isSnapshot = version.toString().endsWith("-SNAPSHOT")
+signing {
+    if (signingKey != null) {
+        useInMemoryPgpKeys(signingKey, signingKeyPassword)
+    }
+    isRequired = signingKey != null || !isSnapshot
+    sign(publishing.publications["maven"])
+}
+
+// Uploads the signed publication to the Central Portal (publishAggregationToCentralPortal), with the
+// token of the portal in the mavenCentralUsername and mavenCentralPassword properties. A deployment that
+// passes the validation of the portal is published without a manual step. The aggregation is in this
+// project, because the root project has the same name, which nmcp does not allow.
+nmcpAggregation {
+    centralPortal {
+        username = providers.gradleProperty("mavenCentralUsername")
+        password = providers.gradleProperty("mavenCentralPassword")
+        publishingType = "AUTOMATIC"
+    }
+}
+
+dependencies {
+    nmcpAggregation(project(path))
 }

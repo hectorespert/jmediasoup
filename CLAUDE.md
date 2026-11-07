@@ -49,6 +49,7 @@ Use the Gradle wrapper (Gradle 9.8.2). There is one subproject, `jmediasoup`.
 ./gradlew :jmediasoup:test --tests 'io.github.hectorespert.jmediasoup.SmokeTest.testsRunInTheRootPackage'   # run a single test
 ./gradlew clean
 ./gradlew publishToMavenLocal      # publish io.github.hectorespert:jmediasoup to ~/.m2
+./gradlew publishAggregationToCentralPortal   # sign and upload to Maven Central (needs the signing key and the portal token)
 ./gradlew spotlessApply          # format all files; `build` fails through spotlessCheck if any is not formatted
 ./gradlew integrationTest        # tests against a mediasoup server in a container; `check` and `build` run them too
 ```
@@ -65,5 +66,6 @@ Spotless formats Java with palantir-java-format and adds the SPDX licence header
 - The `java-library` plugin is applied, so `api` dependencies are exposed to consumers and `implementation` dependencies are not.
 - The configuration cache is on (`gradle.properties`), so custom tasks and build logic have to be compatible with it.
 - The version comes from git, through the axion-release plugin in the root build script: a `vX.Y.Z` tag gives `X.Y.Z`, and any other commit the next minor version of the last tag with `-SNAPSHOT`. On CI (`CI=true`) the plugin fetches the full history of a shallow clone. `./gradlew currentVersion` prints it.
+- Publishing signs with the armored key in the `signingInMemoryKey` and `signingInMemoryKeyPassword` Gradle properties (required for a release version), and nmcp uploads to the Central Portal with the token in `mavenCentralUsername` and `mavenCentralPassword`, publishing automatically once the portal validates it. Both nmcp plugins go in `jmediasoup`, because nmcp refuses projects with the same name.
 - `compileJava` records the project version in the module descriptor, where `RemoteSdp` reads it.
 - The tests load the webrtc-java natives, whose classifier the build picks from the OS and CPU. The test JVM opens `dev.onvoid.webrtc` to the library module, so that tests can create webrtc-java events whose constructors are package-private.
