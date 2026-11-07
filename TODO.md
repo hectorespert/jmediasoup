@@ -1000,7 +1000,7 @@ Origin: `transport.py`, `aiortc_handler.py`, `remote_sdp.py`
 - [x] `10.2.8` ~~`additionalSettings` and `proprietaryConstraints`: decide which ones make sense in webrtc-java and add them to `TransportOptions` with its builder, without fields reserved by jmediasoup. ⚠️ do not copy: the original calls `copy(deep=True)` on a `dict`.~~ Dropped for now: `proprietaryConstraints` no longer exists in mediasoup-client 3.26, and webrtc-java has no constraints; `additionalSettings` would expose the mutable `RTCConfiguration` of webrtc-java or a selection of its fields, and nobody needs it yet. Only `iceServers` and `iceTransportPolicy` reach the peer connection.
 - [x] `10.2.9` `RemoteSdp.updateIceParameters`: remove `icelite` if it no longer applies. Already done by the port of `RemoteSdp` (`3.5`): it adds or removes `a=ice-lite` with the new parameters.
 - [x] `10.2.10` E2E test: restart ICE and keep receiving media (the server keeps receiving the RTP of a producer after the `restartIce` of the demo).
-- [ ] `10.2.11` E2E test: connection through a TURN server, if the image or the environment allow it.
+- [x] `10.2.11` E2E test: connection through a TURN server, if the image or the environment allow it. `TurnTest` starts coturn 4.18.0 (pinned by digest) on the host network, on `127.0.0.1:3478` with relay ports `21000`–`21099` and `--allow-loopback-peers`, as mediasoup listens on `127.0.0.1`; a send transport with the `relay` policy reaches the server, and its candidate pair in use has a `relay` local candidate.
 - [ ] `10.2.12` Publish version `0.4.0`.
 
 **Phase 10 acceptance**
