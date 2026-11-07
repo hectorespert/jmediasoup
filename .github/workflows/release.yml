@@ -1,0 +1,65 @@
+name: Release
+
+# Publishes to Maven Central the version of a GitHub release, whose tag is X.Y.Z, once the build of the
+# tagged commit passes. Pre-releases are not published.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # The signing key and the Central Portal token are secrets of this environment.
+    environment: maven-central
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-provider: basic
+
+      # axion-release computes the version from the tag of the release; stop if they do not match.
+      - name: Check the version
+        run: |
+          version=$(./gradlew -q currentVersion | sed -n 's/^Project version: //p')
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::the version is '$version', but the tag of the release is '$GITHUB_REF_NAME'"
+            exit 1
+          fi
+
+      - name: Build and publish to Maven Central
+        run: ./gradlew build publishAggregationToCentralPortal
+        env:
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          # Optional: the last 8 hex digits of the signing subkey, if the key holds only that subkey.
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.MAVEN_GPG_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.OSSRH_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.OSSRH_PASSWORD }}
+
+      - name: Upload test reports
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-reports
+          path: |
+            jmediasoup/build/reports/tests/
+            jmediasoup/build/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
