@@ -381,6 +381,32 @@ class WebRtcJavaSendTest {
     }
 
     @Test
+    void replaceTrackChangesTheTrackOfTheSender() {
+        Producer video = produce(videoTrack());
+        MediaStreamTrack other = videoTrack();
+
+        await(video.replaceTrack(other));
+
+        assertEquals(
+                other.getId(),
+                transceiver(video.localId()).getSender().getTrack().getId());
+
+        await(video.replaceTrack(null));
+
+        assertNull(transceiver(video.localId()).getSender().getTrack());
+        // Replacing the track does not renegotiate.
+        assertEquals(RTCSignalingState.STABLE, handler().peerConnection().getSignalingState());
+    }
+
+    @Test
+    void replacingTheTrackOfAnUnknownLocalIdFails() {
+        CompletionException failure =
+                assertThrows(CompletionException.class, () -> await(handler().replaceTrack("42", null)));
+
+        assertInstanceOf(MediasoupClientException.class, failure.getCause());
+    }
+
+    @Test
     void pausingOrResumingAnUnknownLocalIdFails() {
         CompletionException pause =
                 assertThrows(CompletionException.class, () -> await(handler().pauseSending("42")));

@@ -60,15 +60,20 @@ class TestMediaSourcesTest {
         var sink = new PeakAudioSink();
         try (var source = new ToneAudioSource()) {
             AudioTrack track = peerConnectionFactory.createAudioTrack("audio", source.source());
+            long start = System.nanoTime();
             track.addSink(sink);
             Thread.sleep(1000);
             int samples = sink.samples.get();
+            long elapsed = System.nanoTime() - start;
             track.removeSink(sink);
             track.dispose();
 
+            // The rate over the time that really passed, which on a loaded machine is more than the
+            // second of the sleep.
+            long rate = samples * 1_000_000_000L / elapsed;
             assertTrue(
-                    samples >= ToneAudioSource.SAMPLE_RATE * 8 / 10 && samples <= ToneAudioSource.SAMPLE_RATE * 12 / 10,
-                    samples + " samples in a second");
+                    rate >= ToneAudioSource.SAMPLE_RATE * 8 / 10 && rate <= ToneAudioSource.SAMPLE_RATE * 12 / 10,
+                    samples + " samples in " + elapsed / 1_000_000 + " ms");
             assertTrue(Math.abs(sink.peak - ToneAudioSource.AMPLITUDE) <= 1, "peak " + sink.peak);
         }
     }

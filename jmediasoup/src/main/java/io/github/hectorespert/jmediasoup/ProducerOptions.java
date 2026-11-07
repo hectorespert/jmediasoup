@@ -25,7 +25,10 @@ import org.jspecify.annotations.Nullable;
  * @param codecOptions the codec settings, or {@code null} if absent
  * @param codec the codec to use among those of the device, or {@code null} to use the first
  *     suitable one
- * @param stopTracks whether the track is stopped when the producer closes; {@code true} by default
+ * @param stopTracks whether the track is stopped when the producer closes, as in mediasoup-client;
+ *     {@code true} by default. It has no effect: webrtc-java tracks cannot be stopped, and the
+ *     application, which created the track, releases it with {@code dispose()} once no producer sends
+ *     it
  * @param disableTrackOnPause whether the track is disabled while the producer is paused;
  *     {@code true} by default
  * @param zeroRtpOnPause whether no RTP is sent while the producer is paused; {@code false} by

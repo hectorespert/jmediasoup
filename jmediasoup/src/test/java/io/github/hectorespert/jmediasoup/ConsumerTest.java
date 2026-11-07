@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.hectorespert.jmediasoup.fake.FakeHandler;
+import io.github.hectorespert.jmediasoup.fake.FakeMediaStreamTrack;
 import io.github.hectorespert.jmediasoup.fake.FakeParameters;
 import io.github.hectorespert.jmediasoup.rtp.MediaKind;
 import io.github.hectorespert.jmediasoup.transport.DtlsParameters;
@@ -426,6 +427,25 @@ class ConsumerTest {
         assertTrue(consumer.track().isEnabled());
         assertEquals(0, events.get());
         assertTrue(handler(transport).pauseCalls().isEmpty());
+    }
+
+    @Test
+    void theEndOfTheTrackIsEmittedUntilTheConsumerCloses() {
+        Consumer consumer = consume("video/VP8");
+        var track = assertInstanceOf(FakeMediaStreamTrack.class, consumer.track());
+        List<String> events = new CopyOnWriteArrayList<>();
+        consumer.onTrackEnded(() -> events.add("trackended"));
+        consumer.observer().onTrackEnded(() -> events.add("observer trackended"));
+
+        track.end();
+        drain(transport);
+
+        assertEquals(List.of("trackended", "observer trackended"), events);
+        assertFalse(consumer.closed());
+
+        consumer.close();
+
+        assertEquals(0, track.endedListeners());
     }
 
     @Test

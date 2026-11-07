@@ -161,6 +161,26 @@ class SendTest {
         }
     }
 
+    @Test
+    void replacingTheTrackKeepsSending() throws InterruptedException {
+        Producer video =
+                await(transport.produce(ProducerOptions.builder(videoTrack()).build()));
+        awaitReceived(video);
+
+        await(video.replaceTrack(null));
+        awaitStopped(video);
+
+        await(video.replaceTrack(videoTrack()));
+        long stopped = packetCount(video);
+        long deadline = System.nanoTime() + TIMEOUT.toNanos();
+        while (packetCount(video) == stopped) {
+            if (System.nanoTime() > deadline) {
+                throw new AssertionError("no RTP received after replacing the track");
+            }
+            Thread.sleep(200);
+        }
+    }
+
     /**
      * Waits for the server to stop receiving RTP from a producer: two readings of its packet count, a
      * second apart, are equal.

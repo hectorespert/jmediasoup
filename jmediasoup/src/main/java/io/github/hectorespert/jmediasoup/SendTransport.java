@@ -24,6 +24,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -135,6 +136,14 @@ public final class SendTransport extends Transport {
                                 @Override
                                 public void resumed(Producer producer) {
                                     producerResumed(producer);
+                                }
+
+                                @Override
+                                public CompletableFuture<Void> replaceTrack(
+                                        Producer producer, @Nullable MediaStreamTrack track) {
+                                    return queue().push(
+                                                    "producer @replacetrack event",
+                                                    () -> handler().replaceTrack(producer.localId(), track));
                                 }
                             });
                     producers.put(id, producer);

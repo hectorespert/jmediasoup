@@ -173,6 +173,16 @@ public final class FakeHandler implements Handler {
     }
 
     /**
+     * Returns the track being sent or received with a local id.
+     *
+     * @param localId the local id
+     * @return the track, or {@code null} if there is none or it was replaced with none
+     */
+    public @Nullable MediaStreamTrack track(String localId) {
+        return tracks.get(Integer.parseInt(localId));
+    }
+
+    /**
      * Returns how many receivings each call to {@link #receive} asked for.
      *
      * @return the sizes, in the order of the calls

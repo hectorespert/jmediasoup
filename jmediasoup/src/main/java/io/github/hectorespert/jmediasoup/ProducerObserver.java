@@ -16,11 +16,13 @@ public final class ProducerObserver {
     private final RunnableListeners closeListeners;
     private final RunnableListeners pauseListeners;
     private final RunnableListeners resumeListeners;
+    private final RunnableListeners trackEndedListeners;
 
     ProducerObserver(Logger logger) {
         this.closeListeners = new RunnableListeners("observer close", logger);
         this.pauseListeners = new RunnableListeners("observer pause", logger);
         this.resumeListeners = new RunnableListeners("observer resume", logger);
+        this.trackEndedListeners = new RunnableListeners("observer trackended", logger);
     }
 
     /**
@@ -54,6 +56,16 @@ public final class ProducerObserver {
         return resumeListeners.add(listener);
     }
 
+    /**
+     * Listens for the end of the track being sent.
+     *
+     * @param listener called when the track ends
+     * @return the subscription that removes the listener
+     */
+    public Subscription onTrackEnded(Runnable listener) {
+        return trackEndedListeners.add(listener);
+    }
+
     void emitClose() {
         closeListeners.emit();
     }
@@ -66,9 +78,14 @@ public final class ProducerObserver {
         resumeListeners.emit();
     }
 
+    void emitTrackEnded() {
+        trackEndedListeners.emit();
+    }
+
     void clear() {
         closeListeners.clear();
         pauseListeners.clear();
         resumeListeners.clear();
+        trackEndedListeners.clear();
     }
 }

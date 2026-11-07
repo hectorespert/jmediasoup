@@ -6,10 +6,14 @@ package io.github.hectorespert.jmediasoup;
 
 import dev.onvoid.webrtc.RTCRtpSender;
 import dev.onvoid.webrtc.media.MediaStreamTrack;
+import dev.onvoid.webrtc.media.MediaStreamTrackEndedListener;
+import dev.onvoid.webrtc.media.MediaStreamTrackState;
 import io.github.hectorespert.jmediasoup.internal.event.RunnableListeners;
 import io.github.hectorespert.jmediasoup.rtp.MediaKind;
 import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
@@ -35,7 +39,7 @@ public final class Producer {
     // Associated RTCRtpSender.
     private final @Nullable RTCRtpSender rtpSender;
     // Local track.
-    private final MediaStreamTrack track;
+    private volatile @Nullable MediaStreamTrack track;
     // Producer kind.
     private final MediaKind kind;
     // RTP parameters.
@@ -50,9 +54,13 @@ public final class Producer {
     private final Map<String, @Nullable Object> appData;
     // The executor of the transport, where the listeners run.
     private final Executor executor;
-    // Tells the transport that the application closed, paused or resumed the producer.
+    // Tells the transport that the application closed, paused or resumed the producer, or replaced its
+    // track.
     private final TransportListener transportListener;
     private final RunnableListeners transportCloseListeners = new RunnableListeners("transportclose", logger);
+    private final RunnableListeners trackEndedListeners = new RunnableListeners("trackended", logger);
+    // Listens for the end of the track, which webrtc-java notifies on its own threads.
+    private final MediaStreamTrackEndedListener trackEndedListener;
     // Observer instance.
     private final ProducerObserver observer = new ProducerObserver(logger);
 
@@ -82,6 +90,9 @@ public final class Producer {
         this.appData = appData;
         this.executor = executor;
         this.transportListener = transportListener;
+        this.trackEndedListener = ended -> executor.execute(this::onTrackEnded);
+
+        handleTrack();
     }
 
     /**
@@ -132,9 +143,9 @@ public final class Producer {
     /**
      * Returns the track being sent.
      *
-     * @return the track
+     * @return the track, or {@code null} if {@link #replaceTrack} replaced it with none
      */
-    public MediaStreamTrack track() {
+    public @Nullable MediaStreamTrack track() {
         return track;
     }
 
@@ -202,7 +213,8 @@ public final class Producer {
 
         paused = true;
 
-        if (disableTrackOnPause) {
+        MediaStreamTrack track = this.track;
+        if (track != null && disableTrackOnPause) {
             track.setEnabled(false);
         }
 
@@ -231,7 +243,8 @@ public final class Producer {
 
         paused = false;
 
-        if (disableTrackOnPause) {
+        MediaStreamTrack track = this.track;
+        if (track != null && disableTrackOnPause) {
             track.setEnabled(true);
         }
 
@@ -241,6 +254,58 @@ public final class Producer {
 
         // Emit observer event.
         executor.execute(observer::emitResume);
+    }
+
+    /**
+     * Replaces the track being sent, without renegotiating, after the pending operations of the
+     * transport. The new track takes the pause state of the producer if {@link
+     * ProducerOptions#disableTrackOnPause()} is set. The previous track is not released: it belongs to
+     * the application.
+     *
+     * @param track the new track, of the same kind, or {@code null} to send nothing
+     * @return a future that completes once the handler sends the new track; it fails with an {@link
+     *     InvalidStateException} if the producer is closed, before or while replacing, or if the track
+     *     has ended, or with the failure of the handler
+     */
+    public CompletableFuture<Void> replaceTrack(@Nullable MediaStreamTrack track) {
+        logger.debug("replaceTrack() [track:{}]", track == null ? null : track.getId());
+
+        if (closed.get()) {
+            return CompletableFuture.failedFuture(new InvalidStateException("closed"));
+        } else if (track != null && track.getState() == MediaStreamTrackState.ENDED) {
+            return CompletableFuture.failedFuture(new InvalidStateException("track ended"));
+        }
+
+        // Do nothing if this is the same track as the current handled one.
+        if (track == this.track) {
+            logger.debug("replaceTrack() | same track, ignored");
+            return CompletableFuture.completedFuture(null);
+        }
+
+        return transportListener
+                .replaceTrack(this, track)
+                .thenRunAsync(
+                        () -> {
+                            if (closed.get()) {
+                                throw new CompletionException(new InvalidStateException("closed"));
+                            }
+
+                            // Destroy the previous track.
+                            destroyTrack();
+
+                            // Set the new track.
+                            this.track = track;
+
+                            // If this Producer was paused/resumed and the state of the new
+                            // track does not match, fix it.
+                            if (track != null && disableTrackOnPause) {
+                                track.setEnabled(!paused);
+                            }
+
+                            // Handle the effective track.
+                            handleTrack();
+                        },
+                        executor);
     }
 
     /**
@@ -254,6 +319,8 @@ public final class Producer {
         }
 
         logger.debug("close()");
+
+        destroyTrack();
 
         transportListener.closed(this);
 
@@ -275,6 +342,17 @@ public final class Producer {
         return transportCloseListeners.add(listener);
     }
 
+    /**
+     * Listens for the end of the track being sent, as when its device is unplugged. The producer is
+     * not closed.
+     *
+     * @param listener called when the track ends
+     * @return the subscription that removes the listener
+     */
+    public Subscription onTrackEnded(Runnable listener) {
+        return trackEndedListeners.add(listener);
+    }
+
     /** Transport was closed. */
     void transportClosed() {
         if (!closed.compareAndSet(false, true)) {
@@ -282,6 +360,8 @@ public final class Producer {
         }
 
         logger.debug("transportClosed()");
+
+        destroyTrack();
 
         executor.execute(() -> {
             transportCloseListeners.emit();
@@ -293,12 +373,45 @@ public final class Producer {
         });
     }
 
+    private void onTrackEnded() {
+        logger.debug("track \"ended\" event");
+
+        trackEndedListeners.emit();
+
+        // Emit observer event.
+        observer.emitTrackEnded();
+    }
+
+    private void handleTrack() {
+        MediaStreamTrack track = this.track;
+        if (track == null) {
+            return;
+        }
+
+        track.addTrackEndedListener(trackEndedListener);
+    }
+
+    // Stops listening to the track. The track is not stopped, whatever stopTracks says: it belongs to
+    // the application (8.2.13).
+    private void destroyTrack() {
+        MediaStreamTrack track = this.track;
+        if (track == null) {
+            return;
+        }
+
+        track.removeTrackEndedListener(trackEndedListener);
+    }
+
     private void clearListeners() {
         transportCloseListeners.clear();
+        trackEndedListeners.clear();
         observer.clear();
     }
 
-    /** What the transport does when the application closes, pauses or resumes a producer. */
+    /**
+     * What the transport does when the application closes, pauses or resumes a producer, or replaces
+     * its track.
+     */
     interface TransportListener {
 
         /**
@@ -321,5 +434,14 @@ public final class Producer {
          * @param producer the producer
          */
         void resumed(Producer producer);
+
+        /**
+         * The application replaces the track of the producer.
+         *
+         * @param producer the producer
+         * @param track the new track, or {@code null}
+         * @return a future that completes once the handler sends the new track
+         */
+        CompletableFuture<Void> replaceTrack(Producer producer, @Nullable MediaStreamTrack track);
     }
 }

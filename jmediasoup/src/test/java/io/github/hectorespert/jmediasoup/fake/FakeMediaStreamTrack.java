@@ -44,6 +44,15 @@ public final class FakeMediaStreamTrack extends MediaStreamTrack {
         endedListeners.forEach(listener -> listener.onTrackEnd(this));
     }
 
+    /**
+     * Returns how many ended listeners are registered.
+     *
+     * @return the number of listeners
+     */
+    public int endedListeners() {
+        return endedListeners.size();
+    }
+
     @Override
     public String getKind() {
         return kind;

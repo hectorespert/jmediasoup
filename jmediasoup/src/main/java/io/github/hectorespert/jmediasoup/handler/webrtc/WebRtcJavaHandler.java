@@ -770,7 +770,29 @@ public final class WebRtcJavaHandler implements Handler {
 
     @Override
     public CompletableFuture<Void> replaceTrack(String localId, @Nullable MediaStreamTrack track) {
-        return notImplemented("replaceTrack");
+        requireNonNull(localId, "localId");
+        try {
+            assertNotClosed();
+            assertSendDirection();
+
+            if (track != null) {
+                logger.debug("replaceTrack() [localId:{}, track.id:{}]", localId, track.getId());
+            } else {
+                logger.debug("replaceTrack() [localId:{}, no track]", localId);
+            }
+
+            RTCRtpTransceiver transceiver = mapMidTransceiver.get(localId);
+
+            if (transceiver == null) {
+                throw new MediasoupClientException("associated RTCRtpTransceiver not found");
+            }
+
+            transceiver.getSender().replaceTrack(track);
+        } catch (MediasoupClientException | RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override

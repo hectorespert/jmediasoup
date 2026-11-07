@@ -869,19 +869,19 @@ Origin: `producer.py`, `consumer.py`
 
 ### 8.2 Track replacement and end
 
-- [ ] `8.2.1` `Producer.replaceTrack`: checks and the same track.
-- [ ] `8.2.2` `Producer.replaceTrack`: allow a null track, as the comment of the original says.
-- [ ] `8.2.3` `Producer.replaceTrack`: stop the previous track according to `stopTracks`.
-- [ ] `8.2.4` `Producer.replaceTrack`: apply the pause state to the new track.
-- [ ] `8.2.5` If the producer is closed, stop the received track according to `stopTracks`.
-- [ ] `8.2.6` `handler.replaceTrack`.
-- [ ] `8.2.7` Connect the `@replacetrack` of the producer to the handler.
-- [ ] `8.2.8` `stopTracks` on close.
-- [ ] `8.2.9` `trackended` event and observer on `Producer`.
-- [ ] `8.2.10` `trackended` event and observer on `Consumer`.
-- [ ] `8.2.11` Remove the track listener when destroying it.
-- [ ] `8.2.12` If `produce` fails because the transport is closed, stop the track according to `stopTracks` (formerly `4.4.7`).
-- [ ] `8.2.13` Decide what stopping a track means in webrtc-java, which has no `stop()` (`0.3.10`): `dispose()`, which releases the native track, or doing nothing and leaving the track to the user. First check with the natives what happens if `dispose()` is called twice. It affects `8.2.3`, `8.2.5`, `8.2.8` and `8.2.12`.
+- [x] `8.2.1` `Producer.replaceTrack`: checks and the same track. It returns a `CompletableFuture<Void>`, as the promise of mediasoup-client, which fails with `InvalidStateException` if the producer is closed, before or while replacing, or the track has ended, and completes at once for the same track.
+- [x] `8.2.2` `Producer.replaceTrack`: allow a null track, as the comment of the original says. `Producer.track()` is then `null`, and the server stops receiving RTP until another track.
+- [x] `8.2.3` ~~`Producer.replaceTrack`: stop the previous track according to `stopTracks`.~~ Nothing to do after `8.2.13`.
+- [x] `8.2.4` `Producer.replaceTrack`: apply the pause state to the new track.
+- [x] `8.2.5` ~~If the producer is closed, stop the received track according to `stopTracks`.~~ Nothing to do after `8.2.13`.
+- [x] `8.2.6` `handler.replaceTrack`: `sender.replaceTrack`, without renegotiating. An E2E test checks that the server stops receiving with no track and receives again with a new one.
+- [x] `8.2.7` Connect the `@replacetrack` of the producer to the handler, through the queue of the transport.
+- [x] `8.2.8` ~~`stopTracks` on close.~~ Nothing to do after `8.2.13`.
+- [x] `8.2.9` `trackended` event and observer on `Producer`, on the executor of the transport. webrtc-java only ends local tracks on `dispose()` (`0.3.10`), so in practice it comes from custom tracks.
+- [x] `8.2.10` `trackended` event and observer on `Consumer`.
+- [x] `8.2.11` Remove the track listener when destroying it: on close, on the close of the transport and when replacing the track.
+- [x] `8.2.12` ~~If `produce` fails because the transport is closed, stop the track according to `stopTracks` (formerly `4.4.7`).~~ Nothing to do after `8.2.13`.
+- [x] `8.2.13` Decide what stopping a track means in webrtc-java, which has no `stop()` (`0.3.10`). Decided: nothing; the track belongs to the application, which created it with its `PeerConnectionFactory` and may use it elsewhere (a preview, another producer), and releases it. `stopTracks` stays in the options for parity, documented as having no effect. Checked with the natives: a second `dispose()`, or any method after it (`isEnabled`, `getState`), throws `NullPointerException` ("Object handle is null"), and `dispose()` on a track that a sender still holds throws `java.lang.Error` ("Native object was not deleted"), so the library could only release it after `stopSending`, leaving the references of the application unusable. Neither are the remote tracks of the consumers released: their receivers own them. So `8.2.3`, `8.2.5`, `8.2.8` and `8.2.12` do nothing.
 
 ### 8.3 RTP probator and recycling
 

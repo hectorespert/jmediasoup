@@ -6,6 +6,7 @@ package io.github.hectorespert.jmediasoup;
 
 import dev.onvoid.webrtc.RTCRtpReceiver;
 import dev.onvoid.webrtc.media.MediaStreamTrack;
+import dev.onvoid.webrtc.media.MediaStreamTrackEndedListener;
 import io.github.hectorespert.jmediasoup.internal.event.RunnableListeners;
 import io.github.hectorespert.jmediasoup.rtp.MediaKind;
 import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
@@ -51,6 +52,9 @@ public final class Consumer {
     // Tells the transport that the application closed, paused or resumed the consumer.
     private final TransportListener transportListener;
     private final RunnableListeners transportCloseListeners = new RunnableListeners("transportclose", logger);
+    private final RunnableListeners trackEndedListeners = new RunnableListeners("trackended", logger);
+    // Listens for the end of the track, which webrtc-java notifies on its own threads.
+    private final MediaStreamTrackEndedListener trackEndedListener;
     // Observer instance.
     private final ConsumerObserver observer = new ConsumerObserver(logger);
 
@@ -78,6 +82,9 @@ public final class Consumer {
         this.appData = appData;
         this.executor = executor;
         this.transportListener = transportListener;
+        this.trackEndedListener = ended -> executor.execute(this::onTrackEnded);
+
+        handleTrack();
     }
 
     /**
@@ -247,6 +254,8 @@ public final class Consumer {
 
         logger.debug("close()");
 
+        destroyTrack();
+
         transportListener.closed(this);
 
         executor.execute(() -> {
@@ -267,6 +276,16 @@ public final class Consumer {
         return transportCloseListeners.add(listener);
     }
 
+    /**
+     * Listens for the end of the track being received, as when mediasoup closes the producer.
+     *
+     * @param listener called when the track ends
+     * @return the subscription that removes the listener
+     */
+    public Subscription onTrackEnded(Runnable listener) {
+        return trackEndedListeners.add(listener);
+    }
+
     /** Transport was closed. */
     void transportClosed() {
         if (!closed.compareAndSet(false, true)) {
@@ -274,6 +293,8 @@ public final class Consumer {
         }
 
         logger.debug("transportClosed()");
+
+        destroyTrack();
 
         executor.execute(() -> {
             transportCloseListeners.emit();
@@ -285,8 +306,27 @@ public final class Consumer {
         });
     }
 
+    private void onTrackEnded() {
+        logger.debug("track \"ended\" event");
+
+        trackEndedListeners.emit();
+
+        // Emit observer event.
+        observer.emitTrackEnded();
+    }
+
+    private void handleTrack() {
+        track.addTrackEndedListener(trackEndedListener);
+    }
+
+    // Stops listening to the track, which its receiver owns, without releasing it (8.2.13).
+    private void destroyTrack() {
+        track.removeTrackEndedListener(trackEndedListener);
+    }
+
     private void clearListeners() {
         transportCloseListeners.clear();
+        trackEndedListeners.clear();
         observer.clear();
     }
 

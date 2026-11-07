@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.onvoid.webrtc.media.MediaStreamTrackState;
 import io.github.hectorespert.jmediasoup.fake.FakeHandler;
 import io.github.hectorespert.jmediasoup.fake.FakeMediaStreamTrack;
 import io.github.hectorespert.jmediasoup.fake.FakeParameters;
@@ -610,6 +611,109 @@ class ProducerTest {
 
         producer.resume();
         assertFalse(producer.paused());
+    }
+
+    @Test
+    void replaceTrackSendsTheNewTrack() {
+        var first = FakeMediaStreamTrack.video();
+        var second = FakeMediaStreamTrack.video();
+        Producer producer = produce(first);
+
+        await(producer.replaceTrack(second));
+
+        assertSame(second, producer.track());
+        assertSame(second, handler(transport).track(producer.localId()));
+        // The previous track is left to the application, and no longer listened to.
+        assertEquals(MediaStreamTrackState.LIVE, first.getState());
+        assertEquals(0, first.endedListeners());
+        assertEquals(1, second.endedListeners());
+    }
+
+    @Test
+    void replaceTrackWithNullSendsNothingUntilAnotherTrack() {
+        Producer producer = produce(FakeMediaStreamTrack.video());
+
+        await(producer.replaceTrack(null));
+
+        assertNull(producer.track());
+        assertNull(handler(transport).track(producer.localId()));
+        // Pausing and resuming without a track only changes the state.
+        producer.pause();
+        producer.resume();
+
+        var track = FakeMediaStreamTrack.video();
+        await(producer.replaceTrack(track));
+
+        assertSame(track, producer.track());
+    }
+
+    @Test
+    void replacingWithTheSameTrackDoesNothing() {
+        var track = FakeMediaStreamTrack.audio();
+        Producer producer = produce(track);
+        handler(transport).failNextOperation(new MediasoupClientException("not called"));
+
+        await(producer.replaceTrack(track));
+
+        assertSame(track, producer.track());
+    }
+
+    @Test
+    void theNewTrackTakesThePauseState() {
+        Producer producer = produce(FakeMediaStreamTrack.video());
+        producer.pause();
+        var track = FakeMediaStreamTrack.video();
+
+        await(producer.replaceTrack(track));
+
+        assertFalse(track.isEnabled());
+
+        producer.resume();
+
+        assertTrue(track.isEnabled());
+    }
+
+    @Test
+    void replaceTrackFailsIfTheProducerIsClosedOrTheTrackEnded() {
+        Producer producer = produce(FakeMediaStreamTrack.video());
+        var ended = FakeMediaStreamTrack.video();
+        ended.end();
+
+        assertInstanceOf(InvalidStateException.class, cause(producer.replaceTrack(ended)));
+
+        producer.close();
+
+        assertInstanceOf(InvalidStateException.class, cause(producer.replaceTrack(FakeMediaStreamTrack.video())));
+    }
+
+    @Test
+    void aFailedReplaceKeepsTheTrack() {
+        var track = FakeMediaStreamTrack.video();
+        Producer producer = produce(track);
+        var error = new MediasoupClientException("replace failed");
+        handler(transport).failNextOperation(error);
+
+        assertSame(error, cause(producer.replaceTrack(FakeMediaStreamTrack.video())));
+        assertSame(track, producer.track());
+    }
+
+    @Test
+    void theEndOfTheTrackIsEmittedUntilTheProducerCloses() {
+        var track = FakeMediaStreamTrack.video();
+        Producer producer = produce(track);
+        List<String> events = new CopyOnWriteArrayList<>();
+        producer.onTrackEnded(() -> events.add("trackended"));
+        producer.observer().onTrackEnded(() -> events.add("observer trackended"));
+
+        track.end();
+        drain(transport);
+
+        assertEquals(List.of("trackended", "observer trackended"), events);
+        assertFalse(producer.closed());
+
+        producer.close();
+
+        assertEquals(0, track.endedListeners());
     }
 
     @Test
