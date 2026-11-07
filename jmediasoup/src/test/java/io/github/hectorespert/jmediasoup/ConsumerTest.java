@@ -186,7 +186,9 @@ class ConsumerTest {
         assertEquals(
                 List.of(MediaKind.AUDIO, MediaKind.VIDEO, MediaKind.AUDIO),
                 consumers.stream().map(Consumer::kind).toList());
-        assertEquals(List.of(3), handler(transport).receiveBatches());
+        flush(transport);
+        // The video consumer creates the consumer for RTP probation after the batch.
+        assertEquals(List.of(3, 1), handler(transport).receiveBatches());
     }
 
     @Test
@@ -227,9 +229,11 @@ class ConsumerTest {
             }
         }
 
+        flush(transport);
         assertEquals(20, consumers.stream().map(Consumer::localId).distinct().count());
+        // And the consumer for RTP probation.
         assertEquals(
-                20,
+                21,
                 handler(transport).receiveBatches().stream()
                         .mapToInt(Integer::intValue)
                         .sum());
@@ -302,7 +306,8 @@ class ConsumerTest {
         flush(transport);
 
         assertEquals(List.of(3), handler(transport).stopReceivingBatches());
-        assertTrue(handler(transport).localIds().isEmpty());
+        // Only the consumer for RTP probation remains.
+        assertEquals(1, handler(transport).localIds().size());
     }
 
     @Test
@@ -446,6 +451,37 @@ class ConsumerTest {
         consumer.close();
 
         assertEquals(0, track.endedListeners());
+    }
+
+    @Test
+    void theFirstVideoConsumerCreatesTheConsumerForRtpProbationOnce() {
+        consume("audio/opus");
+        flush(transport);
+
+        assertEquals(List.of(1), handler(transport).receiveBatches());
+
+        consume("video/VP8");
+        consume("video/VP8");
+        flush(transport);
+
+        assertEquals(List.of(1, 1, 1, 1), handler(transport).receiveBatches());
+        assertEquals(3 + 1, handler(transport).localIds().size());
+    }
+
+    @Test
+    void aFailedConsumerForRtpProbationIsOnlyLoggedAndTriedAgain() {
+        handler(transport).failNextReceive("probator", new MediasoupClientException("probator failed"));
+        Consumer first = consume("video/VP8");
+        flush(transport);
+
+        assertFalse(first.closed());
+
+        consume("video/VP8");
+        flush(transport);
+
+        // The next video consumer creates it: video, failed probator, video and probator.
+        assertEquals(List.of(1, 1, 1, 1), handler(transport).receiveBatches());
+        assertEquals(2 + 1, handler(transport).localIds().size());
     }
 
     @Test

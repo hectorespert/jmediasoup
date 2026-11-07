@@ -82,6 +82,7 @@ public final class FakeHandler implements Handler {
     // DataChannel id value counter. It must be incremented for each new DataChannel.
     private final AtomicInteger nextSctpStreamId = new AtomicInteger();
     private final AtomicReference<@Nullable Throwable> nextFailure = new AtomicReference<>();
+    private final AtomicReference<@Nullable Throwable> nextReceiveFailure = new AtomicReference<>();
     // The number of receivings in each call to receive and stopReceiving.
     private final List<Integer> receiveBatches = new CopyOnWriteArrayList<>();
     private final List<Integer> stopReceivingBatches = new CopyOnWriteArrayList<>();
@@ -237,6 +238,17 @@ public final class FakeHandler implements Handler {
         nextFailure.set(error);
     }
 
+    /**
+     * Makes the next {@link #receive} of a given track fail, such as the {@code probator} one that the
+     * transport receives after the first video consumer.
+     *
+     * @param trackId the track id of the receiving
+     * @param error the failure
+     */
+    public void failNextReceive(String trackId, Throwable error) {
+        nextReceiveFailure.set(new TrackFailure(trackId, error));
+    }
+
     @Override
     public String name() {
         return NAME;
@@ -344,6 +356,11 @@ public final class FakeHandler implements Handler {
     @Override
     public CompletableFuture<List<HandlerReceiveResult>> receive(List<HandlerReceiveOptions> optionsList) {
         receiveBatches.add(optionsList.size());
+        if (nextReceiveFailure.get() instanceof TrackFailure failure
+                && optionsList.stream().anyMatch(options -> options.trackId().equals(failure.trackId()))
+                && nextReceiveFailure.compareAndSet(failure, null)) {
+            return CompletableFuture.failedFuture(failure.getCause());
+        }
         return start().thenCompose(ignored -> setupTransport(DtlsRole.CLIENT)).thenApply(ignored -> {
             var results = new ArrayList<HandlerReceiveResult>();
             for (HandlerReceiveOptions receiveOptions : optionsList) {
@@ -510,6 +527,21 @@ public final class FakeHandler implements Handler {
 
         EmptyStatsReport() {
             super(Map.<String, RTCStats>of(), 0);
+        }
+    }
+
+    // The failure of the receive of a track.
+    private static final class TrackFailure extends Exception {
+
+        private final String trackId;
+
+        TrackFailure(String trackId, Throwable cause) {
+            super(cause);
+            this.trackId = trackId;
+        }
+
+        String trackId() {
+            return trackId;
         }
     }
 }

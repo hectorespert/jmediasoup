@@ -12,7 +12,9 @@ import io.github.hectorespert.jmediasoup.handler.HandlerReceiveOptions;
 import io.github.hectorespert.jmediasoup.handler.HandlerReceiveResult;
 import io.github.hectorespert.jmediasoup.internal.ortc.Ortc;
 import io.github.hectorespert.jmediasoup.rtp.ExtendedRtpCapabilities;
+import io.github.hectorespert.jmediasoup.rtp.MediaKind;
 import io.github.hectorespert.jmediasoup.rtp.RtpCapabilities;
+import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
 import io.github.hectorespert.jmediasoup.transport.TransportDirection;
 import io.github.hectorespert.jmediasoup.transport.TransportOptions;
 import java.util.ArrayList;
@@ -25,6 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,6 +38,9 @@ import org.slf4j.LoggerFactory;
 public final class RecvTransport extends Transport {
 
     private static final Logger logger = LoggerFactory.getLogger(RecvTransport.class);
+
+    // The track id of the Consumer for RTP probation, as in mediasoup-client.
+    private static final String PROBATOR_TRACK_ID = "probator";
 
     // RTP capabilities of the device for receiving media.
     private final RtpCapabilities recvRtpCapabilities;
@@ -48,6 +54,8 @@ public final class RecvTransport extends Transport {
     private List<ConsumerCreationTask> consumerTasksInProgress = List.of();
     // Consumer creation in progress flag.
     private boolean consumerCreationInProgress;
+    // Whether the Consumer for RTP probation has been created. Only the tasks of the queue use it.
+    private volatile boolean probatorConsumerCreated;
     // Consumers pending to be closed.
     private final PendingConsumers pendingCloseConsumers = new PendingConsumers("close", Handler::stopReceiving);
     // Consumers pending to be paused.
@@ -151,19 +159,20 @@ public final class RecvTransport extends Transport {
                         received = CompletableFuture.failedFuture(e);
                     }
                     return received.handle((results, error) -> {
-                        lock.lock();
-                        try {
-                            consumerTasksInProgress = List.of();
-                        } finally {
-                            lock.unlock();
-                        }
-                        if (error != null) {
-                            fail(tasks, unwrap(error));
-                        } else {
-                            createConsumers(tasks, results);
-                        }
-                        return null;
-                    });
+                                lock.lock();
+                                try {
+                                    consumerTasksInProgress = List.of();
+                                } finally {
+                                    lock.unlock();
+                                }
+                                if (error != null) {
+                                    fail(tasks, unwrap(error));
+                                    return null;
+                                }
+                                return createConsumers(tasks, results);
+                            })
+                            // If RTP probation must be handled, do it now.
+                            .thenCompose(this::createProbatorConsumer);
                 })
                 .whenComplete((ignored, error) -> {
                     boolean again;
@@ -181,14 +190,18 @@ public final class RecvTransport extends Transport {
                 });
     }
 
-    private void createConsumers(List<ConsumerCreationTask> tasks, List<HandlerReceiveResult> results) {
+    // Creates the consumers of a batch, and returns the first video one if the Consumer for RTP
+    // probation has to be created with it.
+    private @Nullable Consumer createConsumers(List<ConsumerCreationTask> tasks, List<HandlerReceiveResult> results) {
         if (results.size() != tasks.size()) {
             fail(
                     tasks,
                     new MediasoupClientException(
                             "handler returned " + results.size() + " results for " + tasks.size() + " receivings"));
-            return;
+            return null;
         }
+        // Video Consumer in order to create the probator.
+        Consumer videoConsumerForProbator = null;
         for (int idx = 0; idx < tasks.size(); ++idx) {
             ConsumerOptions options = tasks.get(idx).options();
             HandlerReceiveResult result = results.get(idx);
@@ -227,11 +240,46 @@ public final class RecvTransport extends Transport {
                 continue;
             }
 
+            // If this is the first video Consumer and the Consumer for RTP probation
+            // has not yet been created, it's time to create it.
+            if (!probatorConsumerCreated && videoConsumerForProbator == null && options.kind() == MediaKind.VIDEO) {
+                videoConsumerForProbator = consumer;
+            }
+
             // Emit observer event.
             executor().execute(() -> observer().emitNewConsumer(consumer));
 
             tasks.get(idx).result().complete(consumer);
         }
+        return videoConsumerForProbator;
+    }
+
+    // Receives the RTP that mediasoup sends to probe the bandwidth, with the parameters of the first
+    // video consumer. A failure is only logged, and the next video consumer tries again.
+    private CompletableFuture<@Nullable Void> createProbatorConsumer(@Nullable Consumer videoConsumerForProbator) {
+        if (videoConsumerForProbator == null || closed()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        CompletableFuture<List<HandlerReceiveResult>> received;
+        try {
+            RtpParameters probatorRtpParameters =
+                    Ortc.generateProbatorRtpParameters(videoConsumerForProbator.rtpParameters());
+            received = handler()
+                    .receive(List.of(new HandlerReceiveOptions(
+                            PROBATOR_TRACK_ID, MediaKind.VIDEO, probatorRtpParameters, null)));
+        } catch (RuntimeException e) {
+            received = CompletableFuture.failedFuture(e);
+        }
+        return received.handle((results, error) -> {
+            if (error != null) {
+                logger.error("createPendingConsumers() | failed to create Consumer for RTP probation", unwrap(error));
+            } else {
+                logger.debug("createPendingConsumers() | Consumer for RTP probation created");
+                probatorConsumerCreated = true;
+            }
+            return null;
+        });
     }
 
     private void consumerClosed(Consumer consumer) {

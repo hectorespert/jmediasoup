@@ -885,12 +885,12 @@ Origin: `producer.py`, `consumer.py`
 
 ### 8.3 RTP probator and recycling
 
-- [ ] `8.3.1` Create the probation consumer with the first video consumer.
-- [ ] `8.3.2` Check that it is not created more than once, also with concurrent calls.
-- [ ] `8.3.3` Decide whether a failure of the probator should make `consume` fail. mediasoup-client only logs the error.
-- [ ] `8.3.4` E2E test of section recycling: create and close consumers repeatedly.
-- [ ] `8.3.5` E2E test of recycling an audio section with a video one.
-- [ ] `8.3.6` E2E test: close the consumer of the first section (it is disabled, not closed).
+- [x] `8.3.1` Create the probation consumer with the first video consumer, as mediasoup-client 3.26: in the same task of the queue as the batch, after completing its consumes, with `Ortc.generateProbatorRtpParameters` and the track id `probator`.
+- [x] `8.3.2` Check that it is not created more than once, also with concurrent calls: the flag is only used by the tasks of the queue, which run one at a time.
+- [x] `8.3.3` Decide whether a failure of the probator should make `consume` fail. Decided: no, as mediasoup-client, which only logs the error; the consumes of the batch have already completed, and the next video consumer tries again.
+- [x] `8.3.4` E2E test of section recycling: create and close consumers repeatedly (`RecyclingTest`, with two jmediasoup peers, one producing and closing tracks).
+- [x] `8.3.5` E2E test of recycling an audio section with a video one.
+- [x] `8.3.6` E2E test: close the consumer of the first section (it is disabled, not closed).
 - [ ] `8.3.7` Publish version `0.2.0`.
 
 **Phase 8 acceptance**

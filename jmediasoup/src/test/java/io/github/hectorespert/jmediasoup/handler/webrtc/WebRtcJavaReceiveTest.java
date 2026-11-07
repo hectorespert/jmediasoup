@@ -28,6 +28,7 @@ import io.github.hectorespert.jmediasoup.fake.FakeParameters;
 import io.github.hectorespert.jmediasoup.handler.HandlerReceiveOptions;
 import io.github.hectorespert.jmediasoup.rtp.MediaKind;
 import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
+import io.github.hectorespert.jmediasoup.rtp.Rtx;
 import io.github.hectorespert.jmediasoup.transport.DtlsParameters;
 import io.github.hectorespert.jmediasoup.transport.DtlsRole;
 import java.util.List;
@@ -97,6 +98,21 @@ class WebRtcJavaReceiveTest {
         throw new AssertionError("no transceiver with mid " + mid);
     }
 
+    // Waits until the transport has created the consumer for RTP probation, which it does in its queue
+    // after completing the first video consumer.
+    private void awaitProbator() throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            boolean created = java.util.Arrays.stream(handler().peerConnection().getTransceivers())
+                    .anyMatch(transceiver -> "probator".equals(transceiver.getMid()));
+            if (created && handler().peerConnection().getSignalingState() == RTCSignalingState.STABLE) {
+                return;
+            }
+            Thread.sleep(20);
+        }
+        throw new AssertionError("no consumer for RTP probation");
+    }
+
     private static ConsumerOptions withSsrc(ConsumerOptions options, long ssrc) {
         RtpParameters rtpParameters = options.rtpParameters();
         return new ConsumerOptions(
@@ -108,7 +124,10 @@ class WebRtcJavaReceiveTest {
                         rtpParameters.codecs(),
                         rtpParameters.headerExtensions(),
                         rtpParameters.encodings().stream()
-                                .map(encoding -> encoding.toBuilder().ssrc(ssrc).build())
+                                .map(encoding -> encoding.toBuilder()
+                                        .ssrc(ssrc)
+                                        .rtx(encoding.rtx() == null ? null : new Rtx(ssrc + 1))
+                                        .build())
                                 .toList(),
                         rtpParameters.rtcp(),
                         rtpParameters.msid()),
@@ -138,13 +157,40 @@ class WebRtcJavaReceiveTest {
     }
 
     @Test
-    void consumesInTheSameBatchShareANegotiation() {
+    void consumesInTheSameBatchShareANegotiation() throws InterruptedException {
         CompletableFuture<Consumer> audio = transport.consume(FakeParameters.consumerRemoteParameters("audio/opus"));
         CompletableFuture<Consumer> video = transport.consume(FakeParameters.consumerRemoteParameters("video/VP8"));
 
         assertEquals(MediaKind.AUDIO, await(audio).kind());
         assertEquals(MediaKind.VIDEO, await(video).kind());
-        assertEquals(2, handler().peerConnection().getTransceivers().length);
+        awaitProbator();
+        // Theirs and the one of the probator.
+        assertEquals(3, handler().peerConnection().getTransceivers().length);
+    }
+
+    @Test
+    void theFirstVideoConsumerCreatesTheProbatorOnce() throws InterruptedException {
+        await(transport.consume(FakeParameters.consumerRemoteParameters("audio/opus")));
+
+        // An audio consumer does not create it.
+        assertEquals(1, handler().peerConnection().getTransceivers().length);
+
+        await(transport.consume(FakeParameters.consumerRemoteParameters("video/VP8")));
+        awaitProbator();
+        RTCRtpTransceiver probator = transceiver("probator");
+
+        assertEquals(RTCRtpTransceiverDirection.RECV_ONLY, probator.getCurrentDirection());
+        assertEquals("probator", probator.getReceiver().getTrack().getId());
+
+        // A second video consumer does not create another one.
+        await(transport.consume(withSsrc(FakeParameters.consumerRemoteParameters("video/VP8"), 4321)));
+        await(transport.consume(withSsrc(FakeParameters.consumerRemoteParameters("audio/opus"), 5000)));
+
+        assertEquals(
+                1,
+                java.util.Arrays.stream(handler().peerConnection().getTransceivers())
+                        .filter(transceiver -> "probator".equals(transceiver.getMid()))
+                        .count());
     }
 
     @Test
@@ -173,13 +219,14 @@ class WebRtcJavaReceiveTest {
     }
 
     @Test
-    void theStreamIsTheGivenOneOrTheCname() {
+    void theStreamIsTheGivenOneOrTheCname() throws InterruptedException {
         ConsumerOptions options = FakeParameters.consumerRemoteParameters("audio/opus");
         var withStream = new ConsumerOptions(
                 options.id(), options.producerId(), options.kind(), options.rtpParameters(), "my-stream", null);
 
         await(transport.consume(withStream));
         Consumer withoutStream = await(transport.consume(FakeParameters.consumerRemoteParameters("video/VP8")));
+        awaitProbator();
 
         String sdp = handler().remoteSdp().getSdp();
         assertTrue(sdp.contains("a=msid:my-stream " + options.id()), sdp);
@@ -196,7 +243,7 @@ class WebRtcJavaReceiveTest {
         // Waits for the stopReceiving in the queue, by consuming after it. mediasoup gives each consumer
         // its own SSRC, and the first section keeps the one of the closed consumer.
         Consumer again =
-                await(transport.consume(withSsrc(FakeParameters.consumerRemoteParameters("audio/opus"), 1234)));
+                await(transport.consume(withSsrc(FakeParameters.consumerRemoteParameters("audio/opus"), 4321)));
 
         // The first section is disabled instead of closed, as in mediasoup-client, because it keeps the
         // BUNDLE transport.
@@ -212,21 +259,22 @@ class WebRtcJavaReceiveTest {
         Consumer video = await(transport.consume(FakeParameters.consumerRemoteParameters("video/VP8")));
 
         video.close();
-        await(transport.consume(withSsrc(FakeParameters.consumerRemoteParameters("audio/opus"), 1234)));
+        await(transport.consume(withSsrc(FakeParameters.consumerRemoteParameters("audio/opus"), 4321)));
 
         // webrtc-java removes the stopped transceiver once negotiated, and the new consumer reuses its
-        // section.
+        // section. The video consumer created the probator.
         List<String> mids = java.util.Arrays.stream(handler().peerConnection().getTransceivers())
                 .map(RTCRtpTransceiver::getMid)
                 .toList();
         assertFalse(mids.contains("1"), mids.toString());
-        assertEquals(2, mids.size(), mids.toString());
+        assertEquals(3, mids.size(), mids.toString());
     }
 
     @Test
-    void pausingAndResumingReceivingRenegotiatesTheDirection() {
+    void pausingAndResumingReceivingRenegotiatesTheDirection() throws InterruptedException {
         Consumer audio = await(transport.consume(FakeParameters.consumerRemoteParameters("audio/opus")));
         Consumer video = await(transport.consume(FakeParameters.consumerRemoteParameters("video/VP8")));
+        awaitProbator();
 
         await(handler().pauseReceiving(List.of(audio.localId(), video.localId())));
 
@@ -262,7 +310,7 @@ class WebRtcJavaReceiveTest {
                 transceiver(audio.localId()).getCurrentDirection());
 
         audio.resume();
-        await(transport.consume(withSsrc(FakeParameters.consumerRemoteParameters("audio/opus"), 1234)));
+        await(transport.consume(withSsrc(FakeParameters.consumerRemoteParameters("audio/opus"), 4321)));
 
         assertTrue(audio.track().isEnabled());
         assertEquals(
