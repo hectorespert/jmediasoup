@@ -37,7 +37,7 @@ Tests that need a track, a data channel or a handler use `fake.FakeMediaStreamTr
 
 The WebRTC stack is [webrtc-java](https://github.com/devopvoid/webrtc-java); the results of the spike that validated it, and what they mean for the design, are in section 0.3 of TODO.md.
 
-The design decisions (async model, threading, events, JSON, nullness, logging, JPMS, SDP representation, dependency scopes) are recorded in the "Decisiones" section of TODO.md. Follow them, and ask before departing from one.
+The design decisions (async model, threading, events, JSON, nullness, logging, JPMS, SDP representation, dependency scopes) are recorded in the "Decisions" section of TODO.md. Follow them, and ask before departing from one.
 
 ## Commands
 

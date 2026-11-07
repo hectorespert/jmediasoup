@@ -1,945 +1,945 @@
-# TODO: hoja de ruta de jmediasoup
+# TODO: jmediasoup roadmap
 
-Objetivo: un cliente Java de [mediasoup](https://mediasoup.org) con las mismas funcionalidades que [pymediasoup](https://github.com/Huddle01/pymediasoup), usando [mediasoup-client](https://github.com/versatica/mediasoup-client) como referencia donde pymediasoup deja huecos.
+Goal: a Java client for [mediasoup](https://mediasoup.org) with the same features as [pymediasoup](https://github.com/Huddle01/pymediasoup), using [mediasoup-client](https://github.com/versatica/mediasoup-client) as the reference where pymediasoup falls short.
 
-> **Documento vivo.** Todas las fases, tareas y pasos pueden cambiar según se vaya implementando: se pueden añadir, dividir, reordenar o eliminar. Si la implementación demuestra que un paso está mal planteado, se corrige aquí en vez de seguirlo al pie de la letra.
+> **Living document.** Every phase, task and step can change as the implementation progresses: they can be added, split, reordered or removed. If the implementation shows that a step is wrong, fix it here instead of following it to the letter.
 
-## Cómo leer este documento
+## How to read this document
 
-- Cada subtarea tiene un ID (`3.2.4`) y debería caber en un commit o PR pequeño.
-- `Origen:` indica el código de referencia. Las rutas son de pymediasoup (commit `7e6b7ab`) salvo que se indique otra cosa.
-- `⚠️ no copiar` marca un bug o un stub del original que no debe reproducirse.
-- Cada fase termina con sus criterios de aceptación.
-- La [matriz de paridad](#matriz-de-paridad) relaciona la API de pymediasoup con la fase que la cubre.
+- Each subtask has an ID (`3.2.4`) and should fit in a small commit or PR.
+- `Origin:` names the reference code. Paths are from pymediasoup (commit `7e6b7ab`) unless stated otherwise.
+- `⚠️ do not copy` marks a bug or a stub of the original that must not be reproduced.
+- Each phase ends with its acceptance criteria.
+- The [parity matrix](#parity-matrix) maps the pymediasoup API to the phase that covers it.
 
-## Resumen
+## Summary
 
-| Parte | Fase | Contenido |
+| Part | Phase | Content |
 |---|---|---|
-| A: MVP | [0](#fase-0-proyecto-y-decisiones) | Proyecto y decisiones |
-| A: MVP | [1](#fase-1-fundamentos) | Errores, eventos, modelos y JSON |
-| A: MVP | [2](#fase-2-ortc) | Lógica ORTC y capacidades RTP |
-| A: MVP | [3](#fase-3-sdp) | Parser y generador de SDP |
-| A: MVP | [4](#fase-4-device-y-transport-con-fakehandler) | `Device` y `Transport` con `FakeHandler` |
-| A: MVP | [5](#fase-5-webrtcjavahandler-recepción) | `WebRtcJavaHandler`: recepción |
-| A: MVP | [6](#fase-6-webrtcjavahandler-envío) | `WebRtcJavaHandler`: envío |
-| A: MVP | [7](#fase-7-hito-mvp) | Hito MVP con servidor real |
-| B: paridad | [8](#fase-8-control-de-medios) | Control de medios |
-| B: paridad | [9](#fase-9-data-channels) | Data channels |
-| B: paridad | [10](#fase-10-stats-e-ice) | Stats e ICE |
-| B: paridad | [11](#fase-11-codecs-y-encodings) | Codecs, simulcast y SVC |
-| B: paridad | [12](#fase-12-ejemplos-y-utilidades-de-media) | Ejemplos y utilidades de media |
-| B: paridad | [13](#fase-13-publicación) | Publicación |
-| C: extras | [14](#fase-14-más-allá-de-pymediasoup-opcional) | Más allá de pymediasoup |
+| A: MVP | [0](#phase-0-project-and-decisions) | Project and decisions |
+| A: MVP | [1](#phase-1-foundations) | Errors, events, models and JSON |
+| A: MVP | [2](#phase-2-ortc) | ORTC logic and RTP capabilities |
+| A: MVP | [3](#phase-3-sdp) | SDP parser and writer |
+| A: MVP | [4](#phase-4-device-and-transport-with-fakehandler) | `Device` and `Transport` with `FakeHandler` |
+| A: MVP | [5](#phase-5-webrtcjavahandler-receiving) | `WebRtcJavaHandler`: receiving |
+| A: MVP | [6](#phase-6-webrtcjavahandler-sending) | `WebRtcJavaHandler`: sending |
+| A: MVP | [7](#phase-7-mvp-milestone) | MVP milestone with a real server |
+| B: parity | [8](#phase-8-media-control) | Media control |
+| B: parity | [9](#phase-9-data-channels) | Data channels |
+| B: parity | [10](#phase-10-stats-and-ice) | Stats and ICE |
+| B: parity | [11](#phase-11-codecs-and-encodings) | Codecs, simulcast and SVC |
+| B: parity | [12](#phase-12-examples-and-media-utilities) | Examples and media utilities |
+| B: parity | [13](#phase-13-release) | Release |
+| C: extras | [14](#phase-14-beyond-pymediasoup-optional) | Beyond pymediasoup |
 
-**Definición de MVP:** contra un servidor mediasoup real y con un test automatizado, `Device.load`, crear transportes send y recv, producir audio y vídeo desde una fuente custom (sin simulcast), consumir audio y vídeo con un sink, y cerrar limpiamente observando `connectionState`.
+**MVP definition:** against a real mediasoup server and with an automated test, `Device.load`, create send and recv transports, produce audio and video from a custom source (without simulcast), consume audio and video with a sink, and close cleanly while observing `connectionState`.
 
-**Qué significa "paridad":** la misma API pública, pero funcional donde pymediasoup no lo es. Varias funciones del original son stubs por limitaciones de aiortc, y aquí deben funcionar de verdad.
+**What "parity" means:** the same public API, but working where pymediasoup does not. Several functions of the original are stubs because of aiortc limitations, and here they must really work.
 
-**Exclusión deliberada:** Plan B. Existe en `media_section.py` y `remote_sdp.py`, pero ningún handler lo usa.
+**Deliberate exclusion:** Plan B. It exists in `media_section.py` and `remote_sdp.py`, but no handler uses it.
 
-## Decisiones
+## Decisions
 
-**Ya tomadas**
+**Already made**
 
-- Coordenadas Maven: `io.github.hectorespert:jmediasoup`, con paquete raíz `io.github.hectorespert.jmediasoup`.
-- Servidor de pruebas: la imagen de terceros `mmahdisonic/mediasoup-demo`, fijada por digest (sección 0.4). En local se ejecuta con podman.
-- Licencia: Apache-2.0. El código a portar es MIT (pymediasoup, sdp-transform) e ISC (mediasoup-client, h264-profile-level-id), con sus avisos en `NOTICE`.
-- Subproyecto: `jmediasoup`, que da nombre al artefacto sin configuración adicional.
-- Stack WebRTC: `dev.onvoid.webrtc:webrtc-java` (Apache-2.0), confirmado por el spike de la sección 0.3. Validado en local en Linux x86_64; falta probarlo contra un servidor mediasoup real y en otras plataformas.
+- Maven coordinates: `io.github.hectorespert:jmediasoup`, with the root package `io.github.hectorespert.jmediasoup`.
+- Test server: the third-party image `mmahdisonic/mediasoup-demo`, pinned by digest (section 0.4). Locally it runs with podman.
+- License: Apache-2.0. The code to port is MIT (pymediasoup, sdp-transform) and ISC (mediasoup-client, h264-profile-level-id), with their notices in `NOTICE`.
+- Subproject: `jmediasoup`, which names the artifact without extra configuration.
+- WebRTC stack: `dev.onvoid.webrtc:webrtc-java` (Apache-2.0), confirmed by the spike of section 0.3. Validated locally on Linux x86_64; it still has to be tried against a real mediasoup server and on other platforms.
 
-**Diseño** (sección 0.5)
+**Design** (section 0.5)
 
-- API asíncrona con `CompletableFuture`. Quien prefiera estilo bloqueante usa `.join()` en un virtual thread.
-- Tests de integración (sección 7.1): suite `integrationTest` de Gradle con Testcontainers, en el classpath, como usa la librería la mayoría de aplicaciones; los unitarios ya cubren el module path, y Testcontainers no es modular. `check` depende de ella, así que `build` y el CI la ejecutan. Sin Docker, o fuera de Linux mientras falte la `0.4.9`, los tests se omiten. En local con podman basta con activar su socket y apuntar `DOCKER_HOST` a él.
-- Handler de webrtc-java (sección 5.1): `WebRtcJavaHandler` en el paquete exportado `handler.webrtc`. La factory de handlers admite las dos formas de libmediasoupclient: `createFactory(peerConnectionFactory)` usa una `PeerConnectionFactory` de la aplicación, que sigue siendo suya, y `createFactory()` crea una propia con `HeadlessAudioDeviceModule`, que se libera al cerrar la factory (`AutoCloseable`). Los tracks a enviar salen de esa misma `PeerConnectionFactory`. Los callbacks de webrtc-java completan sus futuros en un hilo virtual, así que nada de jmediasoup se ejecuta en el hilo de señalización de la factory. Los tests con nativos van en la tarea `test`, con el clasificador elegido por SO y CPU.
-- Transportes (sección 4.3): dos tipos, `SendTransport` y `RecvTransport`, que heredan de una clase sellada `Transport`, como libmediasoupclient y mediasoup-client-android, en vez del `Transport` único de pymediasoup. Así `produce` solo existe en el de envío y `consume` en el de recepción. Se crean con los handlers sueltos: `createSendTransport(options, connect, produce)` y `createRecvTransport(options, connect)`. `producedata` se añadirá en la Fase 9 con una sobrecarga de cuatro parámetros. `ConnectHandler` devuelve un `CompletionStage<?>` cuyo valor se ignora, para que valga directamente el futuro de la señalización. `appData` es de solo lectura, como en pymediasoup (su setter lanza una excepción); un setter se podría añadir sin romper nada. Los eventos que provoca `close()` (observer `close`, `transportclose`) se entregan después, en el ejecutor del transporte, igual que el `newtransport` del `Device`.
-- Hilos (sección 4.3): cada transporte tiene un ejecutor en serie (`internal.event.SerialExecutor`) sobre hilos virtuales compartidos, donde se ejecuta todo el código del usuario: listeners y handlers. Ninguno corre en un hilo nativo ni en el del que llama, ni dos a la vez, y pueden bloquear sin parar la factory; no heredan thread-locals (`MDC`). Las operaciones (`produce`, `consume`...) pasan además por una cola como la `AwaitQueue` de mediasoup-client (`internal.event.OperationQueue`), que las encadena de una en una y al cerrar rechaza las pendientes con `InvalidStateException`. Los eventos del handler no esperan a la cola: se entregan en cuanto llegan, en el ejecutor en serie, como en mediasoup-client. Clases propias en vez de Guava (`MoreExecutors.newSequentialExecutor`, `ExecutionSequencer`), que se quitó en `0.1.3` y no rechaza lo pendiente. Se usa `ReentrantLock` en vez de `synchronized` para no fijar hilos virtuales en Java 21–23.
-- Eventos: `connect` y `produce` se pasan al crear el transporte y devuelven un `CompletableFuture`, así que no pueden faltar. El resto son listeners tipados (`onConnectionStateChange(...)`) que devuelven una suscripción para darse de baja.
-- Listeners (sección 1.2): `Consumer<T>` para los eventos con valor y `Runnable` para los que no tienen. `onXxx` devuelve una `Subscription` (`AutoCloseable`, `close()` idempotente). En cuanto `close()` vuelve, el listener no recibe nada más, ni siquiera el evento que se está entregando; uno añadido durante una entrega empieza con el siguiente evento. Si un listener lanza una excepción, se registra a nivel ERROR con SLF4J y se sigue con los demás.
-- Handlers asíncronos (sección 1.2): `connect` y `produce` son interfaces propias (`ConnectHandler`, `ProduceHandler` con un record de petición) que devuelven un `CompletionStage`. Si el handler lanza, devuelve `null` o su stage falla, la operación falla con `MediasoupClientException` y la causa original. jmediasoup no pone timeout; lo pone el usuario en su señalización.
-- Tipos de texto cerrado como enums con su valor JSON.
-- La API pública usa los tipos de webrtc-java (`MediaStreamTrack`, `RTCRtpSender`...), como pymediasoup usa los de aiortc. Solo el data channel tiene abstracción propia (`handler.DataChannel`, sección 1.7); sender y receiver se exponen como `@Nullable` y son `null` con `FakeHandler`, que usa una subclase de prueba de `MediaStreamTrack`. Se necesita el jar de webrtc-java, pero no sus nativos, salvo con `WebRtcJavaHandler`. Deja fuera Android.
-- Handler (sección 4.1): contrato de mediasoup-client 3.26 en el paquete `handler`, con los nombres `Handler` y `HandlerFactory`. La factory da las capacidades nativas por dirección y crea handlers ya listos; el handler avisa al transporte por un `HandlerListener` que recibe en sus opciones, y tiene desde el principio todos los métodos de 3.26.
-- Un único artefacto, `jmediasoup`, con el handler pluggable por interfaz. `FakeHandler` solo en tests, como en pymediasoup.
-- Dependencias: webrtc-java, `jackson-annotations` y JSpecify como `api`; SLF4J como `implementation`; `jackson-databind` solo en tests. Los nativos de webrtc-java los declara el usuario, con instrucciones para Gradle y Maven.
-- Nulos con JSpecify: `@NullMarked` en cada paquete y `@Nullable` en lo opcional.
-- Modelos con `record` y anotaciones de Jackson. jmediasoup no necesita JSON en tiempo de ejecución: el usuario convierte con su propio `ObjectMapper`, de Jackson 2 o 3. Con Gson harían falta adapters (enums, `OS`/`MIS`, números dentro de `Map`); un `fromMap`/`toMap` propio se puede añadir más adelante sin romper nada.
-- `appData` como `Map<String, Object>` inmutable que admite valores `null`.
-- Logging con SLF4J 2.
-- Java 21 como versión mínima. Podría bajar a 17 sin cambiar otras decisiones (webrtc-java es Java 8), pero se mantiene 21 por el `switch` con patrones, `SequencedMap` y los virtual threads.
-- Modelos (sección 1.3) en subpaquetes exportados por área: `jmediasoup.rtp`, `jmediasoup.sctp` y `jmediasoup.transport`. Lo opcional es `null` y no se rellena con los valores por defecto de pydantic; las listas y mapas ausentes quedan vacíos e inmutables. El constructor valida lo obligatorio y los rangos y formatos de cada campo (payload type, SSRC de 32 bits sin signo, `mimeType`...); las reglas entre campos van en ORTC, salvo las contradicciones dentro de un mismo record que no dependen del contexto (fiabilidad de `SctpStreamParameters`). Los records que el usuario construye con 4 o más opcionales tienen builder escrito a mano.
-- Opciones (sección 1.6): `ProducerOptions`, `ConsumerOptions`, `DataProducerOptions`, `DataConsumerOptions` y `ProducerCodecOptions` van en el paquete raíz, junto a las clases que las usan. Las que solo construye el usuario y no se serializan tienen sus flags como `boolean` con el valor por defecto del original en el builder. De mediasoup-client se añaden `opusNack` y `streamId`; `onRtpSender` y `onRtpReceiver` quedan para la Fase 14.
-- Excepción a la 0.5.5 (sección 1.5): los servidores ICE son un record propio, `IceServer`, porque es configuración que suele llegar como JSON y `RTCIceServer` de webrtc-java es mutable. El handler lo convierte.
-- JSON (sección 1.8): un valor de enum desconocido falla al leer, con un mensaje claro, en vez de leerse como `null`.
-- ORTC (sección 2.3) y SDP (Fase 3): donde pymediasoup y mediasoup-client difieren, se sigue a mediasoup-client, que tiene la versión actual del algoritmo. La API sigue siendo la de pymediasoup.
-- Capacidades (sección 2.4): modelo de mediasoup-client 3.26. El handler da capacidades nativas por dirección, `Device.load` calcula unas capacidades extendidas de recepción y otras de envío (con la opción `preferLocalCodecsOrder`), y `canSend` y `canReceive` trabajan sobre las capacidades de envío y de recepción, no sobre las extendidas.
-- `parameters` de codec: `Map<String, Object>` que conserva el orden y el tipo JSON de cada valor (texto o número). ORTC los compara con `internal.ParameterValues`, que trata `100`, `100L` y `"100"` como iguales. `RtpCodec` es una interfaz sellada que implementan `RtpCodecCapability` y `RtpCodecParameters`.
-- Excepciones (sección 1.1): base checked `MediasoupClientException extends Exception`, con `UnsupportedException` e `InvalidStateException` como subclases. Los métodos síncronos la declaran; en un `CompletableFuture` llega como causa del fallo (`CompletionException` en `join()`). Un argumento no válido lanza `IllegalArgumentException` y uno obligatorio que llega `null`, `NullPointerException`. Los `Exception` genéricos del original (SDP o transceiver inesperados) lanzan la base. Un codec elegido en `ProducerOptions.codec` que no se puede enviar lanza `UnsupportedException` (sección 2.5), aunque el original lanza `TypeError`.
-- `module-info.java` desde el principio, exportando solo los paquetes públicos. Los paquetes internos van bajo `io.github.hectorespert.jmediasoup.internal` (`.internal.sdp`, `.internal.sdptransform`, `.internal.h264`...) y no se exportan.
-- Los tests se ejecutan dentro del módulo de la librería (whitebox, con `--patch-module`) mediante el plugin `org.gradlex.java-module-testing`. Así ven los paquetes internos y comprueban a la vez los `requires` y `exports`.
-- Ports propios de `sdp-transform` y `h264-profile-level-id` como paquetes internos (`internal.sdptransform` e `internal.h264`). El código de SDP de mediasoup-client (`handlers/sdp`) va en `internal.sdp`. No hay alternativa Java aprovechable (ver `0.5.13`). El SDP parseado se representa con `Map<String, Object>`, como el objeto de sdp-transform y el `dict` de pymediasoup.
-- Versiones: SemVer. `0.1.0` con el MVP (`7.4`), una versión menor al cerrar cada fase de paridad (`0.2.0` la 8, `0.3.0` la 9, `0.4.0` la 10, `0.5.0` la 11 y `0.6.0` la 12) y `1.0.0` con la 13. Las correcciones entre fases salen como parches. En `0.x` una versión menor puede romper la API; desde la `1.0.0`, SemVer estricto. Solo se publica desde CI, al empujar una etiqueta `vX.Y.Z`.
-- La versión la calcula desde git el plugin `gradle-git-versioning` (qoomon). Se ha elegido frente a axion-release, que está mejor mantenido pero tiene incidencias abiertas con el configuration cache, porque su versión 7.0 lo soporta. Es GPL-3.0, pero solo se usa en el build y no afecta a la licencia de la librería.
-- Servidor: mediasoup v3. La CI valida la versión de la imagen (3.19.14), y en la Fase 13 se añade una reciente.
+- Asynchronous API with `CompletableFuture`. Whoever prefers a blocking style calls `.join()` on a virtual thread.
+- Integration tests (section 7.1): an `integrationTest` Gradle suite with Testcontainers, on the classpath, as most applications use the library; the unit tests already cover the module path, and Testcontainers is not modular. `check` depends on it, so `build` and the CI run it. Without Docker, or outside Linux until `0.4.9` is done, the tests are skipped. Locally with podman, it is enough to enable its socket and point `DOCKER_HOST` at it.
+- webrtc-java handler (section 5.1): `WebRtcJavaHandler` in the exported package `handler.webrtc`. The handler factory supports both forms of libmediasoupclient: `createFactory(peerConnectionFactory)` uses a `PeerConnectionFactory` of the application, which stays the application's, and `createFactory()` creates its own with `HeadlessAudioDeviceModule`, released when the factory is closed (`AutoCloseable`). The tracks to send come from that same `PeerConnectionFactory`. The webrtc-java callbacks complete their futures on a virtual thread, so nothing of jmediasoup runs on the signaling thread of the factory. The tests with natives go in the `test` task, with the classifier picked by OS and CPU.
+- Transports (section 4.3): two types, `SendTransport` and `RecvTransport`, which extend a sealed class `Transport`, like libmediasoupclient and mediasoup-client-android, instead of the single `Transport` of pymediasoup. So `produce` only exists on the send one and `consume` on the receive one. They are created with the handlers as separate arguments: `createSendTransport(options, connect, produce)` and `createRecvTransport(options, connect)`. `producedata` will be added in Phase 9 with a four-parameter overload. `ConnectHandler` returns a `CompletionStage<?>` whose value is ignored, so that the signaling future can be returned directly. `appData` is read-only, as in pymediasoup (its setter raises an exception); a setter could be added without breaking anything. The events that `close()` causes (the `close` observer, `transportclose`) are delivered afterwards, on the transport executor, like the `newtransport` of the `Device`.
+- Threading (section 4.3): each transport has a serial executor (`internal.event.SerialExecutor`) over shared virtual threads, where all the user code runs: listeners and handlers. None of it runs on a native thread or on the caller's, nor two at once, and it can block without stopping the factory; it does not inherit thread-locals (`MDC`). Operations (`produce`, `consume`...) also go through a queue like the `AwaitQueue` of mediasoup-client (`internal.event.OperationQueue`), which chains them one at a time and on close rejects the pending ones with `InvalidStateException`. Handler events do not wait for the queue: they are delivered as soon as they arrive, on the serial executor, as in mediasoup-client. Our own classes instead of Guava (`MoreExecutors.newSequentialExecutor`, `ExecutionSequencer`), which was removed in `0.1.3` and does not reject what is pending. `ReentrantLock` is used instead of `synchronized` so as not to pin virtual threads on Java 21–23.
+- Events: `connect` and `produce` are passed when creating the transport and return a `CompletableFuture`, so they cannot be missing. The rest are typed listeners (`onConnectionStateChange(...)`) that return a subscription to unsubscribe.
+- Listeners (section 1.2): `Consumer<T>` for events with a value and `Runnable` for those without. `onXxx` returns a `Subscription` (`AutoCloseable`, idempotent `close()`). As soon as `close()` returns, the listener receives nothing else, not even the event being delivered; one added during a delivery starts with the next event. If a listener throws an exception, it is logged at ERROR level with SLF4J and the others are still notified.
+- Asynchronous handlers (section 1.2): `connect` and `produce` are our own interfaces (`ConnectHandler`, `ProduceHandler` with a request record) that return a `CompletionStage`. If the handler throws, returns `null` or its stage fails, the operation fails with `MediasoupClientException` and the original cause. jmediasoup sets no timeout; the user sets it in their signaling.
+- Closed text types as enums with their JSON value.
+- The public API uses the webrtc-java types (`MediaStreamTrack`, `RTCRtpSender`...), as pymediasoup uses the aiortc ones. Only the data channel has its own abstraction (`handler.DataChannel`, section 1.7); sender and receiver are exposed as `@Nullable` and are `null` with `FakeHandler`, which uses a test subclass of `MediaStreamTrack`. The webrtc-java jar is needed, but not its natives, except with `WebRtcJavaHandler`. It leaves Android out.
+- Handler (section 4.1): the contract of mediasoup-client 3.26 in the `handler` package, with the names `Handler` and `HandlerFactory`. The factory gives the native capabilities by direction and creates ready handlers; the handler notifies the transport through a `HandlerListener` it receives in its options, and has every method of 3.26 from the start.
+- A single artifact, `jmediasoup`, with the handler pluggable through an interface. `FakeHandler` only in tests, as in pymediasoup.
+- Dependencies: webrtc-java, `jackson-annotations` and JSpecify as `api`; SLF4J as `implementation`; `jackson-databind` only in tests. The webrtc-java natives are declared by the user, with instructions for Gradle and Maven.
+- Nullness with JSpecify: `@NullMarked` on each package and `@Nullable` on what is optional.
+- Models as `record`s with Jackson annotations. jmediasoup needs no JSON at runtime: the user converts with their own `ObjectMapper`, from Jackson 2 or 3. Gson would need adapters (enums, `OS`/`MIS`, numbers inside a `Map`); our own `fromMap`/`toMap` can be added later without breaking anything.
+- `appData` as an immutable `Map<String, Object>` that allows `null` values.
+- Logging with SLF4J 2.
+- Java 21 as the minimum version. It could go down to 17 without changing other decisions (webrtc-java is Java 8), but 21 is kept for pattern matching in `switch`, `SequencedMap` and virtual threads.
+- Models (section 1.3) in exported subpackages by area: `jmediasoup.rtp`, `jmediasoup.sctp` and `jmediasoup.transport`. What is optional is `null` and is not filled in with the pydantic defaults; absent lists and maps are empty and immutable. The constructor validates what is required and the ranges and formats of each field (payload type, unsigned 32-bit SSRC, `mimeType`...); the rules across fields go in ORTC, except the contradictions within a single record that do not depend on the context (reliability of `SctpStreamParameters`). The records that the user builds with 4 or more optional fields have a hand-written builder.
+- Options (section 1.6): `ProducerOptions`, `ConsumerOptions`, `DataProducerOptions`, `DataConsumerOptions` and `ProducerCodecOptions` go in the root package, next to the classes that use them. The ones that only the user builds and are not serialized have their flags as `boolean`, with the default of the original in the builder. `opusNack` and `streamId` are added from mediasoup-client; `onRtpSender` and `onRtpReceiver` are left for Phase 14.
+- Exception to 0.5.5 (section 1.5): ICE servers are our own record, `IceServer`, because it is configuration that often arrives as JSON and the `RTCIceServer` of webrtc-java is mutable. The handler converts it.
+- JSON (section 1.8): an unknown enum value fails on read, with a clear message, instead of being read as `null`.
+- ORTC (section 2.3) and SDP (Phase 3): where pymediasoup and mediasoup-client differ, mediasoup-client is followed, as it has the current version of the algorithm. The API is still the one of pymediasoup.
+- Capabilities (section 2.4): the model of mediasoup-client 3.26. The handler gives native capabilities by direction, `Device.load` computes extended receive capabilities and extended send capabilities (with the `preferLocalCodecsOrder` option), and `canSend` and `canReceive` work on the send and receive capabilities, not on the extended ones.
+- Codec `parameters`: a `Map<String, Object>` that keeps the order and the JSON type of each value (text or number). ORTC compares them with `internal.ParameterValues`, which treats `100`, `100L` and `"100"` as equal. `RtpCodec` is a sealed interface implemented by `RtpCodecCapability` and `RtpCodecParameters`.
+- Exceptions (section 1.1): a checked base, `MediasoupClientException extends Exception`, with `UnsupportedException` and `InvalidStateException` as subclasses. Synchronous methods declare it; in a `CompletableFuture` it arrives as the cause of the failure (`CompletionException` in `join()`). An invalid argument throws `IllegalArgumentException`, and a required one that is `null`, `NullPointerException`. The generic `Exception`s of the original (unexpected SDP or transceiver) throw the base. A codec chosen in `ProducerOptions.codec` that cannot be sent throws `UnsupportedException` (section 2.5), although the original throws `TypeError`.
+- `module-info.java` from the start, exporting only the public packages. Internal packages go under `io.github.hectorespert.jmediasoup.internal` (`.internal.sdp`, `.internal.sdptransform`, `.internal.h264`...) and are not exported.
+- Tests run inside the library module (whitebox, with `--patch-module`) through the `org.gradlex.java-module-testing` plugin. So they see the internal packages and check the `requires` and `exports` at the same time.
+- Our own ports of `sdp-transform` and `h264-profile-level-id` as internal packages (`internal.sdptransform` and `internal.h264`). The SDP code of mediasoup-client (`handlers/sdp`) goes in `internal.sdp`. There is no usable Java alternative (see `0.5.13`). The parsed SDP is represented with `Map<String, Object>`, like the sdp-transform object and the `dict` of pymediasoup.
+- Versions: SemVer. `0.1.0` with the MVP (`7.4`), a minor version when each parity phase is closed (`0.2.0` Phase 8, `0.3.0` Phase 9, `0.4.0` Phase 10, `0.5.0` Phase 11 and `0.6.0` Phase 12) and `1.0.0` with Phase 13. Fixes between phases come out as patches. In `0.x` a minor version can break the API; from `1.0.0` on, strict SemVer. Releases are only published from CI, when a `vX.Y.Z` tag is pushed.
+- The version is computed from git by the `gradle-git-versioning` plugin (qoomon). It was chosen over axion-release, which is better maintained but has open issues with the configuration cache, because its version 7.0 supports it. It is GPL-3.0, but it is only used in the build and does not affect the license of the library.
+- Server: mediasoup v3. The CI validates the version of the image (3.19.14), and a recent one is added in Phase 13.
 
 ---
 
-# Parte A: hasta el MVP
+# Part A: up to the MVP
 
-## Fase 0: proyecto y decisiones
+## Phase 0: project and decisions
 
-### 0.1 Limpieza de la plantilla
+### 0.1 Template cleanup
 
-- [x] `0.1.1` Borrar `org.example.Library` y `org.example.LibraryTest`.
-- [x] `0.1.2` Quitar `commons-math3` y `guava` de `lib/build.gradle.kts`.
-- [x] `0.1.3` Quitar `commons-math3` y `guava` de `gradle/libs.versions.toml`.
-- [x] `0.1.4` Quitar los comentarios generados por `gradle init` de los scripts de build.
-- [x] `0.1.5` Crear el paquete `io.github.hectorespert.jmediasoup` con `package-info.java`.
-- [x] `0.1.6` Añadir un test de humo para que `./gradlew test` ejecute algo.
-- [x] `0.1.7` Actualizar "Project state" y los comandos de ejemplo en `CLAUDE.md`.
+- [x] `0.1.1` Delete `org.example.Library` and `org.example.LibraryTest`.
+- [x] `0.1.2` Remove `commons-math3` and `guava` from `lib/build.gradle.kts`.
+- [x] `0.1.3` Remove `commons-math3` and `guava` from `gradle/libs.versions.toml`.
+- [x] `0.1.4` Remove the comments generated by `gradle init` from the build scripts.
+- [x] `0.1.5` Create the `io.github.hectorespert.jmediasoup` package with `package-info.java`.
+- [x] `0.1.6` Add a smoke test so that `./gradlew test` runs something.
+- [x] `0.1.7` Update "Project state" and the example commands in `CLAUDE.md`.
 
-### 0.2 Coordenadas, repositorio y licencia
+### 0.2 Coordinates, repository and license
 
-- [x] `0.2.1` Fijar `group = "io.github.hectorespert"` en el build.
-- [x] `0.2.2` Fijar la versión inicial `0.1.0-SNAPSHOT`.
-- [x] `0.2.3` Decidir entre renombrar el subproyecto `lib` o fijar el `artifactId` en la publicación: se renombra a `jmediasoup`.
-- [x] `0.2.4` Aplicar `maven-publish` y comprobar con `publishToMavenLocal` que el artefacto sale como `jmediasoup`.
-- [x] `0.2.5` Crear el repositorio remoto en GitHub (hoy no hay ningún remoto configurado).
-- [x] `0.2.6` Verificar el namespace `io.github.hectorespert` en Central Portal.
-- [x] `0.2.7` Elegir la licencia del proyecto y añadir `LICENSE`.
-- [x] `0.2.8` Revisar las licencias del código que se va a portar (pymediasoup, mediasoup-client, sdp-transform, h264-profile-level-id) y conservar sus avisos de copyright en un `NOTICE`.
+- [x] `0.2.1` Set `group = "io.github.hectorespert"` in the build.
+- [x] `0.2.2` Set the initial version `0.1.0-SNAPSHOT`.
+- [x] `0.2.3` Decide between renaming the `lib` subproject or setting the `artifactId` in the publication: it is renamed to `jmediasoup`.
+- [x] `0.2.4` Apply `maven-publish` and check with `publishToMavenLocal` that the artifact comes out as `jmediasoup`.
+- [x] `0.2.5` Create the remote repository on GitHub (there was no remote configured).
+- [x] `0.2.6` Verify the `io.github.hectorespert` namespace in Central Portal.
+- [x] `0.2.7` Choose the project license and add `LICENSE`.
+- [x] `0.2.8` Review the licenses of the code to port (pymediasoup, mediasoup-client, sdp-transform, h264-profile-level-id) and keep their copyright notices in a `NOTICE`.
 
-### 0.3 Spike de webrtc-java
+### 0.3 webrtc-java spike
 
-El objetivo era confirmar o descartar el stack, no dejar código definitivo.
+The goal was to confirm or discard the stack, not to leave final code.
 
-- [x] `0.3.1` Añadir `webrtc-java` 0.20.0 al catálogo de versiones.
-- [x] `0.3.2` Resolver el artefacto nativo de Linux x86_64.
-- [x] `0.3.3` Seleccionar el clasificador nativo según el SO en Gradle, de forma compatible con el configuration cache.
-- [x] `0.3.4` Crear y destruir un `PeerConnectionFactory` y un `RTCPeerConnection`, sin fugas ni bloqueos al cerrar.
-- [x] `0.3.5` Comprobar que funciona sin dispositivos de audio ni pantalla (entorno de CI).
-- [x] `0.3.6` Generar una oferta con transceivers de audio y vídeo, y guardar el SDP como fixture.
-- [x] `0.3.7` Revisar en ese SDP los codecs, `extmap`, `rtcp-fb` y la presencia de líneas `a=ssrc`.
-- [x] `0.3.8` Conectar un `CustomAudioSource` a un `AudioTrackSink` a través de dos peer connections locales.
-- [x] `0.3.9` Conectar un `CustomVideoSource` a un `VideoTrackSink` a través de dos peer connections locales.
-- [x] `0.3.10` Comprobar `setEnabled`, el estado del track y cómo se detecta su finalización (`ended`).
-- [x] `0.3.11` Crear un data channel `negotiated` con `id` fijo e intercambiar mensajes.
-- [x] `0.3.12` Comprobar `sendEncodings` con varios `rid` y las líneas `a=rid` y `a=simulcast` resultantes.
-- [x] `0.3.13` Comprobar `RTCOfferOptions.iceRestart` y `setConfiguration`.
-- [x] `0.3.14` Comprobar `getStats` a nivel de peer connection, sender y receiver.
-- [x] `0.3.15` Averiguar en qué hilos llegan los callbacks nativos y si se puede bloquear en ellos.
-- [x] `0.3.16` Comprobar si los tracks se pueden instanciar o simular sin cargar nativos (condiciona `FakeHandler`).
-- [x] `0.3.17` Averiguar si las capacidades nativas dependen de los tracks añadidos (en aiortc hay que pasarlos a `createFactory`).
-- [x] `0.3.18` Enumerar plataformas y arquitecturas soportadas.
-- [x] `0.3.19` Registrar el resultado y confirmar o descartar el stack: **webrtc-java confirmado**. El código del spike se ha borrado.
+- [x] `0.3.1` Add `webrtc-java` 0.20.0 to the version catalog.
+- [x] `0.3.2` Resolve the Linux x86_64 native artifact.
+- [x] `0.3.3` Select the native classifier by OS in Gradle, compatibly with the configuration cache.
+- [x] `0.3.4` Create and destroy a `PeerConnectionFactory` and an `RTCPeerConnection`, without leaks or hangs on close.
+- [x] `0.3.5` Check that it works without audio devices or a display (CI environment).
+- [x] `0.3.6` Generate an offer with audio and video transceivers, and save the SDP as a fixture.
+- [x] `0.3.7` Review the codecs, `extmap`, `rtcp-fb` and the presence of `a=ssrc` lines in that SDP.
+- [x] `0.3.8` Connect a `CustomAudioSource` to an `AudioTrackSink` through two local peer connections.
+- [x] `0.3.9` Connect a `CustomVideoSource` to a `VideoTrackSink` through two local peer connections.
+- [x] `0.3.10` Check `setEnabled`, the track state and how its end (`ended`) is detected.
+- [x] `0.3.11` Create a `negotiated` data channel with a fixed `id` and exchange messages.
+- [x] `0.3.12` Check `sendEncodings` with several `rid` and the resulting `a=rid` and `a=simulcast` lines.
+- [x] `0.3.13` Check `RTCOfferOptions.iceRestart` and `setConfiguration`.
+- [x] `0.3.14` Check `getStats` at the peer connection, sender and receiver levels.
+- [x] `0.3.15` Find out on which threads the native callbacks arrive and whether they can block.
+- [x] `0.3.16` Check whether tracks can be instantiated or faked without loading the natives (it shapes `FakeHandler`).
+- [x] `0.3.17` Find out whether the native capabilities depend on the added tracks (in aiortc they have to be passed to `createFactory`).
+- [x] `0.3.18` List the supported platforms and architectures.
+- [x] `0.3.19` Record the result and confirm or discard the stack: **webrtc-java confirmed**. The spike code has been deleted.
 
-**Resultado del spike** (webrtc-java 0.20.0, Linux x86_64, Java 21, sin `DISPLAY` ni servidor de audio)
+**Spike result** (webrtc-java 0.20.0, Linux x86_64, Java 21, without `DISPLAY` or an audio server)
 
-Funciona entre dos peer connections locales. Falta probarlo contra un servidor mediasoup real (Fase 7) y en macOS y Windows.
+It works between two local peer connections. It still has to be tried against a real mediasoup server (Phase 7) and on macOS and Windows.
 
-| Tarea | Resultado |
+| Task | Result |
 |---|---|
-| `0.3.2`, `0.3.3` | En Gradle el clasificador nativo hay que declararlo: sin él falla con `UnsatisfiedLinkError`. La selección por SO y CPU reutiliza el configuration cache. |
-| `0.3.4` | 1000 peer connections en una factory: el RSS no crece. 300 ciclos de factory y peer connection: unos 16 kB por ciclo, sin bloqueos. |
-| `0.3.5` | Hay que usar `HeadlessAudioDeviceModule`: `new PeerConnectionFactory()` falla si no hay sistema de audio. |
-| `0.3.6`, `0.3.7` | Oferta con Opus, VP8, VP9, H264 y AV1, RTX, `sdes:mid`, `rtp-stream-id`, `transport-wide-cc`, `a=ssrc` y `ssrc-group:FID`. SDP en `jmediasoup/src/test/resources/sdp/webrtc-java-0.20.0/`. |
-| `0.3.8`, `0.3.9` | Audio y vídeo custom llegan al sink. El audio se recibe como PCM de 16 bits, 48 kHz y mono. |
-| `0.3.10` | `setEnabled(false)` silencia al receptor. `MediaStreamTrack` no tiene `stop()`. `transceiver.stop()` y renegociar termina el track remoto y dispara `ended`; el local sigue `LIVE`, y también tras `source.dispose()`. |
-| `0.3.11` | Canal `negotiated` con `id` fijo, en texto y binario. Un canal fiable devuelve `getMaxRetransmits() == 0`, no `-1`. |
-| `0.3.12` | `a=rid` y `a=simulcast:send r0;r1;r2` correctos, sin `a=ssrc`. `scalabilityMode` se conserva. No se ha comprobado que se emitan las tres capas. |
-| `0.3.13` | `iceRestart` cambia el `ufrag` y reconecta. `setConfiguration` se aplica. |
-| `0.3.14` | `getStats` funciona en los tres niveles, con `bytesSent` y `bytesReceived`. |
-| `0.3.15` | Callbacks de señalización, ICE, conexión, data channel y stats en un solo hilo por factory; los sinks, en otro. **Bloquear en un callback detiene toda la factory**, incluidos los getters síncronos, y otra operación asíncrona esperada dentro del callback no termina hasta soltarlo. Otra factory no se ve afectada. |
-| `0.3.16` | `MediaStreamTrack` se puede heredar sin nativos, pero `AudioTrack`, `VideoTrack`, `RTCRtpSender`, `RTCRtpReceiver`, `RTCRtpTransceiver`, `RTCDataChannel` y `RTCPeerConnection` tienen constructor privado. Las clases de datos se usan sin nativos. |
-| `0.3.17` | No hacen falta tracks: una oferta con transceivers sin track da las mismas extensiones, y como único cambio de codecs añade `flexfec-03`. |
-| `0.3.18` | Linux (x86_64, aarch64, aarch32), macOS (x86_64, aarch64) y Windows (x86_64, aarch64). En Linux necesita glibc (Alpine no sirve) y librerías X11, `libgbm` y `libdrm`. Jar nativo de 10 MB. |
+| `0.3.2`, `0.3.3` | In Gradle the native classifier has to be declared: without it, it fails with `UnsatisfiedLinkError`. Selecting it by OS and CPU reuses the configuration cache. |
+| `0.3.4` | 1000 peer connections in one factory: the RSS does not grow. 300 factory and peer connection cycles: about 16 kB per cycle, without hangs. |
+| `0.3.5` | `HeadlessAudioDeviceModule` is required: `new PeerConnectionFactory()` fails if there is no audio system. |
+| `0.3.6`, `0.3.7` | Offer with Opus, VP8, VP9, H264 and AV1, RTX, `sdes:mid`, `rtp-stream-id`, `transport-wide-cc`, `a=ssrc` and `ssrc-group:FID`. SDP in `jmediasoup/src/test/resources/sdp/webrtc-java-0.20.0/`. |
+| `0.3.8`, `0.3.9` | Custom audio and video reach the sink. Audio is received as 16-bit, 48 kHz mono PCM. |
+| `0.3.10` | `setEnabled(false)` silences the receiver. `MediaStreamTrack` has no `stop()`. `transceiver.stop()` and renegotiating ends the remote track and fires `ended`; the local one stays `LIVE`, also after `source.dispose()`. |
+| `0.3.11` | `negotiated` channel with a fixed `id`, in text and binary. A reliable channel returns `getMaxRetransmits() == 0`, not `-1`. |
+| `0.3.12` | Correct `a=rid` and `a=simulcast:send r0;r1;r2`, without `a=ssrc`. `scalabilityMode` is kept. It has not been checked that the three layers are sent. |
+| `0.3.13` | `iceRestart` changes the `ufrag` and reconnects. `setConfiguration` is applied. |
+| `0.3.14` | `getStats` works at the three levels, with `bytesSent` and `bytesReceived`. |
+| `0.3.15` | Signaling, ICE, connection, data channel and stats callbacks on a single thread per factory; the sinks, on another one. **Blocking in a callback stops the whole factory**, including the synchronous getters, and another asynchronous operation awaited inside the callback does not finish until it is released. Another factory is not affected. |
+| `0.3.16` | `MediaStreamTrack` can be subclassed without natives, but `AudioTrack`, `VideoTrack`, `RTCRtpSender`, `RTCRtpReceiver`, `RTCRtpTransceiver`, `RTCDataChannel` and `RTCPeerConnection` have a private constructor. The data classes are used without natives. |
+| `0.3.17` | No tracks are needed: an offer with transceivers without a track gives the same extensions, and as the only change in codecs it adds `flexfec-03`. |
+| `0.3.18` | Linux (x86_64, aarch64, aarch32), macOS (x86_64, aarch64) and Windows (x86_64, aarch64). On Linux it needs glibc (Alpine does not work) and the X11, `libgbm` and `libdrm` libraries. 10 MB native jar. |
 
-**Consecuencias para el diseño**
+**Consequences for the design**
 
-- `0.5.2`: ningún trabajo bloqueante en callbacks nativos, también en los del usuario. Es obligatorio, no una preferencia.
-- `0.5.5`: las abstracciones propias son necesarias para probar `FakeHandler` sin nativos.
-- `0.5.7`: hay que decidir cómo reciben los nativos quienes usen la librería desde Gradle.
-- `8.2.9`: `trackended` en tracks locales tendrá que emitirlo jmediasoup, porque la librería no lo hace.
+- `0.5.2`: no blocking work in native callbacks, the user's included. It is mandatory, not a preference.
+- `0.5.5`: our own abstractions are needed to test `FakeHandler` without natives.
+- `0.5.7`: it has to be decided how users of the library get the natives from Gradle.
+- `8.2.9`: `trackended` on local tracks will have to be emitted by jmediasoup, because the library does not.
 
-### 0.4 Imagen Docker de mediasoup
+### 0.4 mediasoup Docker image
 
-Imagen elegida: `mmahdisonic/mediasoup-demo`, fijada por digest. No se ha encontrado una imagen oficial, y las de la comunidad apenas tienen documentación, así que se han inspeccionado antes de usarlas.
+Chosen image: `mmahdisonic/mediasoup-demo`, pinned by digest. No official image was found, and the community ones have hardly any documentation, so they were inspected before using them.
 
-- [x] `0.4.1` Listar imágenes candidatas (Docker Hub, GHCR y proyectos de GitHub que publiquen imagen).
-- [x] `0.4.2` Comprobar que traen mediasoup v3 en una versión conocida y reciente.
-- [x] `0.4.3` Comprobar que el `Dockerfile` o el código fuente se pueden inspeccionar.
-- [x] `0.4.4` Comprobar que tienen una señalización documentada que permita crear transportes, producir y consumir.
-- [x] `0.4.5` Comprobar que `announcedAddress` y el rango de puertos RTC son configurables.
-- [x] `0.4.6` Comprobar que la licencia es compatible con su uso en CI.
-- [x] `0.4.7` Elegir la imagen y fijarla por digest, no por tag.
-- [x] `0.4.8` Validar la red UDP en Linux con `--network host`.
-- [ ] `0.4.9` Validar la red UDP en macOS y Windows con rango de puertos y `announcedAddress`.
-- [x] `0.4.10` Si ninguna candidata cumple los criterios, volver a plantear la decisión antes de empezar la Fase 7: no hace falta, la candidata cumple.
+- [x] `0.4.1` List candidate images (Docker Hub, GHCR and GitHub projects that publish an image).
+- [x] `0.4.2` Check that they ship a known, recent mediasoup v3.
+- [x] `0.4.3` Check that the `Dockerfile` or the source code can be inspected.
+- [x] `0.4.4` Check that they have documented signaling that allows creating transports, producing and consuming.
+- [x] `0.4.5` Check that `announcedAddress` and the RTC port range are configurable.
+- [x] `0.4.6` Check that the license is compatible with its use in CI.
+- [x] `0.4.7` Choose the image and pin it by digest, not by tag.
+- [x] `0.4.8` Validate UDP networking on Linux with `--network host`.
+- [ ] `0.4.9` Validate UDP networking on macOS and Windows with a port range and `announcedAddress`.
+- [x] `0.4.10` If no candidate meets the criteria, revisit the decision before starting Phase 7: not needed, the candidate meets them.
 
-**Resultado** (con podman, que sustituye a Docker en local)
+**Result** (with podman, which replaces Docker locally)
 
-Imagen elegida: `docker.io/mmahdisonic/mediasoup-demo@sha256:2e60f70cf77ed9ac8b3ef2adfcdb9df6666412c6c543831d5d97bdc37609c8c2`.
+Chosen image: `docker.io/mmahdisonic/mediasoup-demo@sha256:2e60f70cf77ed9ac8b3ef2adfcdb9df6666412c6c543831d5d97bdc37609c8c2`.
 
-| Imagen | mediasoup | Código y licencia | Señalización | Conclusión |
+| Image | mediasoup | Code and license | Signaling | Conclusion |
 |---|---|---|---|---|
-| `mmahdisonic/mediasoup-demo` | 3.19.14 (diciembre de 2025) | Demo oficial, ISC | protoo por WebSocket, como el ejemplo de pymediasoup | Elegida |
-| `mirotalk/sfu` | 3.32.2 | Público, AGPL-3.0 | socket.io, protocolo propio de la aplicación | Alternativa si hace falta una versión reciente |
-| `achrafyoussef/bizcord-mediasoup` | 3.19.22 | Sin repositorio ni licencia | REST con secreto compartido | Descartada |
-| `shubhamwrktalk/mediasoup-demo` | 3.18.0 | Sin Dockerfile ni documentación | Sin documentar | Descartada |
-| `iabsis/mediasoup-api` | 3.19.0 | Repositorio no encontrado | Sin documentar | Descartada |
-| `gbplkr/mediasoup-demo` | 3.15.7 | Sin Dockerfile ni documentación | Sin documentar | Descartada |
-| `vanjoge/mediasoup-demo:v3` | 3.8.3 | Antigua | Sin documentar | Descartada |
+| `mmahdisonic/mediasoup-demo` | 3.19.14 (December 2025) | Official demo, ISC | protoo over WebSocket, like the pymediasoup example | Chosen |
+| `mirotalk/sfu` | 3.32.2 | Public, AGPL-3.0 | socket.io, the application's own protocol | Alternative if a recent version is needed |
+| `achrafyoussef/bizcord-mediasoup` | 3.19.22 | No repository or license | REST with a shared secret | Discarded |
+| `shubhamwrktalk/mediasoup-demo` | 3.18.0 | No Dockerfile or documentation | Undocumented | Discarded |
+| `iabsis/mediasoup-api` | 3.19.0 | Repository not found | Undocumented | Discarded |
+| `gbplkr/mediasoup-demo` | 3.15.7 | No Dockerfile or documentation | Undocumented | Discarded |
+| `vanjoge/mediasoup-demo:v3` | 3.8.3 | Old | Undocumented | Discarded |
 
-**Procedencia:** `src/` coincide con `versatica/mediasoup-demo@e6bbe34` salvo una función `isValidPort` añadida, `node/lib` de mediasoup es idéntico al paquete de npm, y el worker tiene el mismo SHA-256 que el de la release oficial 3.19.14. `lib/` (el JavaScript compilado) solo se ha revisado buscando llamadas de red o de procesos.
+**Provenance:** `src/` matches `versatica/mediasoup-demo@e6bbe34` except for an added `isValidPort` function, the mediasoup `node/lib` is identical to the npm package, and the worker has the same SHA-256 as the one of the official 3.19.14 release. `lib/` (the compiled JavaScript) has only been reviewed looking for network or process calls.
 
-**Prueba con podman 5.7 sin root, con `--cap-drop=all`:** por protoo, `getRouterRtpCapabilities`, `join` y `createWebRtcTransport` (con SCTP) funcionan, y el servidor responde a un STUN firmado por UDP en los dos transportes. Funciona con `--network host` y con los puertos publicados en `127.0.0.1`. No se ha probado DTLS ni media: eso llega con el E2E de la Fase 7.
+**Test with rootless podman 5.7, with `--cap-drop=all`:** over protoo, `getRouterRtpCapabilities`, `join` and `createWebRtcTransport` (with SCTP) work, and the server answers a signed STUN over UDP on both transports. It works with `--network host` and with the ports published on `127.0.0.1`. DTLS and media have not been tried: that comes with the E2E of Phase 7.
 
-**Lo que condiciona el cliente de señalización de la Fase 7:**
+**What shapes the signaling client of Phase 7:**
 
-- Hay que usar protoo. La API REST solo crea `PlainTransport`, y además no crea salas: la sala nace con la primera conexión WebSocket.
-- Tanto el WebSocket como la API exigen `Origin: http://localhost:4443`, aunque se publique en otro puerto.
-- `createWebRtcTransport` recibe la dirección en `appData.direction`, con los valores `producer` y `consumer`.
-- `MEDIASOUP_ANNOUNCED_ADDRESS` se aplica. `MEDIASOUP_MIN_PORT` y `MEDIASOUP_MAX_PORT` no afectan a los transportes WebRTC, que usan un `WebRtcServer` con puerto fijo por worker (44443 en la prueba). Se lanza un worker por CPU, así que al publicar puertos hay que cubrir ese rango.
-- Sirve HTTP sin TLS.
+- protoo has to be used. The REST API only creates a `PlainTransport`, and it does not create rooms either: the room is created by the first WebSocket connection.
+- Both the WebSocket and the API require `Origin: http://localhost:4443`, even if published on another port.
+- `createWebRtcTransport` takes the direction in `appData.direction`, with the values `producer` and `consumer`.
+- `MEDIASOUP_ANNOUNCED_ADDRESS` is applied. `MEDIASOUP_MIN_PORT` and `MEDIASOUP_MAX_PORT` do not affect the WebRTC transports, which use a `WebRtcServer` with a fixed port per worker (44443 in the test). One worker is started per CPU, so when publishing ports that range has to be covered.
+- It serves HTTP without TLS.
 
-**Riesgos:** la publica una cuenta personal que podría borrarla (habría que republicarla o construirla desde el demo oficial), y va 13 versiones menores por detrás de mediasoup, así que los tests solo validan esa versión del servidor (ver `0.5.14`).
+**Risks:** it is published by a personal account that could delete it (it would have to be republished or built from the official demo), and it is 13 minor versions behind mediasoup, so the tests only validate that version of the server (see `0.5.14`).
 
-**El demo público no sirve:** `v3demo.mediasoup.org` rechaza las conexiones sin su `Origin`, y falsearlo para usar un servidor ajeno no es una opción. Los tests automáticos de pymediasoup tampoco lo usan: solo usan `FakeHandler`.
+**The public demo is not an option:** `v3demo.mediasoup.org` rejects connections without its `Origin`, and faking it to use someone else's server is not acceptable. The automated tests of pymediasoup do not use it either: they only use `FakeHandler`.
 
-### 0.5 Decisiones de diseño
+### 0.5 Design decisions
 
-Cada una se confirma y se anota en la sección [Decisiones](#decisiones) de este documento.
+Each one is confirmed and recorded in the [Decisions](#decisions) section of this document.
 
-- [x] `0.5.1` Modelo asíncrono: `CompletableFuture`. Descartadas la API bloqueante (riesgo de interbloqueo con la cola del transporte), la doble API y las librerías reactivas.
-- [x] `0.5.2` Modelo de hilos: una cola serializada por transporte, que también entrega los eventos. Un `Executor` inyectable para los listeners se puede añadir más tarde sin romper nada.
-- [x] `0.5.3` Eventos: `connect` y `produce` obligatorios al crear el transporte, y el resto como listeners tipados. Descartados el emisor por nombre y una interfaz `Listener` por clase.
-- [x] `0.5.4` Tipos de texto cerrado (`MediaKind`, `DtlsRole`, `ConnectionState`...): enums con su valor JSON.
-- [x] `0.5.5` Tipos de webrtc-java en la API pública, y abstracciones propias solo dentro del handler (sender, receiver, data channel). Descartados los tipos propios con `unwrap()`.
-- [x] `0.5.6` Módulos: artefacto único `jmediasoup` y handler pluggable por interfaz.
-- [x] `0.5.7` Alcance de dependencias y nativos: ver [Decisiones](#decisiones). Las variantes de Gradle que eligen los nativos solas quedan para la Fase 13.
-- [x] `0.5.8` Nulos: JSpecify.
-- [x] `0.5.9` Tipo de `appData`: `Map<String, Object>` inmutable.
-- [x] `0.5.10` Logging: SLF4J 2. Descartado `System.Logger`.
-- [x] `0.5.11` Se publica `module-info.java` desde el principio. Todas las dependencias ya son módulos con nombre (`webrtc.java`, `org.slf4j`, `com.fasterxml.jackson.annotation`, `org.jspecify`).
-- [x] `0.5.12` Representación del SDP parseado: `Map<String, Object>`, como `sdp-transform`. Es interna, así que se puede tipar más adelante.
-- [x] `0.5.13` Revisar alternativas a los ports: `libSDPtransform-android` solo contiene un `.aar` binario, sin fuentes ni licencia. Tampoco sirven `crow-misia/sdp` (Kotlin, sin nombre de módulo y con modelo tipado), `medooze/sdp` (archivado), las librerías SDP de la era SIP ni un port Java de un demo sin licencia. No hay ninguna librería Java de `h264-profile-level-id`.
-- [x] `0.5.14` Versiones de servidor soportadas: mediasoup v3.
-- [x] `0.5.15` Confirmar los modelos con `record` y anotaciones de Jackson, sin `jackson-databind` en tiempo de ejecución.
-- [x] `0.5.16` Confirmar los ports propios de `sdp-transform` y `h264-profile-level-id`, como paquetes internos.
+- [x] `0.5.1` Async model: `CompletableFuture`. Rejected: a blocking API (risk of deadlock with the transport queue), a dual API and reactive libraries.
+- [x] `0.5.2` Threading model: a serialized queue per transport, which also delivers the events. An injectable `Executor` for the listeners can be added later without breaking anything.
+- [x] `0.5.3` Events: `connect` and `produce` required when creating the transport, and the rest as typed listeners. Rejected: an emitter by event name and a `Listener` interface per class.
+- [x] `0.5.4` Closed text types (`MediaKind`, `DtlsRole`, `ConnectionState`...): enums with their JSON value.
+- [x] `0.5.5` webrtc-java types in the public API, and own abstractions only inside the handler (sender, receiver, data channel). Rejected: own types with `unwrap()`.
+- [x] `0.5.6` Modules: a single `jmediasoup` artifact and a handler pluggable through an interface.
+- [x] `0.5.7` Scope of dependencies and natives: see [Decisions](#decisions). Gradle variants that pick the natives by themselves are left for Phase 13.
+- [x] `0.5.8` Nullness: JSpecify.
+- [x] `0.5.9` Type of `appData`: an immutable `Map<String, Object>`.
+- [x] `0.5.10` Logging: SLF4J 2. Rejected: `System.Logger`.
+- [x] `0.5.11` `module-info.java` is published from the start. All dependencies are already named modules (`webrtc.java`, `org.slf4j`, `com.fasterxml.jackson.annotation`, `org.jspecify`).
+- [x] `0.5.12` Representation of the parsed SDP: `Map<String, Object>`, like `sdp-transform`. It is internal, so it can be typed later.
+- [x] `0.5.13` Review alternatives to the ports: `libSDPtransform-android` only contains a binary `.aar`, without sources or license. `crow-misia/sdp` (Kotlin, without a module name and with a typed model), `medooze/sdp` (archived), the SIP-era SDP libraries and a Java port of an unlicensed demo are not usable either. There is no Java library for `h264-profile-level-id`.
+- [x] `0.5.14` Supported server versions: mediasoup v3.
+- [x] `0.5.15` Confirm the models as `record`s with Jackson annotations, without `jackson-databind` at runtime.
+- [x] `0.5.16` Confirm our own ports of `sdp-transform` and `h264-profile-level-id`, as internal packages.
 
-### 0.6 CI y calidad
+### 0.6 CI and quality
 
-- [x] `0.6.1` Workflow de GitHub Actions: `./gradlew build` en push a `main` y en PR (`.github/workflows/build.yml`). Las acciones van fijadas por SHA. El workflow se crea desde la web de GitHub, porque el token de `gh` de las sesiones no tiene el permiso `workflow`.
-- [x] `0.6.2` Caché de Gradle con `setup-gradle` y `cache-provider: basic` (la caché de GitHub Actions, en lugar de la comercial que usa por defecto). Solo escriben en ella los builds de `main`.
-- [x] `0.6.3` Publicar los informes de tests como artefacto del workflow (`test-reports`, 14 días).
-- [x] `0.6.4` Formateador: Spotless, que forma parte de `./gradlew build`. En Java aplica palantir-java-format, quita los imports sin usar y pone la cabecera de licencia SPDX (salvo en `package-info.java` y `module-info.java`). En los `.gradle.kts` aplica ktlint. En Markdown, YAML, TOML y ficheros de Git quita los espacios al final de línea y asegura el salto final.
-- [x] `0.6.5` Activar actualizaciones automáticas de dependencias. Hecho con Dependabot (`.github/dependabot.yml`): revisa una vez al mes el catálogo y los plugins de Gradle y los SHA de las Actions, abre una PR agrupada por ecosistema y solo propone versiones publicadas hace al menos 14 días (`cooldown`). También actualiza el wrapper de Gradle; su commit deja `gradlew.bat` con CRLF en el índice, contra lo que dice `.gitattributes`, y se corrige con `git add --renormalize gradlew.bat`. Las PRs de Actions tocan `.github/workflows/`, así que el merge se hace desde la web.
+- [x] `0.6.1` GitHub Actions workflow: `./gradlew build` on push to `main` and on PRs (`.github/workflows/build.yml`). Actions are pinned by SHA. The workflow is created from the GitHub web UI, because the `gh` token of the sessions lacks the `workflow` scope.
+- [x] `0.6.2` Gradle cache with `setup-gradle` and `cache-provider: basic` (the GitHub Actions cache, instead of the commercial one it uses by default). Only `main` builds write to it.
+- [x] `0.6.3` Publish the test reports as a workflow artifact (`test-reports`, 14 days).
+- [x] `0.6.4` Formatter: Spotless, part of `./gradlew build`. On Java it applies palantir-java-format, removes unused imports and adds the SPDX license header (except in `package-info.java` and `module-info.java`). On the `.gradle.kts` scripts it applies ktlint. On Markdown, YAML, TOML and Git files it trims trailing whitespace and ensures the final newline.
+- [x] `0.6.5` Enable automatic dependency updates. Done with Dependabot (`.github/dependabot.yml`): once a month it checks the catalog, the Gradle plugins and the Actions SHAs, opens one PR per ecosystem and only proposes versions released at least 14 days earlier (`cooldown`). It also updates the Gradle wrapper; its commit leaves `gradlew.bat` with CRLF in the index, against `.gitattributes`, which `git add --renormalize gradlew.bat` fixes. The Actions PRs touch `.github/workflows/`, so they are merged from the web UI.
 
-### 0.7 Aplicar las decisiones al build
+### 0.7 Apply the decisions to the build
 
-- [x] `0.7.1` `module-info.java` del módulo `io.github.hectorespert.jmediasoup`, con `requires transitive org.jspecify`. Todavía no exporta nada: javac no deja exportar un paquete que solo tiene `package-info.java`, así que el `exports` del paquete raíz llega con su primer tipo público (`1.1.1`).
-- [x] `0.7.2` Comprobar que los tests se ejecutan en el module path de Gradle. Por defecto Gradle los ejecuta en el classpath; con `org.gradlex.java-module-testing` 1.8.1 se ejecutan dentro del módulo, y `SmokeTest.testsRunInTheLibraryModule` lo comprueba.
-- [x] `0.7.3` Fijar el nombre de los paquetes internos, que `module-info.java` no exporta: `io.github.hectorespert.jmediasoup.internal.*`.
-- [x] `0.7.4` Añadir JSpecify como `api` y `@NullMarked` en `package-info.java` (JSpecify 1.0.1).
+- [x] `0.7.1` `module-info.java` of the `io.github.hectorespert.jmediasoup` module, with `requires transitive org.jspecify`. At first it exported nothing: javac does not allow exporting a package that only has `package-info.java`, so the `exports` of the root package came with its first public type (`1.1.1`).
+- [x] `0.7.2` Check that the tests run on Gradle's module path. By default Gradle runs them on the classpath; with `org.gradlex.java-module-testing` 1.8.1 they run inside the module, and `SmokeTest.testsRunInTheLibraryModule` checks it.
+- [x] `0.7.3` Set the name of the internal packages, which `module-info.java` does not export: `io.github.hectorespert.jmediasoup.internal.*`.
+- [x] `0.7.4` Add JSpecify as `api` and `@NullMarked` in `package-info.java` (JSpecify 1.0.1).
 
-**Aceptación de la Fase 0**
+**Phase 0 acceptance**
 
-- `./gradlew build` pasa sin restos de la plantilla, en local y en CI.
-- `publishToMavenLocal` genera `io.github.hectorespert:jmediasoup`.
-- El stack WebRTC y la imagen Docker están confirmados, o se ha replanteado la decisión.
-- Las decisiones de diseño de la sección 0.5 están anotadas, y el módulo JPMS compila y pasa los tests.
+- `./gradlew build` passes without leftovers of the template, locally and in CI.
+- `publishToMavenLocal` generates `io.github.hectorespert:jmediasoup`.
+- The WebRTC stack and the Docker image are confirmed, or the decision has been revisited.
+- The design decisions of section 0.5 are recorded, and the JPMS module compiles and passes the tests.
 
-## Fase 1: fundamentos
+## Phase 1: foundations
 
-### 1.1 Errores
+### 1.1 Errors
 
-Origen: `pymediasoup/errors.py`
+Origin: `pymediasoup/errors.py`
 
-- [x] `1.1.1` Excepción base del proyecto (equivalente a `Error`): `MediasoupClientException`, checked. Es el primer tipo público, así que añade `exports io.github.hectorespert.jmediasoup` a `module-info.java`.
+- [x] `1.1.1` Base exception of the project (the equivalent of `Error`): `MediasoupClientException`, checked. It is the first public type, so it adds `exports io.github.hectorespert.jmediasoup` to `module-info.java`.
 - [x] `1.1.2` `UnsupportedError`: `UnsupportedException`.
 - [x] `1.1.3` `InvalidStateError`: `InvalidStateException`.
-- [x] `1.1.4` Decidir qué excepción de Java sustituye a cada `TypeError` del original: `IllegalArgumentException`, o `NullPointerException` si falta un argumento obligatorio. Los `TypeError` por falta del listener `connect` o `produce` desaparecen, porque se pasan al crear el transporte.
+- [x] `1.1.4` Decide which Java exception replaces each `TypeError` of the original: `IllegalArgumentException`, or `NullPointerException` if a required argument is missing. The `TypeError`s for a missing `connect` or `produce` listener disappear, because they are passed when creating the transport.
 
-### 1.2 Eventos y observers
+### 1.2 Events and observers
 
-Origen: `pymediasoup/emitter.py`, `pyee`
+Origin: `pymediasoup/emitter.py`, `pyee`
 
-- [x] `1.2.1` Colección de listeners segura ante concurrencia, con alta y baja: `internal.event.Listeners<T>` y `RunnableListeners`, sobre `CopyOnWriteArrayList`.
-- [x] `1.2.2` Aislar errores: la excepción de un listener no impide avisar a los demás y queda registrada con SLF4J, que se añade aquí como `implementation` (2.0.20; `slf4j-simple` solo en tests).
-- [x] `1.2.3` Contrato para listeners que devuelven un resultado asíncrono (sustituye a `emit_for_results`): `internal.event.AsyncHandlers`, con `run` para los que no devuelven valor y `call` para los que sí. Las interfaces `ConnectHandler` y `ProduceHandler` se crean con sus tipos en `4.3.5` y `4.3.7`.
-- [x] `1.2.4` Error claro si un listener obligatorio falla o devuelve un resultado nulo: `MediasoupClientException` con un mensaje distinto para cada caso y la causa original. No pueden faltar, porque se pasan al crear el transporte (`0.5.3`). ⚠️ no copiar: `ids[0]` falla con `IndexError` si el listener de `produce` falla o no devuelve nada.
-- [x] `1.2.5` Tests de orden de entrega, baja durante la entrega y propagación de errores, incluido un test de concurrencia.
-- [x] `1.2.6` Suscripción devuelta al registrar un listener, para darse de baja: `Subscription`, en el paquete raíz.
+- [x] `1.2.1` Concurrency-safe collection of listeners, with add and remove: `internal.event.Listeners<T>` and `RunnableListeners`, on `CopyOnWriteArrayList`.
+- [x] `1.2.2` Isolate errors: the exception of a listener does not stop the others from being notified and is logged with SLF4J, added here as `implementation` (2.0.20; `slf4j-simple` only in tests).
+- [x] `1.2.3` Contract for listeners that return an asynchronous result (replaces `emit_for_results`): `internal.event.AsyncHandlers`, with `run` for those that return no value and `call` for those that do. The `ConnectHandler` and `ProduceHandler` interfaces are created with their types in `4.3.5` and `4.3.7`.
+- [x] `1.2.4` A clear error if a required listener fails or returns a null result: `MediasoupClientException` with a different message for each case and the original cause. They cannot be missing, because they are passed when creating the transport (`0.5.3`). ⚠️ do not copy: `ids[0]` fails with `IndexError` if the `produce` listener fails or returns nothing.
+- [x] `1.2.5` Tests of delivery order, unsubscribing during delivery and error propagation, including a concurrency test.
+- [x] `1.2.6` A subscription returned when registering a listener, to unsubscribe: `Subscription`, in the root package.
 
-### 1.3 Parámetros RTP
+### 1.3 RTP parameters
 
-Origen: `pymediasoup/rtp_parameters.py`
+Origin: `pymediasoup/rtp_parameters.py`
 
-- [x] `1.3.1` `MediaKind`, enum con `value()` y `fromValue()`.
+- [x] `1.3.1` `MediaKind`, an enum with `value()` and `fromValue()`.
 - [x] `1.3.2` `RtcpFeedback`.
 - [x] `1.3.3` `RtpCodecCapability`.
 - [x] `1.3.4` `RtpCodecParameters`.
-- [x] `1.3.5` Tipo común de codec para que `matchCodecs` acepte capacidades y parámetros (`Codec` y `RtpCodec` en el original): interfaz sellada `RtpCodec`.
-- [x] `1.3.6` `RtpHeaderExtension` y su `direction` (`RtpHeaderExtensionDirection`).
+- [x] `1.3.5` A common codec type so that `matchCodecs` accepts capabilities and parameters (`Codec` and `RtpCodec` in the original): the sealed interface `RtpCodec`.
+- [x] `1.3.6` `RtpHeaderExtension` and its `direction` (`RtpHeaderExtensionDirection`).
 - [x] `1.3.7` `RtpHeaderExtensionParameters`.
-- [x] `1.3.8` `RtpCapabilities`, con `fecMechanisms` como en pymediasoup.
-- [x] `1.3.9` `RTX` (SSRC de retransmisión): `Rtx`, con el SSRC como `long`.
-- [x] `1.3.10` `RtpEncodingParameters`, con todos sus campos opcionales, builder y `toBuilder()`. Añade `active` de mediasoup-client, y `scaleResolutionDownBy` y `maxFramerate` son `Double` (⚠️ en pymediasoup son `int`). La prioridad es el enum `Priority`.
+- [x] `1.3.8` `RtpCapabilities`, with `fecMechanisms` as in pymediasoup.
+- [x] `1.3.9` `RTX` (retransmission SSRC): `Rtx`, with the SSRC as a `long`.
+- [x] `1.3.10` `RtpEncodingParameters`, with all its fields optional, a builder and `toBuilder()`. It adds `active` from mediasoup-client, and `scaleResolutionDownBy` and `maxFramerate` are `Double` (⚠️ they are `int` in pymediasoup). The priority is the `Priority` enum.
 - [x] `1.3.11` `RtcpParameters`.
-- [x] `1.3.12` `RtpParameters`, con `msid` de mediasoup-client.
-- [x] `1.3.13` `ExtendedCodec`, público porque lo recibe el handler (`0.5.6`).
+- [x] `1.3.12` `RtpParameters`, with `msid` from mediasoup-client.
+- [x] `1.3.13` `ExtendedCodec`, public because the handler receives it (`0.5.6`).
 - [x] `1.3.14` `ExtendedHeaderExtension`.
 - [x] `1.3.15` `ExtendedRtpCapabilities`.
-- [x] `1.3.16` Representar los `parameters` de codec con tipos estables al comparar (un `apt` puede llegar como número o como texto): mapa con los tipos JSON y comparación con `internal.ParameterValues`.
-- [x] `1.3.17` Validar en el constructor los campos obligatorios (en el original lo hace pydantic), y también rangos y formatos, con `internal.Checks`.
-- [x] `1.3.18` Copias defensivas de listas y mapas (sustituye a `copy(deep=True)`). Los mapas conservan el orden de inserción.
+- [x] `1.3.16` Represent the codec `parameters` with types that stay stable when comparing (an `apt` can arrive as a number or as text): a map with the JSON types, compared with `internal.ParameterValues`.
+- [x] `1.3.17` Validate the required fields in the constructor (pydantic does it in the original), and also ranges and formats, with `internal.Checks`.
+- [x] `1.3.18` Defensive copies of lists and maps (replaces `copy(deep=True)`). Maps keep the insertion order.
 
-### 1.4 Parámetros SCTP
+### 1.4 SCTP parameters
 
-Origen: `pymediasoup/sctp_parameters.py`
+Origin: `pymediasoup/sctp_parameters.py`
 
-- [x] `1.4.1` `NumSctpStreams`, con los campos `os()` y `mis()` (`OS` y `MIS` en JSON, `1.8.4`).
+- [x] `1.4.1` `NumSctpStreams`, with the fields `os()` and `mis()` (`OS` and `MIS` in JSON, `1.8.4`).
 - [x] `1.4.2` `SctpCapabilities`.
-- [x] `1.4.3` `SctpParameters`. Solo `port` es obligatorio, para aceptar los campos de mediasoup 3.19 (`OS`, `MIS`, `maxMessageSize`) y los de servidores más nuevos (`maxSendMessageSize`, `maxReceiveMessageSize`).
-- [x] `1.4.4` `SctpStreamParameters`. `ordered` queda `null` si no llega, como el resto de opcionales; deducirlo es tarea de `9.3.3`.
-- [x] `1.4.5` Validar la combinación `ordered`, `maxPacketLifeTime` y `maxRetransmits` descrita en el original. Las contradicciones (los dos máximos, u `ordered: true` con uno) fallan en el constructor, porque no dependen del contexto.
+- [x] `1.4.3` `SctpParameters`. Only `port` is required, to accept the fields of mediasoup 3.19 (`OS`, `MIS`, `maxMessageSize`) and those of newer servers (`maxSendMessageSize`, `maxReceiveMessageSize`).
+- [x] `1.4.4` `SctpStreamParameters`. `ordered` stays `null` if absent, like the rest of the optionals; inferring it is the job of `9.3.3`.
+- [x] `1.4.5` Validate the combination of `ordered`, `maxPacketLifeTime` and `maxRetransmits` described in the original. Contradictions (both maximums, or `ordered: true` with one of them) fail in the constructor, because they do not depend on the context.
 
-### 1.5 Parámetros de transporte
+### 1.5 Transport parameters
 
-Origen: `pymediasoup/models/transport.py`
+Origin: `pymediasoup/models/transport.py`
 
-- [x] `1.5.1` `IceParameters`, incluido `iceLite`.
-- [x] `1.5.2` `IceCandidate`, con enums de `protocol` (`TransportProtocol`), `type` y `tcpType`. Guarda `address` y el obsoleto `ip`, con al menos uno obligatorio, y `effectiveAddress()` lee el que haya. La prioridad es `long` (32 bits sin signo).
-- [x] `1.5.3` `DtlsFingerprint`, con el enum `FingerprintAlgorithm`.
+- [x] `1.5.1` `IceParameters`, including `iceLite`.
+- [x] `1.5.2` `IceCandidate`, with enums for `protocol` (`TransportProtocol`), `type` and `tcpType`. It keeps `address` and the deprecated `ip`, with at least one required, and `effectiveAddress()` reads whichever is present. The priority is a `long` (unsigned 32 bits).
+- [x] `1.5.3` `DtlsFingerprint`, with the `FingerprintAlgorithm` enum.
 - [x] `1.5.4` `DtlsRole`.
-- [x] `1.5.5` `DtlsParameters`. `role` queda `null` si no llega, que significa `auto`.
+- [x] `1.5.5` `DtlsParameters`. `role` stays `null` if absent, which means `auto`.
 - [x] `1.5.6` `ConnectionState`.
-- [x] `1.5.7` `IpVersion`, con valor numérico.
+- [x] `1.5.7` `IpVersion`, with a numeric value.
 - [x] `1.5.8` `PlainRtpParameters`.
-- [x] `1.5.9` `TransportOptions`, con builder y `toBuilder()` para añadir los ajustes locales a lo que devuelve el servidor. Sin `additionalSettings` ni `proprietaryConstraints`, que se deciden en `10.2.8`.
-- [x] `1.5.10` Opciones internas de transporte (`InternalTransportOptions`): movida a `4.3.1`, porque necesita el `HandlerFactory` de `4.1.7`.
-- [x] `1.5.11` Enum `TransportDirection` (`send`, `recv`).
-- [x] `1.5.12` Modelo de `RTCIceServer` propio, si `0.5.5` lo requiere: record `IceServer` (`urls`, `username`, `credential`, como en W3C), con la credencial oculta en `toString()`, y enum `IceTransportPolicy`.
+- [x] `1.5.9` `TransportOptions`, with a builder and `toBuilder()` to add the local settings to what the server returns. Without `additionalSettings` or `proprietaryConstraints`, which are decided in `10.2.8`.
+- [x] `1.5.10` Internal transport options (`InternalTransportOptions`): moved to `4.3.1`, because they need the `HandlerFactory` of `4.1.7`.
+- [x] `1.5.11` `TransportDirection` enum (`send`, `recv`).
+- [x] `1.5.12` Own model of `RTCIceServer`, if `0.5.5` requires it: the record `IceServer` (`urls`, `username`, `credential`, as in W3C), with the credential hidden in `toString()`, and the `IceTransportPolicy` enum.
 
-### 1.6 Opciones de productores y consumidores
+### 1.6 Producer and consumer options
 
-Origen: `producer.py`, `consumer.py`, `data_producer.py`, `data_consumer.py`
+Origin: `producer.py`, `consumer.py`, `data_producer.py`, `data_consumer.py`
 
-- [x] `1.6.1` `ProducerCodecOptions`, con sus nueve campos y `opusNack` de mediasoup-client, y builder.
-- [x] `1.6.2` `ProducerOptions`, con los valores por defecto del original (`stopTracks = true`, `disableTrackOnPause = true`, `zeroRtpOnPause = false`) como `boolean` del builder. El track es obligatorio, y añade `streamId` de mediasoup-client.
-- [x] `1.6.3` `ConsumerOptions`, con `streamId` de mediasoup-client.
-- [x] `1.6.4` `DataProducerOptions`, con builder y las mismas reglas de fiabilidad que `SctpStreamParameters`.
+- [x] `1.6.1` `ProducerCodecOptions`, with its nine fields, `opusNack` from mediasoup-client and a builder.
+- [x] `1.6.2` `ProducerOptions`, with the defaults of the original (`stopTracks = true`, `disableTrackOnPause = true`, `zeroRtpOnPause = false`) as `boolean`s of the builder. The track is required, and it adds `streamId` from mediasoup-client.
+- [x] `1.6.3` `ConsumerOptions`, with `streamId` from mediasoup-client.
+- [x] `1.6.4` `DataProducerOptions`, with a builder and the same reliability rules as `SctpStreamParameters`.
 - [x] `1.6.5` `DataConsumerOptions`.
 
-### 1.7 Abstracciones de medios
+### 1.7 Media abstractions
 
-Origen: `pymediasoup/types/webrtc.py` y los tipos de aiortc que usa el original
+Origin: `pymediasoup/types/webrtc.py` and the aiortc types that the original uses
 
-La API pública usa los tipos de webrtc-java (`0.5.5`). Sender y receiver no necesitan abstracción, porque Producer y Consumer solo los exponen y operan a través del handler con el `localId`. El data channel sí, porque DataProducer y DataConsumer operan sobre él y `RTCDataChannel` no se puede crear sin nativos.
+The public API uses the webrtc-java types (`0.5.5`). Sender and receiver need no abstraction, because Producer and Consumer only expose them and operate through the handler with the `localId`. The data channel does, because DataProducer and DataConsumer operate on it and `RTCDataChannel` cannot be created without natives.
 
-- [x] `1.7.1` Subclase de prueba de `MediaStreamTrack` de webrtc-java, que se instancia sin nativos (según `0.3.16`): `FakeMediaStreamTrack`, en el paquete `fake` de los tests.
-- [x] `1.7.2` ~~Interfaz interna de sender~~. Descartada: el resultado del handler lleva un `@Nullable RTCRtpSender`, `null` con `FakeHandler`, como en pymediasoup.
-- [x] `1.7.3` ~~Interfaz interna de receiver~~. Descartada: el resultado del handler lleva un `@Nullable RTCRtpReceiver`.
-- [x] `1.7.4` Interfaz de data channel (`label`, `protocol`, `readyState`, `send`, `close`, buffer y eventos): `handler.DataChannel`, pública porque el handler es pluggable (`0.5.6`), con un `Observer` de eventos. Los mensajes son `DataChannelMessage`, en el paquete raíz, que copia los bytes.
-- [x] `1.7.5` Implementaciones falsas para los tests: `fake.FakeDataChannel`, que el test abre, alimenta y observa.
+- [x] `1.7.1` Test subclass of webrtc-java's `MediaStreamTrack`, which can be instantiated without natives (per `0.3.16`): `FakeMediaStreamTrack`, in the `fake` package of the tests.
+- [x] `1.7.2` ~~Internal sender interface~~. Discarded: the handler result carries a `@Nullable RTCRtpSender`, `null` with `FakeHandler`, as in pymediasoup.
+- [x] `1.7.3` ~~Internal receiver interface~~. Discarded: the handler result carries a `@Nullable RTCRtpReceiver`.
+- [x] `1.7.4` Data channel interface (`label`, `protocol`, `readyState`, `send`, `close`, buffer and events): `handler.DataChannel`, public because the handler is pluggable (`0.5.6`), with an `Observer` for its events. Messages are `DataChannelMessage`, in the root package, which copies the bytes.
+- [x] `1.7.5` Fake implementations for the tests: `fake.FakeDataChannel`, which the test opens, feeds and observes.
 
 ### 1.8 JSON
 
-El usuario convierte los modelos con su propio `ObjectMapper` (`0.5.15`), así que todo se configura con anotaciones.
+The user converts the models with their own `ObjectMapper` (`0.5.15`), so everything is configured with annotations.
 
-- [x] `1.8.1` Añadir `jackson-annotations` como `api` (2.22, la que usan Jackson 2.22 y 3.2), y `jackson-databind` 2 (2.22.4) y 3 (3.2.4) solo para tests.
-- [x] `1.8.2` Anotar los modelos para omitir nulos e ignorar campos desconocidos (`@JsonInclude(NON_NULL)` y `@JsonIgnoreProperties(ignoreUnknown = true)` en cada record JSON; no en `ProducerOptions`, que lleva un track). Los componentes primitivos obligatorios llevan `@JsonProperty(required = true)`, para que su ausencia falle en vez de dar 0.
-- [x] `1.8.3` Serializar enums con el valor que espera mediasoup: `@JsonValue` en `value()` y `@JsonCreator` en `fromValue()`. Un valor desconocido falla con el mensaje de `fromValue`.
-- [x] `1.8.4` Nombres que no siguen camelCase, como `OS` y `MIS` de `NumSctpStreams` y `SctpParameters`, con `@JsonProperty`.
-- [x] `1.8.5` Comprobar que el round-trip conserva los tipos de los `parameters` de codec, y su orden.
-- [x] `1.8.6` Tests de round-trip con Jackson 2 y con Jackson 3: `json.JsonRoundTripTest` ejecuta cada caso con los dos (`@WithEachJackson`). Comprobado también desde un módulo JPMS consumidor, sin `opens`.
-- [x] `1.8.7` `IceServer.urls`: aceptar también un texto suelto, que el estándar W3C permite (`"urls": "turn:..."`), con `ACCEPT_SINGLE_VALUE_AS_ARRAY`.
+- [x] `1.8.1` Add `jackson-annotations` as `api` (2.22, the one Jackson 2.22 and 3.2 use), and `jackson-databind` 2 (2.22.4) and 3 (3.2.4) only for tests.
+- [x] `1.8.2` Annotate the models to omit nulls and ignore unknown fields (`@JsonInclude(NON_NULL)` and `@JsonIgnoreProperties(ignoreUnknown = true)` on each JSON record; not on `ProducerOptions`, which carries a track). Required primitive components carry `@JsonProperty(required = true)`, so that their absence fails instead of giving 0.
+- [x] `1.8.3` Serialize enums with the value mediasoup expects: `@JsonValue` on `value()` and `@JsonCreator` on `fromValue()`. An unknown value fails with the message of `fromValue`.
+- [x] `1.8.4` Names that do not follow camelCase, such as `OS` and `MIS` of `NumSctpStreams` and `SctpParameters`, with `@JsonProperty`.
+- [x] `1.8.5` Check that the round trip keeps the types of the codec `parameters`, and their order.
+- [x] `1.8.6` Round-trip tests with Jackson 2 and with Jackson 3: `json.JsonRoundTripTest` runs each case with both (`@WithEachJackson`). Also checked from a consuming JPMS module, without `opens`.
+- [x] `1.8.7` `IceServer.urls`: also accept a single string, which the W3C standard allows (`"urls": "turn:..."`), with `ACCEPT_SINGLE_VALUE_AS_ARRAY`.
 
 ### 1.9 Fixtures
 
-Origen: `tests/fake_parameters.py`, `tests/fake_handler.py`
+Origin: `tests/fake_parameters.py`, `tests/fake_handler.py`
 
-- [x] `1.9.1` Portar `generateRouterRtpCapabilities`: `fixtures/router-rtp-capabilities.json` y `fake.FakeParameters.routerRtpCapabilities()`. Los JSON se han generado desde el código del original con `ast`, sin copiarlos a mano.
-- [x] `1.9.2` Portar las capacidades RTP nativas de `FakeHandler`: `fixtures/native-rtp-capabilities.json`.
-- [x] `1.9.3` Portar `generateTransportRemoteParameters`, como `TransportOptions` con un id nuevo en cada llamada. Sin el campo `family` de los candidatos, que mediasoup v3 ya no manda.
-- [x] `1.9.4` Portar `generateConsumerRemoteParameters`, por codec (`audio/opus`, `audio/ISAC`, `video/VP8`). ⚠️ no copiar: en ISAC la primera header extension usa la variable `id` como clave en vez de `"id"`.
-- [x] `1.9.5` Portar `generateDataProducerRemoteParameters` y `generateDataConsumerRemoteParameters`. ⚠️ no copiar: pydantic deja `ordered = True` junto a `maxPacketLifeTime`, que es contradictorio; aquí `ordered` queda ausente.
-- [x] `1.9.6` Round-trip JSON de todos los fixtures: `json.FixturesRoundTripTest` recorre `fixtures/` con Jackson 2 y 3, y comprueba que el objeto se conserva y que todo valor de entrada sigue en la salida.
+- [x] `1.9.1` Port `generateRouterRtpCapabilities`: `fixtures/router-rtp-capabilities.json` and `fake.FakeParameters.routerRtpCapabilities()`. The JSON files were generated from the code of the original with `ast`, not copied by hand.
+- [x] `1.9.2` Port the native RTP capabilities of `FakeHandler`: `fixtures/native-rtp-capabilities.json`.
+- [x] `1.9.3` Port `generateTransportRemoteParameters`, as `TransportOptions` with a new id on each call. Without the `family` field of the candidates, which mediasoup v3 no longer sends.
+- [x] `1.9.4` Port `generateConsumerRemoteParameters`, per codec (`audio/opus`, `audio/ISAC`, `video/VP8`). ⚠️ do not copy: in ISAC the first header extension uses the variable `id` as key instead of `"id"`.
+- [x] `1.9.5` Port `generateDataProducerRemoteParameters` and `generateDataConsumerRemoteParameters`. ⚠️ do not copy: pydantic leaves `ordered = True` together with `maxPacketLifeTime`, which is contradictory; here `ordered` is absent.
+- [x] `1.9.6` JSON round trip of all the fixtures: `json.FixturesRoundTripTest` walks `fixtures/` with Jackson 2 and 3, and checks that the object is preserved and that every input value is still in the output.
 
-**Aceptación de la Fase 1** (cumplida)
+**Phase 1 acceptance** (met)
 
-- Todos los fixtures se leen, se validan y se reescriben sin perder datos (`1.9.6`).
-- Las entradas no válidas fallan al construir el objeto, con un mensaje útil (tests de `Checks` y de cada modelo, y `JsonRoundTripTest`).
+- Every fixture is read, validated and written back without losing data (`1.9.6`).
+- Invalid inputs fail when the object is built, with a useful message (tests of `Checks` and of each model, and `JsonRoundTripTest`).
 
-## Fase 2: ORTC
+## Phase 2: ORTC
 
-### 2.1 Port de h264-profile-level-id
+### 2.1 Port of h264-profile-level-id
 
-Origen: paquete `h264-profile-level-id`. Va en un paquete interno (`0.5.16`). pymediasoup solo usa `isSameProfile` y `generateProfileLevelIdForAnswer`, pero se porta entero desde `versatica/h264-profile-level-id` 2.3.3, el original en JS que usa mediasoup-client, para poder portar todos sus tests. Está en `internal.h264`.
+Origin: the `h264-profile-level-id` package. It goes in an internal package (`0.5.16`). pymediasoup only uses `isSameProfile` and `generateProfileLevelIdForAnswer`, but it is ported whole from `versatica/h264-profile-level-id` 2.3.3, the original in JS that mediasoup-client uses, so that all its tests can be ported. It lives in `internal.h264`.
 
-- [x] `2.1.1` Constantes de perfiles y niveles: enums `Profile` y `Level` (con su `level_idc`), el record `ProfileLevelId` y las tablas de patrones de perfil y límites de nivel.
-- [x] `2.1.2` Parsear una cadena `profile-level-id`: `parseProfileLevelId`, que solo acepta 6 dígitos hexadecimales (el original, con `parseInt`, acepta signo y basura al final).
-- [x] `2.1.3` Convertir un perfil y nivel a cadena: `profileLevelIdToString`, y también `profileToString` y `levelToString`.
-- [x] `2.1.4` Leer el parámetro del `fmtp`, con su valor por defecto si falta: `parseSdpProfileLevelId`, que acepta el valor como texto o como número porque los `parameters` conservan el tipo JSON.
-- [x] `2.1.5` `isSameProfile`, y también `isSameProfileAndLevel`.
-- [x] `2.1.6` `generateProfileLevelIdForAnswer` (`generateProfileLevelIdStringForAnswer` en el original), con `IllegalArgumentException` donde el original lanza `TypeError`, y `level-asymmetry-allowed` como `true`, `1` o `"1"`. También `supportedLevel`.
-- [x] `2.1.7` Port de los casos de prueba de la librería original: `H264ProfileLevelIdTest`, todos salvo el de un perfil desconocido, que un enum de Java no puede representar, y con casos propios para valores numéricos y con signo.
+- [x] `2.1.1` Profile and level constants: the enums `Profile` and `Level` (with its `level_idc`), the record `ProfileLevelId` and the tables of profile patterns and level limits.
+- [x] `2.1.2` Parse a `profile-level-id` string: `parseProfileLevelId`, which only accepts 6 hexadecimal digits (the original, with `parseInt`, accepts a sign and trailing garbage).
+- [x] `2.1.3` Convert a profile and level to a string: `profileLevelIdToString`, and also `profileToString` and `levelToString`.
+- [x] `2.1.4` Read the parameter from the `fmtp`, with its default value if missing: `parseSdpProfileLevelId`, which accepts the value as text or as a number because the `parameters` keep the JSON type.
+- [x] `2.1.5` `isSameProfile`, and also `isSameProfileAndLevel`.
+- [x] `2.1.6` `generateProfileLevelIdForAnswer` (`generateProfileLevelIdStringForAnswer` in the original), with `IllegalArgumentException` where the original throws `TypeError`, and `level-asymmetry-allowed` as `true`, `1` or `"1"`. Also `supportedLevel`.
+- [x] `2.1.7` Port of the test cases of the original library: `H264ProfileLevelIdTest`, all but the one with an unknown profile, which a Java enum cannot represent, and with our own cases for numeric and signed values.
 
-### 2.2 Modos de escalabilidad
+### 2.2 Scalability modes
 
-Origen: `pymediasoup/scalability_modes.py`
+Origin: `pymediasoup/scalability_modes.py`
 
-- [x] `2.2.1` `ScalabilityMode` (capas espaciales y temporales): record en `internal.ortc`. Es interno aunque mediasoup-client exporta `parseScalabilityMode`; solo lo usa el handler.
-- [x] `2.2.2` `parse`, que solo mira el prefijo (acepta `_KEY` y otros sufijos) y devuelve una capa de cada si el modo falta o no es válido. ⚠️ no copiar: la regex usa `\\d` en un raw string, así que el original siempre devuelve 1 y 1.
-- [x] `2.2.3` Tests de `L1T3`, `S3T3`, `L3T3_KEY`, cadena vacía y nula, y valores no válidos, más los casos de `test.ts` de mediasoup-client.
+- [x] `2.2.1` `ScalabilityMode` (spatial and temporal layers): a record in `internal.ortc`. It is internal although mediasoup-client exports `parseScalabilityMode`; only the handler uses it.
+- [x] `2.2.2` `parse`, which only looks at the prefix (it accepts `_KEY` and other suffixes) and returns one layer of each if the mode is missing or invalid. ⚠️ do not copy: the regex uses `\\d` in a raw string, so the original always returns 1 and 1.
+- [x] `2.2.3` Tests of `L1T3`, `S3T3`, `L3T3_KEY`, empty and null strings, and invalid values, plus the cases of `test.ts` of mediasoup-client.
 
-### 2.3 Comparación de codecs
+### 2.3 Codec comparison
 
-Origen: `pymediasoup/ortc.py`
+Origin: `pymediasoup/ortc.py`
 
-- [x] `2.3.1` Constantes `RTP_PROBATOR_MID`, `RTP_PROBATOR_SSRC` y `RTP_PROBATOR_CODEC_PAYLOAD_TYPE`, en `internal.ortc.Ortc`.
-- [x] `2.3.2` `isRtxCodec`, sin distinguir mayúsculas, como mediasoup-client.
-- [x] `2.3.3` `matchCodecs`: `mimeType` (sin distinguir mayúsculas), `clockRate` y `channels`. Un codec de audio sin `channels` cuenta como 1 y en vídeo se ignoran, como hace mediasoup-client al normalizar.
-- [x] `2.3.4` `matchCodecs`: H264, `packetization-mode`, que como en mediasoup-client solo se compara en modo estricto (pymediasoup lo compara siempre).
-- [x] `2.3.5` `matchCodecs`: H264 estricto, `isSameProfile`.
-- [x] `2.3.6` `matchCodecs`: H264 con `modify`, usando `generateProfileLevelIdForAnswer`. ⚠️ no copiar: el original muta el codec de entrada. Aquí `matchCodecs` devuelve un `CodecMatch` (o `null` si no coinciden) con los parámetros negociados de los dos codecs, como mediasoup-client cuando modifica ambos.
-- [x] `2.3.7` `matchCodecs`: VP9 estricto, `profile-id`, con 0 por defecto y comparando número y texto.
-- [x] `2.3.8` `reduceRtcpFeedback`, con un `parameter` vacío equivalente a ausente.
-- [x] `2.3.9` `matchHeaderExtensions`, que como en mediasoup-client solo compara `kind` si los dos lo tienen.
+- [x] `2.3.1` The constants `RTP_PROBATOR_MID`, `RTP_PROBATOR_SSRC` and `RTP_PROBATOR_CODEC_PAYLOAD_TYPE`, in `internal.ortc.Ortc`.
+- [x] `2.3.2` `isRtxCodec`, case-insensitive, like mediasoup-client.
+- [x] `2.3.3` `matchCodecs`: `mimeType` (case-insensitive), `clockRate` and `channels`. An audio codec without `channels` counts as 1, and in video they are ignored, as mediasoup-client does when normalizing.
+- [x] `2.3.4` `matchCodecs`: H264, `packetization-mode`, which as in mediasoup-client is only compared in strict mode (pymediasoup always compares it).
+- [x] `2.3.5` `matchCodecs`: strict H264, `isSameProfile`.
+- [x] `2.3.6` `matchCodecs`: H264 with `modify`, using `generateProfileLevelIdForAnswer`. ⚠️ do not copy: the original mutates the input codec. Here `matchCodecs` returns a `CodecMatch` (or `null` if they do not match) with the negotiated parameters of both codecs, like mediasoup-client when it modifies both.
+- [x] `2.3.7` `matchCodecs`: strict VP9, `profile-id`, with 0 by default and comparing numbers and text.
+- [x] `2.3.8` `reduceRtcpFeedback`, with an empty `parameter` equivalent to an absent one.
+- [x] `2.3.9` `matchHeaderExtensions`, which as in mediasoup-client only compares `kind` if both have it.
 
-### 2.4 Capacidades extendidas
+### 2.4 Extended capabilities
 
-Sigue el modelo de mediasoup-client 3.26: capacidades extendidas separadas para enviar y para recibir, cada una con las capacidades nativas de esa dirección.
+It follows the model of mediasoup-client 3.26: separate extended capabilities for sending and for receiving, each one with the native capabilities of that direction.
 
-- [x] `2.4.1` `getExtendedRtpCapabilities`: codecs en modo estricto, con el orden del router o, con `preferLocalCodecsOrder`, el local. Cada lado lleva sus parámetros negociados (`profile-level-id` de H264). Un codec emparejado sin `preferredPayloadType` lanza `IllegalArgumentException`.
-- [x] `2.4.2` `getExtendedRtpCapabilities`: emparejar RTX por `apt`, comparando su valor numérico, solo si los dos lados lo tienen.
-- [x] `2.4.3` `getExtendedRtpCapabilities`: extensiones de cabecera, en el orden del router.
-- [x] `2.4.4` `getExtendedRtpCapabilities`: invertir `direction` respecto al router; sin dirección queda `sendrecv`.
-- [x] `2.4.5` `getRecvRtpCapabilities` y `getSendRtpCapabilities`: codecs y RTX, con los payload types del router o los locales.
-- [x] `2.4.6` `getRecvRtpCapabilities` y `getSendRtpCapabilities`: filtrar las extensiones no válidas en su dirección.
-- [x] `2.4.7` `canSend`, sobre las capacidades de envío.
-- [x] `2.4.8` `canReceive`, sobre las capacidades de recepción.
+- [x] `2.4.1` `getExtendedRtpCapabilities`: codecs in strict mode, in the order of the router or, with `preferLocalCodecsOrder`, the local one. Each side carries its negotiated parameters (the H264 `profile-level-id`). A matched codec without `preferredPayloadType` throws `IllegalArgumentException`.
+- [x] `2.4.2` `getExtendedRtpCapabilities`: match RTX by `apt`, comparing its numeric value, only if both sides have it.
+- [x] `2.4.3` `getExtendedRtpCapabilities`: header extensions, in the order of the router.
+- [x] `2.4.4` `getExtendedRtpCapabilities`: invert `direction` relative to the router; without a direction it is `sendrecv`.
+- [x] `2.4.5` `getRecvRtpCapabilities` and `getSendRtpCapabilities`: codecs and RTX, with the payload types of the router or the local ones.
+- [x] `2.4.6` `getRecvRtpCapabilities` and `getSendRtpCapabilities`: filter out the extensions that are not valid in their direction.
+- [x] `2.4.7` `canSend`, on the send capabilities.
+- [x] `2.4.8` `canReceive`, on the receive capabilities.
 
-Diferencia con mediasoup-client: allí `matchCodecs` modifica las capacidades del router al negociar H264, y el cálculo de recepción en `load` cambia el `profile-level-id` que ve después el de envío. Aquí los modelos son inmutables y cada cálculo parte de las capacidades originales.
+Difference with mediasoup-client: there `matchCodecs` modifies the router capabilities when negotiating H264, and the receive computation in `load` changes the `profile-level-id` that the send one sees afterwards. Here the models are immutable and each computation starts from the original capabilities.
 
-### 2.5 Parámetros de envío
+### 2.5 Sending parameters
 
-- [x] `2.5.1` `getSendingRtpParameters`: codecs y RTX, con los payload types y parámetros locales. `mid` y encodings vacíos, y RTCP vacío como en mediasoup-client.
-- [x] `2.5.2` `getSendingRtpParameters`: extensiones de cabecera que se pueden enviar, del tipo pedido o sin tipo. ⚠️ no copiar: pymediasoup descarta las que no tienen tipo.
-- [x] `2.5.3` `getSendingRemoteRtpParameters`: usar los parámetros remotos del codec.
-- [x] `2.5.4` `getSendingRemoteRtpParameters`: reducir el feedback (Transport-CC, si no REMB, si no ninguno).
-- [x] `2.5.5` `reduceCodecs` sin codec indicado: el primero y su RTX.
-- [x] `2.5.6` `reduceCodecs` con codec indicado, comparando en modo estricto como mediasoup-client. ⚠️ no copiar: el `break` solo se ejecuta si hay RTX, así que sin RTX sigue añadiendo coincidencias.
-- [x] `2.5.7` `reduceCodecs`: `UnsupportedException` si no hay coincidencia o la lista está vacía.
-- [x] `2.5.8` `generateProbatorRtpParameters`. Sin codecs de vídeo lanza `IllegalArgumentException`.
+- [x] `2.5.1` `getSendingRtpParameters`: codecs and RTX, with the local payload types and parameters. Empty `mid` and encodings, and empty RTCP as in mediasoup-client.
+- [x] `2.5.2` `getSendingRtpParameters`: the header extensions that can be sent, of the requested kind or without a kind. ⚠️ do not copy: pymediasoup drops those without a kind.
+- [x] `2.5.3` `getSendingRemoteRtpParameters`: use the remote parameters of the codec.
+- [x] `2.5.4` `getSendingRemoteRtpParameters`: reduce the feedback (Transport-CC, else REMB, else none).
+- [x] `2.5.5` `reduceCodecs` without a given codec: the first one and its RTX.
+- [x] `2.5.6` `reduceCodecs` with a given codec, compared in strict mode like mediasoup-client. ⚠️ do not copy: the `break` only runs if there is RTX, so without RTX it keeps adding matches.
+- [x] `2.5.7` `reduceCodecs`: `UnsupportedException` if there is no match or the list is empty.
+- [x] `2.5.8` `generateProbatorRtpParameters`. Without video codecs it throws `IllegalArgumentException`.
 
-**Aceptación de la Fase 2** (cumplida)
+**Phase 2 acceptance** (met)
 
-- Cada función de `ortc.py` tiene tests, incluidos H264, VP9, RTX y el caso sin coincidencias (`OrtcMatchingTest`, `OrtcCapabilitiesTest`, `OrtcSendingTest`, `ScalabilityModeTest` y `H264ProfileLevelIdTest`).
-- Los resultados con los fixtures coinciden con los de pymediasoup o mediasoup-client, salvo los bugs marcados. Los valores esperados se han sacado leyendo el código de mediasoup-client 3.26, sin ejecutarlo.
+- Every function of `ortc.py` has tests, including H264, VP9, RTX and the case without matches (`OrtcMatchingTest`, `OrtcCapabilitiesTest`, `OrtcSendingTest`, `ScalabilityModeTest` and `H264ProfileLevelIdTest`).
+- The results with the fixtures match those of pymediasoup or mediasoup-client, except for the marked bugs. The expected values were obtained by reading the code of mediasoup-client 3.26, without running it.
 
-## Fase 3: SDP
+## Phase 3: SDP
 
-### 3.1 Port de sdp-transform: parser
+### 3.1 Port of sdp-transform: parser
 
-Origen: paquete `sdp-transform`
+Origin: the `sdp-transform` package
 
-Va en un paquete interno (`0.5.16`), y el SDP parseado es un `Map<String, Object>` mutable que conserva el orden de inserción (`0.5.12`).
+It goes in an internal package (`0.5.16`), and the parsed SDP is a mutable `Map<String, Object>` that keeps the insertion order (`0.5.12`).
 
-Portado de `clux/sdp-transform` 3.0.0, la versión que usa mediasoup-client 3.26, en `internal.sdptransform` (`Grammar` y `Parser`). Las regex son las del original; en Java `\s` y `\S` solo cubren espacios ASCII.
+Ported from `clux/sdp-transform` 3.0.0, the version that mediasoup-client 3.26 uses, in `internal.sdptransform` (`Grammar` and `Parser`). The regexes are those of the original; in Java `\s` and `\S` only cover ASCII whitespace.
 
-- [x] `3.1.1` Estructura de la gramática, con regex, nombre, campos y formato por tipo de línea (`Grammar.Rule`). Los formatos son funciones del mapa de valores, como en el original.
-- [x] `3.1.2` Parser de líneas y separación entre sesión y secciones `m=`. Acepta `\r\n`, `\r` y `\n`, e ignora las líneas que no son `x=...` con una minúscula.
-- [x] `3.1.3` Conversión numérica de campos, con la misma regla que el original (`String(Number(v)) === v`). Los números se guardan como los lee Jackson: `Integer`, `Long` o `BigInteger` según el tamaño, y `Double` si tienen decimales.
-- [x] `3.1.4` Líneas de sesión: `v`, `o`, `s`, `i`, `u`, `e`, `p`, `z`, `r`, `t`, `c`, `b`.
-- [x] `3.1.5` Línea `m=` con tipo, puerto, protocolo y payloads.
-- [x] `3.1.6` `a=rtpmap`, `a=fmtp`, `a=rtcp` y `a=rtcp-fb`.
+- [x] `3.1.1` Grammar structure, with the regex, name, fields and format of each line type (`Grammar.Rule`). Formats are functions of the value map, as in the original.
+- [x] `3.1.2` Line parser and split between the session and the `m=` sections. It accepts `\r\n`, `\r` and `\n`, and ignores the lines that are not `x=...` with a lowercase letter.
+- [x] `3.1.3` Numeric conversion of fields, with the same rule as the original (`String(Number(v)) === v`). Numbers are stored as Jackson reads them: `Integer`, `Long` or `BigInteger` by size, and `Double` if they have decimals.
+- [x] `3.1.4` Session lines: `v`, `o`, `s`, `i`, `u`, `e`, `p`, `z`, `r`, `t`, `c`, `b`.
+- [x] `3.1.5` The `m=` line with type, port, protocol and payloads.
+- [x] `3.1.6` `a=rtpmap`, `a=fmtp`, `a=rtcp` and `a=rtcp-fb`.
 - [x] `3.1.7` `a=extmap`, `a=extmap-allow-mixed`.
 - [x] `3.1.8` `a=ice-ufrag`, `a=ice-pwd`, `a=ice-lite`, `a=ice-options`.
 - [x] `3.1.9` `a=candidate`, `a=end-of-candidates`, `a=remote-candidates`.
 - [x] `3.1.10` `a=fingerprint`, `a=setup`, `a=crypto`, `a=connection`.
 - [x] `3.1.11` `a=mid`, `a=msid`, `a=msid-semantic`, `a=group`.
 - [x] `3.1.12` `a=ssrc`, `a=ssrc-group`.
-- [x] `3.1.13` Dirección (`sendrecv`, `sendonly`, `recvonly`, `inactive`), `a=rtcp-mux`, `a=rtcp-rsize`.
+- [x] `3.1.13` Direction (`sendrecv`, `sendonly`, `recvonly`, `inactive`), `a=rtcp-mux`, `a=rtcp-rsize`.
 - [x] `3.1.14` `a=ptime`, `a=maxptime`, `a=framerate`.
-- [x] `3.1.15` `a=rid`, `a=simulcast`, `a=simulcast:` del borrador 03.
+- [x] `3.1.15` `a=rid`, `a=simulcast`, and `a=simulcast:` from draft 03.
 - [x] `3.1.16` `a=sctp-port`, `a=max-message-size`, `a=sctpmap`.
-- [x] `3.1.17` Resto de atributos de la gramática original (`imageattr`, `source-filter`, `ts-refclk`, `mediaclk`, BFCP...), y conservar los desconocidos en `invalid`. También `parseRemoteCandidates`, `parseImageAttributes` y `parseSimulcastStreamList`.
-- [x] `3.1.18` `parseParams`. Una clave sin valor queda con `null`, como el `undefined` del original; las utilidades de la `3.3` lo cambian a `''`, como hace mediasoup-client al validar las capacidades. El paso de `profile-level-id` a texto también va en la `3.3` (`3.3.2`), porque el original lo hace en `extractRtpCapabilities`, no en `parseParams`.
-- [x] `3.1.19` `parsePayloads`, convirtiendo como el `Number` de JavaScript (`NaN` para lo que no es un número).
-- [x] `3.1.20` Port de los casos de prueba de parseo de la librería original (`ParserTest`, sin las comprobaciones del writer, que van en la `3.2.6`, y `CoverageTest`), con sus SDP en `src/test/resources/sdp/`.
+- [x] `3.1.17` The rest of the attributes of the original grammar (`imageattr`, `source-filter`, `ts-refclk`, `mediaclk`, BFCP...), keeping unknown ones in `invalid`. Also `parseRemoteCandidates`, `parseImageAttributes` and `parseSimulcastStreamList`.
+- [x] `3.1.18` `parseParams`. A key without a value is left as `null`, like the `undefined` of the original; the utilities of `3.3` change it to `''`, as mediasoup-client does when validating the capabilities. Converting `profile-level-id` to text also goes in `3.3` (`3.3.2`), because the original does it in `extractRtpCapabilities`, not in `parseParams`.
+- [x] `3.1.19` `parsePayloads`, converting like the JavaScript `Number` (`NaN` for anything that is not a number).
+- [x] `3.1.20` Port of the parsing test cases of the original library (`ParserTest`, without the writer checks, which go in `3.2.6`, and `CoverageTest`), with their SDPs in `src/test/resources/sdp/`.
 
-### 3.2 Port de sdp-transform: generador
+### 3.2 Port of sdp-transform: writer
 
-En `internal.sdptransform.Writer`. Como el original, escribe las líneas en el orden de la gramática y completa la sesión que recibe (`version`, `name` y `payloads`). Las conversiones de JavaScript que usan el parser y el writer están en `internal.sdptransform.JavaScript`.
+In `internal.sdptransform.Writer`. Like the original, it writes the lines in the order of the grammar and completes the session it receives (`version`, `name` and `payloads`). The JavaScript conversions that the parser and the writer use are in `internal.sdptransform.JavaScript`.
 
-- [x] `3.2.1` Formateador de líneas con los especificadores de la gramática (`%s`, `%d`, `%v`, `%%`). Escribe los valores como JavaScript: `%d` convierte con `Number()`, un valor ausente es `undefined` y los decimales salen con los dígitos mínimos. Los enteros se escriben exactos, aunque pasen de 53 bits.
-- [x] `3.2.2` Orden de líneas de sesión.
-- [x] `3.2.3` Orden de líneas de cada sección `m=`.
-- [x] `3.2.4` Omitir los campos ausentes.
-- [x] `3.2.5` Fin de línea `\r\n`.
-- [x] `3.2.6` Port de los casos de prueba de escritura (`ComposeTest`), incluidas las comprobaciones del writer de `parse.test.js` (`icelite`, `jsep`).
-- [x] `3.2.7` Round-trip parse y write con los SDP guardados en `0.3.6`: se conservan todas las líneas salvo `a=msid-semantic: WMS` sin token, que el original también reescribe con dos espacios.
-- [x] `3.2.8` Comprobar que webrtc-java acepta un SDP generado por el port: movida a `5.1.15`, porque necesita los nativos de la `5.1.1`.
+- [x] `3.2.1` Line formatter with the specifiers of the grammar (`%s`, `%d`, `%v`, `%%`). It writes values as JavaScript does: `%d` converts with `Number()`, a missing value is `undefined` and decimals come out with the fewest digits. Integers are written exactly, even beyond 53 bits.
+- [x] `3.2.2` Order of the session lines.
+- [x] `3.2.3` Order of the lines of each `m=` section.
+- [x] `3.2.4` Omit missing fields.
+- [x] `3.2.5` `\r\n` line endings.
+- [x] `3.2.6` Port of the writing test cases (`ComposeTest`), including the writer checks of `parse.test.js` (`icelite`, `jsep`).
+- [x] `3.2.7` Parse and write round trip with the SDPs saved in `0.3.6`: every line is preserved except `a=msid-semantic: WMS` without a token, which the original also rewrites with two spaces.
+- [x] `3.2.8` Check that webrtc-java accepts an SDP generated by the port: moved to `5.1.15`, because it needs the natives of `5.1.1`.
 
-### 3.3 Utilidades comunes
+### 3.3 Common utilities
 
-Origen: `commonUtils.ts` y `unifiedPlanUtils.ts` de mediasoup-client 3.26 (antes `pymediasoup/handlers/sdp/common_utils.py`, `unified_plan_utils.py`), en `internal.sdp` (`CommonUtils` y `UnifiedPlanUtils`). Un SDP que no encaja en los modelos (un codec sin clock rate, un SSRC de más de 32 bits) lanza `IllegalArgumentException`, y los `Error` del original lanzan `MediasoupClientException`.
+Origin: `commonUtils.ts` and `unifiedPlanUtils.ts` of mediasoup-client 3.26 (formerly `pymediasoup/handlers/sdp/common_utils.py`, `unified_plan_utils.py`), in `internal.sdp` (`CommonUtils` and `UnifiedPlanUtils`). An SDP that does not fit the models (a codec without a clock rate, an SSRC of more than 32 bits) throws `IllegalArgumentException`, and the `Error`s of the original throw `MediasoupClientException`.
 
-- [x] `3.3.1` `extractRtpCapabilities`: codecs de todas las secciones de audio y vídeo, indexados por payload type (BUNDLE), como mediasoup-client. ⚠️ no copiar: pymediasoup solo lee la primera sección de cada tipo.
-- [x] `3.3.2` `extractRtpCapabilities`: parámetros desde `fmtp`, con `profile-level-id` como texto y las claves sin valor (`null` en `parseParams`) como `''`.
-- [x] `3.3.3` `extractRtpCapabilities`: `rtcp-fb`; con payload `*` se aplica a todos los codecs del tipo salvo RTX. ⚠️ no copiar: pymediasoup lo ignora.
-- [x] `3.3.4` `extractRtpCapabilities`: extensiones de cabecera indexadas por tipo e id, omitiendo las cifradas.
-- [x] `3.3.5` `extractDtlsParameters`: `a=setup` y `a=fingerprint` de sesión o, si faltan, de la primera sección con puerto. Un `setup` desconocido deja el rol a `null`. ⚠️ no copiar: pymediasoup compara con `"activate"`, y el valor correcto es `"active"`.
+- [x] `3.3.1` `extractRtpCapabilities`: codecs from all the audio and video sections, indexed by payload type (BUNDLE), like mediasoup-client. ⚠️ do not copy: pymediasoup only reads the first section of each kind.
+- [x] `3.3.2` `extractRtpCapabilities`: parameters from `fmtp`, with `profile-level-id` as text and keys without a value (`null` in `parseParams`) as `''`.
+- [x] `3.3.3` `extractRtpCapabilities`: `rtcp-fb`; with payload `*` it applies to every codec of the kind except RTX. ⚠️ do not copy: pymediasoup ignores it.
+- [x] `3.3.4` `extractRtpCapabilities`: header extensions indexed by kind and id, skipping encrypted ones.
+- [x] `3.3.5` `extractDtlsParameters`: `a=setup` and `a=fingerprint` from the session or, if missing, from the first section with a port. An unknown `setup` leaves the role `null`. ⚠️ do not copy: pymediasoup compares with `"activate"`, and the correct value is `"active"`.
 - [x] `3.3.6` `getCname`.
-- [x] `3.3.7` `getRtpEncodings`: SSRC y grupos `FID`, en el orden de los SSRC. Como mediasoup-client, solo añade el SSRC de RTX si hay más de un codec. ⚠️ pymediasoup usa un `set`, sin orden definido.
-- [x] `3.3.8` Tests con SDP con RTX, sin RTX y sin SSRC, usando las ofertas reales de webrtc-java de `0.3.6`.
+- [x] `3.3.7` `getRtpEncodings`: SSRCs and `FID` groups, in SSRC order. Like mediasoup-client, it only adds the RTX SSRC if there is more than one codec. ⚠️ pymediasoup uses a `set`, with no defined order.
+- [x] `3.3.8` Tests with SDPs with RTX, without RTX and without SSRC, using the real webrtc-java offers of `0.3.6`.
 
-### 3.4 Secciones de media
+### 3.4 Media sections
 
-Origen: `RemoteMediaSection.ts` de mediasoup-client 3.26 (antes `pymediasoup/handlers/sdp/media_section.py`), en `internal.sdp` con sus nombres: `RemoteMediaSection`, `RemoteAnswerMediaSection` y `RemoteOfferMediaSection`. Cada sección es un objeto de media de sdp-transform mutable. Las opciones de codec de la respuesta van en la `11.1`, el simulcast en la `11.3` y las secciones `application` en la `9.4`. `plainRtpParameters` no se porta: ningún handler de mediasoup-client lo usa.
+Origin: `RemoteMediaSection.ts` of mediasoup-client 3.26 (formerly `pymediasoup/handlers/sdp/media_section.py`), in `internal.sdp` with its names: `RemoteMediaSection`, `RemoteAnswerMediaSection` and `RemoteOfferMediaSection`. Each section is a mutable sdp-transform media object. The codec options of the answer go in `11.1`, simulcast in `11.3` and the `application` sections in `9.4`. `plainRtpParameters` is not ported: no handler of mediasoup-client uses it.
 
 - [x] `3.4.1` `getCodecName`.
-- [x] `3.4.2` Base `MediaSection`: ICE y candidatos (`component = 1`, `end-of-candidates`, `renomination`), con la dirección de `effectiveAddress()` y el `tcptype`.
-- [x] `3.4.3` `MediaSection`: propiedades `mid` y `closed` (puerto 0).
+- [x] `3.4.2` `MediaSection` base: ICE and candidates (`component = 1`, `end-of-candidates`, `renomination`), with the address from `effectiveAddress()` and the `tcptype`.
+- [x] `3.4.3` `MediaSection`: the `mid` and `closed` (port 0) properties.
 - [x] `3.4.4` `MediaSection.setIceParameters`.
-- [x] `3.4.5` `MediaSection.disable`, con `pause` y `resume` de mediasoup-client.
+- [x] `3.4.5` `MediaSection.disable`, with `pause` and `resume` from mediasoup-client.
 - [x] `3.4.6` `MediaSection.close`.
-- [x] `3.4.7` `AnswerMediaSection`: cabecera, conexión y puerto.
-- [x] `3.4.8` `AnswerMediaSection`: audio y vídeo, `rtp`, `fmtp`, `rtcpFb` y `payloads`.
-- [x] `3.4.9` `AnswerMediaSection`: incluir solo las extensiones presentes en la oferta.
+- [x] `3.4.7` `AnswerMediaSection`: header, connection and port.
+- [x] `3.4.8` `AnswerMediaSection`: audio and video, `rtp`, `fmtp`, `rtcpFb` and `payloads`.
+- [x] `3.4.9` `AnswerMediaSection`: include only the extensions present in the offer.
 - [x] `3.4.10` `AnswerMediaSection`: `extmapAllowMixed`, `rtcp-mux`, `rtcp-rsize`.
 - [x] `3.4.11` `AnswerMediaSection.setDtlsRole`.
-- [x] `3.4.12` `OfferMediaSection`: cabecera, conexión, puerto y protocolo.
-- [x] `3.4.13` `OfferMediaSection`: audio y vídeo, `msid`, `rtp`, `fmtp`, `rtcpFb` y `ext`.
-- [x] `3.4.14` `OfferMediaSection`: `ssrcs` y `ssrcGroups`, con RTX.
-- [x] `3.4.15` `OfferMediaSection.setDtlsRole` (siempre `actpass`).
-- [x] `3.4.16` Comprobar el resultado contra `RemoteMediaSection.ts`: los tests comparan el SDP escrito de cada sección con el que sale de seguir el código de mediasoup-client, sin ejecutarlo.
+- [x] `3.4.12` `OfferMediaSection`: header, connection, port and protocol.
+- [x] `3.4.13` `OfferMediaSection`: audio and video, `msid`, `rtp`, `fmtp`, `rtcpFb` and `ext`.
+- [x] `3.4.14` `OfferMediaSection`: `ssrcs` and `ssrcGroups`, with RTX.
+- [x] `3.4.15` `OfferMediaSection.setDtlsRole` (always `actpass`).
+- [x] `3.4.16` Check the result against `RemoteMediaSection.ts`: the tests compare the written SDP of each section with the one obtained by following the code of mediasoup-client, without running it.
 
 ### 3.5 RemoteSdp
 
-Origen: `RemoteSdp.ts` de mediasoup-client 3.26 (antes `pymediasoup/handlers/sdp/remote_sdp.py`), en `internal.sdp.RemoteSdp`. Los `Error` del original (sección inexistente) lanzan `MediasoupClientException`. `send` con opciones de codec llega en la `11.1`, `muxMediaSectionSimulcast` en la `11.3` y `sendSctpAssociation` y `receiveSctpAssociation` en la `9.4`.
+Origin: `RemoteSdp.ts` of mediasoup-client 3.26 (formerly `pymediasoup/handlers/sdp/remote_sdp.py`), in `internal.sdp.RemoteSdp`. The `Error`s of the original (a missing section) throw `MediasoupClientException`. `send` with codec options comes in `11.1`, `muxMediaSectionSimulcast` in `11.3` and `sendSctpAssociation` and `receiveSctpAssociation` in `9.4`.
 
-- [x] `3.5.1` Constructor con el SDP base (`origin`, `name`, `timing`) y `a=ice-options:ice2`. El usuario del `origin` es `jmediasoup-v<versión>`, con la versión que el build graba en el descriptor del módulo (`jmediasoup` si no la hay).
-- [x] `3.5.2` Indicador `ice-lite`.
-- [x] `3.5.3` Fingerprint: el último de los parámetros DTLS, como mediasoup-client. ⚠️ no copiar: pymediasoup filtra `sha-256` porque aiortc solo soporta ese; libwebrtc acepta los demás. Se comprueba con webrtc-java en la `5.1.15`.
-- [x] `3.5.4` Grupo `BUNDLE` y `msid-semantic`.
+- [x] `3.5.1` Constructor with the base SDP (`origin`, `name`, `timing`) and `a=ice-options:ice2`. The `origin` user is `jmediasoup-v<version>`, with the version the build records in the module descriptor (`jmediasoup` if there is none).
+- [x] `3.5.2` `ice-lite` flag.
+- [x] `3.5.3` Fingerprint: the last one of the DTLS parameters, like mediasoup-client. ⚠️ do not copy: pymediasoup filters `sha-256` because aiortc only supports that one; libwebrtc accepts the others. Checked with webrtc-java in `5.1.15`.
+- [x] `3.5.4` `BUNDLE` group and `msid-semantic`.
 - [x] `3.5.5` `updateIceParameters`.
-- [x] `3.5.6` `updateDtlsRole`, sustituyendo los parámetros DTLS en vez de modificarlos.
-- [x] `3.5.7` `getNextMediaSectionIdx` y `MediaSectionIdx`.
-- [x] `3.5.8` `send`, quitando la extensión Dependency Descriptor salvo con AV1 o H264.
-- [x] `3.5.9` `receive`, reciclando solo secciones cerradas del mismo tipo.
-- [x] `3.5.10` `disableMediaSection`, con `pauseMediaSection`, `resumeSendingMediaSection` y `resumeReceivingMediaSection` de mediasoup-client.
-- [x] `3.5.11` `closeMediaSection`, sin cerrar nunca la primera sección.
-- [x] `3.5.12` `getSdp`, incrementando `sessionVersion`.
-- [x] `3.5.13` `addMediaSection`, `replaceMediaSection` y `regenerateBundleMids`.
-- [x] `3.5.14` Tests de añadir, cerrar y reciclar secciones.
+- [x] `3.5.6` `updateDtlsRole`, replacing the DTLS parameters instead of modifying them.
+- [x] `3.5.7` `getNextMediaSectionIdx` and `MediaSectionIdx`.
+- [x] `3.5.8` `send`, removing the Dependency Descriptor extension except with AV1 or H264.
+- [x] `3.5.9` `receive`, recycling only closed sections of the same kind.
+- [x] `3.5.10` `disableMediaSection`, with `pauseMediaSection`, `resumeSendingMediaSection` and `resumeReceivingMediaSection` from mediasoup-client.
+- [x] `3.5.11` `closeMediaSection`, never closing the first section.
+- [x] `3.5.12` `getSdp`, incrementing `sessionVersion`.
+- [x] `3.5.13` `addMediaSection`, `replaceMediaSection` and `regenerateBundleMids`.
+- [x] `3.5.14` Tests of adding, closing and recycling sections.
 
-**Aceptación de la Fase 3** (cumplida; el segundo punto, con la `5.1.15`)
+**Phase 3 acceptance** (met; the second point, with `5.1.15`)
 
-- El port pasa los casos de prueba de `sdp-transform` que se hayan portado.
-- `RemoteSdp` genera ofertas y respuestas que webrtc-java acepta en un test con peer connections locales: necesita los nativos, así que se comprueba en la `5.1.15`.
+- The port passes the `sdp-transform` test cases that have been ported.
+- `RemoteSdp` generates offers and answers that webrtc-java accepts in a test with local peer connections: it needs the natives, so it is checked in `5.1.15`.
 
-## Fase 4: Device y Transport con FakeHandler
+## Phase 4: Device and Transport with FakeHandler
 
-### 4.1 Handler y FakeHandler
+### 4.1 Handler and FakeHandler
 
-Origen: `HandlerInterface.ts` y `FakeHandler.ts` de mediasoup-client 3.26 (antes `pymediasoup/handlers/handler_interface.py`, `pymediasoup/models/handler_interface.py`, `tests/fake_handler.py`). El contrato es el de mediasoup-client, coherente con la `2.4`: la factory da las capacidades nativas por dirección y crea handlers ya listos, sin `run`. El `FakeHandler` de pymediasoup hereda de `AiortcHandler` y usa la pila real, así que se porta el de mediasoup-client.
+Origin: `HandlerInterface.ts` and `FakeHandler.ts` of mediasoup-client 3.26 (formerly `pymediasoup/handlers/handler_interface.py`, `pymediasoup/models/handler_interface.py`, `tests/fake_handler.py`). The contract is the one of mediasoup-client, consistent with `2.4`: the factory gives the native capabilities by direction and creates ready handlers, without `run`. The `FakeHandler` of pymediasoup extends `AiortcHandler` and uses the real stack, so the one of mediasoup-client is ported.
 
-- [x] `4.1.1` `Handler`, con todos los métodos de mediasoup-client 3.26 y `CompletableFuture`, en el paquete `handler` junto a sus opciones y resultados. Incluye `pauseSending`, `resumeSending`, `receive`, `stopReceiving`, `pauseReceiving` y `resumeReceiving` por lotes, y `getDataChannelMaxMessageSize`, que la Fase 14 usará sin cambiar la interfaz. Las estadísticas son `RTCStatsReport` y `setRtpEncodingParameters` recibe `RTCRtpEncodingParameters` de webrtc-java (`0.5.5`).
-- [x] `4.1.2` Eventos del handler (`@connect`, `@connectionstatechange`, `@icegatheringstatechange`, `@icecandidateerror`) como un `HandlerListener` que el transporte pasa en `HandlerOptions`; `connect` devuelve un `CompletionStage` que el handler espera. Nuevo enum `transport.IceGatheringState`.
-- [x] `4.1.3` `HandlerOptions` (antes `HandlerRunOptions`): dirección, parámetros ICE, DTLS y SCTP, servidores ICE, política ICE, la función `getSendExtendedRtpCapabilities` y el listener. `additionalSettings` llega con la `10.2.8`.
-- [x] `4.1.4` `HandlerSendOptions` (con `streamId`) y `HandlerSendResult`, con `@Nullable RTCRtpSender` (`1.7.2`).
-- [x] `4.1.5` `HandlerReceiveOptions` (con `streamId`) y `HandlerReceiveResult`, con el track y `@Nullable RTCRtpReceiver` (`1.7.3`).
-- [x] `4.1.6` `HandlerSendDataChannelOptions`, `HandlerSendDataChannelResult`, `HandlerReceiveDataChannelOptions` y `HandlerReceiveDataChannelResult`, con `handler.DataChannel`.
-- [x] `4.1.7` `HandlerFactory`: `name`, `getNativeRtpCapabilities(direction)`, `getNativeSctpCapabilities` (que mediasoup-client 3.26 ya no tiene, pero `Device.sctpCapabilities` de pymediasoup necesita) y `create(options)`.
-- [x] `4.1.8` `FakeHandler`: capacidades nativas fijas (`FakeParameters`) en las dos direcciones, y SCTP con `OS` y `MIS` de 1024.
-- [x] `4.1.9` `FakeHandler`: `send`, `receive` y los data channels sin WebRTC, generando IDs y parámetros. Pide al transporte que conecte antes del primer envío (rol DTLS `server`) o recepción (`client`). ⚠️ no copiar: el original da al data channel un id y devuelve el siguiente; aquí son el mismo.
-- [x] `4.1.10` `FakeHandler`: simular cambios de estado (`setConnectionState`, `setIceGatheringState`) y fallos (`failNextOperation`). Su factory guarda los handlers que crea, para que los tests los manejen.
+- [x] `4.1.1` `Handler`, with every method of mediasoup-client 3.26 and `CompletableFuture`, in the `handler` package together with its options and results. It includes batched `pauseSending`, `resumeSending`, `receive`, `stopReceiving`, `pauseReceiving` and `resumeReceiving`, and `getDataChannelMaxMessageSize`, which Phase 14 will use without changing the interface. Stats are `RTCStatsReport`, and `setRtpEncodingParameters` takes the `RTCRtpEncodingParameters` of webrtc-java (`0.5.5`).
+- [x] `4.1.2` Handler events (`@connect`, `@connectionstatechange`, `@icegatheringstatechange`, `@icecandidateerror`) as a `HandlerListener` that the transport passes in `HandlerOptions`; `connect` returns a `CompletionStage` that the handler waits for. New enum `transport.IceGatheringState`.
+- [x] `4.1.3` `HandlerOptions` (formerly `HandlerRunOptions`): direction, ICE, DTLS and SCTP parameters, ICE servers, ICE policy, the `getSendExtendedRtpCapabilities` function and the listener. `additionalSettings` comes with `10.2.8`.
+- [x] `4.1.4` `HandlerSendOptions` (with `streamId`) and `HandlerSendResult`, with a `@Nullable RTCRtpSender` (`1.7.2`).
+- [x] `4.1.5` `HandlerReceiveOptions` (with `streamId`) and `HandlerReceiveResult`, with the track and a `@Nullable RTCRtpReceiver` (`1.7.3`).
+- [x] `4.1.6` `HandlerSendDataChannelOptions`, `HandlerSendDataChannelResult`, `HandlerReceiveDataChannelOptions` and `HandlerReceiveDataChannelResult`, with `handler.DataChannel`.
+- [x] `4.1.7` `HandlerFactory`: `name`, `getNativeRtpCapabilities(direction)`, `getNativeSctpCapabilities` (which mediasoup-client 3.26 no longer has, but the `Device.sctpCapabilities` of pymediasoup needs) and `create(options)`.
+- [x] `4.1.8` `FakeHandler`: fixed native capabilities (`FakeParameters`) in both directions, and SCTP with `OS` and `MIS` of 1024.
+- [x] `4.1.9` `FakeHandler`: `send`, `receive` and the data channels without WebRTC, generating IDs and parameters. It asks the transport to connect before the first send (DTLS role `server`) or receive (`client`). ⚠️ do not copy: the original gives the data channel one id and returns the next one; here they are the same.
+- [x] `4.1.10` `FakeHandler`: simulate state changes (`setConnectionState`, `setIceGatheringState`) and failures (`failNextOperation`). Its factory keeps the handlers it creates, so that the tests can drive them.
 
 ### 4.2 Device
 
-Origen: `pymediasoup/device.py` y `Device.ts` de mediasoup-client 3.26, en `jmediasoup.Device`. Es thread-safe.
+Origin: `pymediasoup/device.py` and `Device.ts` of mediasoup-client 3.26, in `jmediasoup.Device`. It is thread-safe.
 
-- [x] `4.2.1` Constructor con `HandlerFactory`.
-- [x] `4.2.2` `load`: obtener las capacidades nativas de envío y de recepción de la `HandlerFactory`.
-- [x] `4.2.3` `load`: calcular las capacidades extendidas y las capacidades de recepción y de envío (`2.4`), y `canProduce` con `canSend`. `preferLocalCodecsOrder` de mediasoup-client como sobrecarga, `load(routerRtpCapabilities, preferLocalCodecsOrder)`. Si falla, el device queda sin cargar y se puede volver a cargar.
-- [x] `4.2.4` `load`: capacidades SCTP, de `HandlerFactory.getNativeSctpCapabilities`.
-- [x] `4.2.5` `load`: cerrar el handler temporal también si hay error: no aplica, porque la factory da las capacidades sin crear un handler (`4.1`).
-- [x] `4.2.6` `load` repetido, o con otro en curso: falla con `InvalidStateException`, como mediasoup-client. ⚠️ no copiar: pymediasoup avisa y vuelve.
-- [x] `4.2.7` `loaded`, `handlerName`. `handlerName` está disponible desde el principio, como en mediasoup-client.
-- [x] `4.2.8` `rtpCapabilities` y `sctpCapabilities`, con `InvalidStateException` si no está cargado. También `recvRtpCapabilities` y `sendRtpCapabilities` de mediasoup-client; `rtpCapabilities` es igual que `recvRtpCapabilities`.
+- [x] `4.2.1` Constructor with a `HandlerFactory`.
+- [x] `4.2.2` `load`: get the native send and receive capabilities from the `HandlerFactory`.
+- [x] `4.2.3` `load`: compute the extended capabilities and the receive and send capabilities (`2.4`), and `canProduce` with `canSend`. The `preferLocalCodecsOrder` of mediasoup-client as an overload, `load(routerRtpCapabilities, preferLocalCodecsOrder)`. If it fails, the device stays unloaded and can be loaded again.
+- [x] `4.2.4` `load`: SCTP capabilities, from `HandlerFactory.getNativeSctpCapabilities`.
+- [x] `4.2.5` `load`: close the temporary handler on error too: does not apply, because the factory gives the capabilities without creating a handler (`4.1`).
+- [x] `4.2.6` Repeated `load`, or with another one in progress: fails with `InvalidStateException`, like mediasoup-client. ⚠️ do not copy: pymediasoup warns and returns.
+- [x] `4.2.7` `loaded`, `handlerName`. `handlerName` is available from the start, as in mediasoup-client.
+- [x] `4.2.8` `rtpCapabilities` and `sctpCapabilities`, with `InvalidStateException` if not loaded. Also `recvRtpCapabilities` and `sendRtpCapabilities` from mediasoup-client; `rtpCapabilities` is the same as `recvRtpCapabilities`.
 - [x] `4.2.9` `canProduce(MediaKind)`.
-- [x] `4.2.10` `createSendTransport`: movida a `4.3.11`, porque necesita `Transport`.
-- [x] `4.2.11` `createRecvTransport`: movida a `4.3.12`.
-- [x] `4.2.12` `observer` con `newtransport`: movida a `4.3.13`.
+- [x] `4.2.10` `createSendTransport`: moved to `4.3.11`, because it needs `Transport`.
+- [x] `4.2.11` `createRecvTransport`: moved to `4.3.12`.
+- [x] `4.2.12` `observer` with `newtransport`: moved to `4.3.13`.
 
-### 4.3 Transport básico
+### 4.3 Basic Transport
 
-Origen: `pymediasoup/transport.py`
+Origin: `pymediasoup/transport.py`
 
-- [x] `4.3.1` Constructor: crear el handler con `HandlerFactory.create`, pasándole un `HandlerListener` que lleve sus eventos a la cola del transporte. Recibe las opciones internas (`InternalTransportOptions` en el original, antes `1.5.10`): dirección, `HandlerFactory`, capacidades RTP de recepción, la función que calcula las extendidas de envío a partir de las nativas (`getSendExtendedRtpCapabilities` en mediasoup-client) y `canProduceByKind`. Hecho como `Transport`, sellada, con `SendTransport` y `RecvTransport` (ver Decisiones). Completa los tamaños de mensaje SCTP que no envían los servidores antiguos, como mediasoup-client. `canProduceByKind` y las capacidades de recepción llegan con `produce` (`4.4`) y `consume` (`4.5`), que son quienes las usan.
-- [x] `4.3.2` Cola serializada por transporte para las operaciones de handler y la entrega de eventos (`0.5.2`). ⚠️ no copiar: el original no tiene cola (`NOTE: Mediasoup client enqueue command here`). En Java hay concurrencia real. Hecho con `SerialExecutor` y `OperationQueue` en `internal.event` (ver Decisiones); el transporte los usa desde `4.3.1`.
-- [x] `4.3.3` Rechazar las operaciones pendientes de la cola al cerrar: `OperationQueue.stop`, con `InvalidStateException("closed")`. La operación en curso no se interrumpe, pero su resultado se descarta.
-- [x] `4.3.4` Propiedades `id`, `closed`, `direction`, `handler`, `connectionState` y `appData`. Además `iceGatheringState` de mediasoup-client (antes `14.1.4`). `appData` sin setter.
-- [x] `4.3.5` Listener `connect`, obligatorio al crear el transporte, con futuro: interfaz `ConnectHandler`, llamada con `AsyncHandlers.run`. ⚠️ no copiar: el original lanza `connect` y sigue sin esperar a que termine la señalización. Falla con `InvalidStateException` si el transporte está cerrado.
-- [x] `4.3.6` Listener `connectionstatechange`. Además `icegatheringstatechange` e `icecandidateerror` de mediasoup-client. Un estado repetido no se emite, y después de `close` no se emite nada.
-- [x] `4.3.7` Listener `produce`, obligatorio al crear el transporte de envío, que devuelve el ID del producer: interfaz `ProduceHandler` con un record de petición, llamada con `AsyncHandlers.call`. Un ID vacío también falla. Hecho: `ProduceHandler` y `ProduceRequest`; la llamada y la comprobación del ID van con `produce` en la `4.4`.
-- [x] `4.3.8` `close`: cerrar el handler y avisar a todos los productores y consumidores. Para la cola, cierra el handler y pone el estado en `closed` sin evento. El aviso a productores y consumidores llega con `4.4.3` y `4.5.3`.
-- [x] `4.3.9` `observer` con `close`, `newproducer` y `newconsumer`. `TransportObserver` con `onClose`; `newproducer` y `newconsumer` llegan con la `4.4` y la `4.5`.
-- [x] `4.3.10` `additionalSettings`: movida a `10.2.8`.
-- [x] `4.3.11` `Device.createSendTransport` (antes `4.2.10`).
-- [x] `4.3.12` `Device.createRecvTransport` (antes `4.2.11`). ⚠️ no copiar: el original solo acepta `dict` en recv. Las dos variantes deben aceptar los mismos tipos de entrada. Las dos reciben `TransportOptions`.
-- [x] `4.3.13` `Device.observer` con `newtransport` (antes `4.2.12`). ⚠️ no copiar: el original lo documenta pero nunca lo emite. `DeviceObserver.onNewTransport`, emitido en el ejecutor del transporte nuevo antes que cualquier otro evento suyo.
+- [x] `4.3.1` Constructor: create the handler with `HandlerFactory.create`, passing it a `HandlerListener` that brings its events to the transport queue. It receives the internal options (`InternalTransportOptions` in the original, formerly `1.5.10`): direction, `HandlerFactory`, receive RTP capabilities, the function that computes the extended send capabilities from the native ones (`getSendExtendedRtpCapabilities` in mediasoup-client) and `canProduceByKind`. Done as a sealed `Transport`, with `SendTransport` and `RecvTransport` (see Decisions). It fills in the SCTP message sizes that old servers do not send, like mediasoup-client. `canProduceByKind` and the receive capabilities come with `produce` (`4.4`) and `consume` (`4.5`), which are the ones that use them.
+- [x] `4.3.2` Serialized queue per transport for the handler operations and the delivery of events (`0.5.2`). ⚠️ do not copy: the original has no queue (`NOTE: Mediasoup client enqueue command here`). Java has real concurrency. Done with `SerialExecutor` and `OperationQueue` in `internal.event` (see Decisions); the transport uses them since `4.3.1`.
+- [x] `4.3.3` Reject the pending operations of the queue on close: `OperationQueue.stop`, with `InvalidStateException("closed")`. The running operation is not interrupted, but its result is discarded.
+- [x] `4.3.4` Properties `id`, `closed`, `direction`, `handler`, `connectionState` and `appData`. Plus `iceGatheringState` from mediasoup-client (formerly `14.1.4`). `appData` has no setter.
+- [x] `4.3.5` `connect` listener, required when creating the transport, with a future: the `ConnectHandler` interface, called with `AsyncHandlers.run`. ⚠️ do not copy: the original fires `connect` and carries on without waiting for the signaling to finish. Fails with `InvalidStateException` if the transport is closed.
+- [x] `4.3.6` `connectionstatechange` listener. Plus `icegatheringstatechange` and `icecandidateerror` from mediasoup-client. A repeated state is not emitted, and nothing is emitted after `close`.
+- [x] `4.3.7` `produce` listener, required when creating the send transport, which returns the producer ID: the `ProduceHandler` interface with a request record, called with `AsyncHandlers.call`. An empty ID also fails. Done: `ProduceHandler` and `ProduceRequest`; the call and the ID check come with `produce` in `4.4`.
+- [x] `4.3.8` `close`: close the handler and notify every producer and consumer. It stops the queue, closes the handler and sets the state to `closed` without an event. Notifying producers and consumers comes with `4.4.3` and `4.5.3`.
+- [x] `4.3.9` `observer` with `close`, `newproducer` and `newconsumer`. `TransportObserver` with `onClose`; `newproducer` and `newconsumer` come with `4.4` and `4.5`.
+- [x] `4.3.10` `additionalSettings`: moved to `10.2.8`.
+- [x] `4.3.11` `Device.createSendTransport` (formerly `4.2.10`).
+- [x] `4.3.12` `Device.createRecvTransport` (formerly `4.2.11`). ⚠️ do not copy: the original only accepts a `dict` in recv. Both variants must accept the same input types. Both take `TransportOptions`.
+- [x] `4.3.13` `Device.observer` with `newtransport` (formerly `4.2.12`). ⚠️ do not copy: the original documents it but never emits it. `DeviceObserver.onNewTransport`, emitted on the executor of the new transport before any other of its events.
 
-### 4.4 Producer básico y Transport.produce
+### 4.4 Basic Producer and Transport.produce
 
-Origen: `pymediasoup/producer.py`, `pymediasoup/transport.py`
+Origin: `pymediasoup/producer.py`, `pymediasoup/transport.py`
 
-- [x] `4.4.1` `Producer`: propiedades `id`, `localId`, `closed`, `kind`, `rtpSender`, `track`, `rtpParameters`, `paused`, `maxSpatialLayer` y `appData`. `paused` empieza a `true` si el track está deshabilitado y `disableTrackOnPause` está activo, como en mediasoup-client; `paused` y `maxSpatialLayer` cambian desde las fases 8 y 11. `appData` sin setter, como en el transporte.
-- [x] `4.4.2` `Producer.close`. El observer `close` se emite en el ejecutor del transporte.
-- [x] `4.4.3` `Producer.transportClosed` y evento `transportclose` (`onTransportClose`). Se entrega antes que el observer `close` del transporte.
-- [x] `4.4.4` `Transport.produce`: validaciones de track, dirección y `canProduce`. ⚠️ no copiar: el original no comprueba si el transporte está cerrado. En `SendTransport.produce`, así que la dirección la garantiza el tipo. Fallan en el futuro: `InvalidStateException` si está cerrado o el track ha terminado, `UnsupportedException` si no se puede enviar ese tipo.
-- [x] `4.4.5` `createSendTransport` exige los listeners `connect` y `produce`, y `createRecvTransport` solo `connect` (`0.5.3`). ⚠️ no copiar: la segunda comprobación del original en `produce` mira `connect`. Hecho en la `4.3`: los handlers son parámetros obligatorios.
-- [x] `4.4.6` `Transport.produce`: flujo con handler y listener, y registro del producer. Como mediasoup-client: normaliza los encodings, llama a `handler.send` en la cola y al `ProduceHandler` en el ejecutor, y si falla hace `stopSending`. Un ID vacío falla. Si el transporte se cierra mientras el servidor crea el producer, falla con `InvalidStateException` y no lo registra. No se porta `validateAndNormalizeRtpParameters`: los records ya validan, y los valores por defecto los pone el servidor.
-- [x] `4.4.7` Si falla con el transporte cerrado, parar el track (`TODO` pendiente en el original): movida a `8.2.12`, con el resto de `stopTracks`.
-- [x] `4.4.8` Conectar `@close` del producer con `handler.stopSending`, en la cola; un fallo solo se registra.
-- [x] `4.4.9` `Producer.observer` con `close`. Además, el observer `newproducer` del transporte.
+- [x] `4.4.1` `Producer`: properties `id`, `localId`, `closed`, `kind`, `rtpSender`, `track`, `rtpParameters`, `paused`, `maxSpatialLayer` and `appData`. `paused` starts as `true` if the track is disabled and `disableTrackOnPause` is on, as in mediasoup-client; `paused` and `maxSpatialLayer` change from phases 8 and 11 on. `appData` has no setter, as in the transport.
+- [x] `4.4.2` `Producer.close`. The `close` observer is emitted on the transport executor.
+- [x] `4.4.3` `Producer.transportClosed` and the `transportclose` event (`onTransportClose`). It is delivered before the `close` observer of the transport.
+- [x] `4.4.4` `Transport.produce`: track, direction and `canProduce` checks. ⚠️ do not copy: the original does not check whether the transport is closed. In `SendTransport.produce`, so the type guarantees the direction. They fail in the future: `InvalidStateException` if the transport is closed or the track has ended, `UnsupportedException` if that kind cannot be sent.
+- [x] `4.4.5` `createSendTransport` requires the `connect` and `produce` listeners, and `createRecvTransport` only `connect` (`0.5.3`). ⚠️ do not copy: the second check of the original in `produce` looks at `connect`. Done in `4.3`: the handlers are required parameters.
+- [x] `4.4.6` `Transport.produce`: flow with the handler and the listener, and registration of the producer. Like mediasoup-client: it normalizes the encodings, calls `handler.send` in the queue and the `ProduceHandler` on the executor, and calls `stopSending` if it fails. An empty ID fails. If the transport closes while the server creates the producer, it fails with `InvalidStateException` and does not register it. `validateAndNormalizeRtpParameters` is not ported: the records already validate, and the server sets the defaults.
+- [x] `4.4.7` If it fails because the transport is closed, stop the track (a pending `TODO` in the original): moved to `8.2.12`, with the rest of `stopTracks`.
+- [x] `4.4.8` Connect the `@close` of the producer to `handler.stopSending`, in the queue; a failure is only logged.
+- [x] `4.4.9` `Producer.observer` with `close`. Plus the `newproducer` observer of the transport.
 
-### 4.5 Consumer básico y Transport.consume
+### 4.5 Basic Consumer and Transport.consume
 
-Origen: `pymediasoup/consumer.py`, `pymediasoup/transport.py`
+Origin: `pymediasoup/consumer.py`, `pymediasoup/transport.py`
 
-- [x] `4.5.1` `Consumer`: propiedades `id`, `localId`, `producerId`, `closed`, `kind`, `rtpReceiver`, `track`, `rtpParameters`, `paused` y `appData`. `kind` sale de `ConsumerOptions` y `paused` empieza a `true` si el track está deshabilitado, como en mediasoup-client. `appData` sin setter.
-- [x] `4.5.2` `Consumer.close`. El observer `close` se emite en el ejecutor del transporte.
-- [x] `4.5.3` `Consumer.transportClosed` y evento `transportclose` (`onTransportClose`).
-- [x] `4.5.4` `Transport.consume`: validaciones y `canReceive`. En `RecvTransport.consume`; los campos los valida `ConsumerOptions`. Fallan en el futuro: `InvalidStateException` si está cerrado, `UnsupportedException("cannot consume this Producer")` si `canReceive` no lo admite.
-- [x] `4.5.5` `Transport.consume`: flujo con handler y registro del consumer. ⚠️ no copiar: el original no pasa `rtpReceiver` al `Consumer`. Por lotes, como mediasoup-client 3.26 (antes `14.1.1`): los `consume` que llegan mientras hay otra operación en curso se negocian juntos en un solo `handler.receive`. Si el lote falla, fallan todos sus `consume`. Al cerrar el transporte fallan los pendientes y los que el handler está recibiendo, sin esperarle. El probator va en la `8.3`.
-- [x] `4.5.6` Conectar `@close` del consumer con `handler.stopReceiving`. También por lotes (`closePendingConsumers`); un fallo solo se registra.
-- [x] `4.5.7` `Consumer.observer` con `close`. Además, el observer `newconsumer` del transporte.
+- [x] `4.5.1` `Consumer`: properties `id`, `localId`, `producerId`, `closed`, `kind`, `rtpReceiver`, `track`, `rtpParameters`, `paused` and `appData`. `kind` comes from `ConsumerOptions`, and `paused` starts as `true` if the track is disabled, as in mediasoup-client. `appData` has no setter.
+- [x] `4.5.2` `Consumer.close`. The `close` observer is emitted on the transport executor.
+- [x] `4.5.3` `Consumer.transportClosed` and the `transportclose` event (`onTransportClose`).
+- [x] `4.5.4` `Transport.consume`: checks and `canReceive`. In `RecvTransport.consume`; `ConsumerOptions` validates the fields. They fail in the future: `InvalidStateException` if the transport is closed, `UnsupportedException("cannot consume this Producer")` if `canReceive` does not allow it.
+- [x] `4.5.5` `Transport.consume`: flow with the handler and registration of the consumer. ⚠️ do not copy: the original does not pass `rtpReceiver` to the `Consumer`. In batches, like mediasoup-client 3.26 (formerly `14.1.1`): the `consume` calls that arrive while another operation is running are negotiated together in a single `handler.receive`. If the batch fails, all its `consume` calls fail. Closing the transport fails the pending ones and those the handler is receiving, without waiting for it. The probator goes in `8.3`.
+- [x] `4.5.6` Connect the `@close` of the consumer to `handler.stopReceiving`. Also in batches (`closePendingConsumers`); a failure is only logged.
+- [x] `4.5.7` `Consumer.observer` with `close`. Plus the `newconsumer` observer of the transport.
 
-### 4.6 Port de la batería de tests
+### 4.6 Port of the test suite
 
-Origen: `tests/__init__.py`, y `src/test/test.ts` de mediasoup-client, cuyo `FakeHandler` se porta. Los tests de `test.ts` que tocan funciones de fases posteriores (pausa, `replaceTrack`, stats, ICE, data channels) van con ellas. Los que comprueban tipos de argumento o la dirección del transporte no aplican: lo garantizan los records y los tipos `SendTransport` y `RecvTransport`.
+Origin: `tests/__init__.py`, and `src/test/test.ts` of mediasoup-client, whose `FakeHandler` is ported. The tests of `test.ts` that touch features of later phases (pause, `replaceTrack`, stats, ICE, data channels) go with them. The ones that check argument types or the transport direction do not apply: the records and the `SendTransport` and `RecvTransport` types guarantee them.
 
 - [x] `4.6.1` `test_create_device`: `DeviceTest.aNewDeviceIsNotLoaded`.
-- [x] `4.6.2` `test_device_load`: `DeviceTest.loadSucceeds` y los casos de error.
+- [x] `4.6.2` `test_device_load`: `DeviceTest.loadSucceeds` and the error cases.
 - [x] `4.6.3` `test_device_rtp_capabilities`: `DeviceTest.loadSucceeds`.
 - [x] `4.6.4` `test_device_sctp_capabilities`: `DeviceTest.loadSucceeds`.
-- [x] `4.6.5` `test_device_can_produce_audio` y `test_device_can_produce_video`: `DeviceTest.canProduceAudioAndVideo`.
+- [x] `4.6.5` `test_device_can_produce_audio` and `test_device_can_produce_video`: `DeviceTest.canProduceAudioAndVideo`.
 - [x] `4.6.6` `test_send_transport`: `TransportTest.createSendTransportSucceeds`.
-- [x] `4.6.7` `test_recv_transport`: `TransportTest.createRecvTransportSucceeds`. La parte de `produce` en un transporte de recepción no aplica: `RecvTransport` no tiene `produce`.
-- [x] `4.6.8` `test_produce`, sin la parte de data channels: `ProducerTest`, con los parámetros RTP esperados en `theRtpParametersAreThoseOfPymediasoup`. Sin los valores por defecto que rellena pydantic (`parameter` vacío en `rtcpFeedback`), que siguen `null` (`1.3`).
-- [x] `4.6.9` `test_consume`, sin la parte de data channels: `ConsumerTest`, con los parámetros RTP esperados en `theRtpParametersAreThoseOfPymediasoup`, también sin los valores por defecto de pydantic (`encrypt`).
-- [x] `4.6.10` Tests de operaciones concurrentes sobre la cola: `OperationQueueTest`, `SerialExecutorTest`, `TransportTest.listenersRunOneAtATimeOnTheExecutor`, el orden de `produce` y los lotes de `consume`, y `produce` y `consume` desde 20 hilos a la vez.
-- [x] `4.6.11` Tests de cierre con operaciones en curso: cerrar mientras el servidor crea un producer, mientras el handler recibe, con `consume` pendientes y con 20 `produce` en marcha, sin que ninguno quede colgado.
+- [x] `4.6.7` `test_recv_transport`: `TransportTest.createRecvTransportSucceeds`. The `produce` part on a receive transport does not apply: `RecvTransport` has no `produce`.
+- [x] `4.6.8` `test_produce`, without the data channel part: `ProducerTest`, with the expected RTP parameters in `theRtpParametersAreThoseOfPymediasoup`. Without the defaults pydantic fills in (an empty `parameter` in `rtcpFeedback`), which stay `null` (`1.3`).
+- [x] `4.6.9` `test_consume`, without the data channel part: `ConsumerTest`, with the expected RTP parameters in `theRtpParametersAreThoseOfPymediasoup`, also without the defaults of pydantic (`encrypt`).
+- [x] `4.6.10` Tests of concurrent operations on the queue: `OperationQueueTest`, `SerialExecutorTest`, `TransportTest.listenersRunOneAtATimeOnTheExecutor`, the order of `produce` and the `consume` batches, and `produce` and `consume` from 20 threads at once.
+- [x] `4.6.11` Tests of closing with operations in progress: closing while the server creates a producer, while the handler receives, with pending `consume` calls and with 20 `produce` calls running, without any of them hanging.
 
-**Aceptación de la Fase 4** (cumplida)
+**Phase 4 acceptance** (met)
 
-- Los tests portados pasan sin cargar nativos.
-- Las operaciones concurrentes sobre un transporte se ejecutan en orden.
+- The ported tests pass without loading natives.
+- Concurrent operations on a transport run in order.
 
-## Fase 5: WebRtcJavaHandler, recepción
+## Phase 5: WebRtcJavaHandler, receiving
 
-Para probar contra un servidor real hacen falta las secciones 7.1 y 7.2, así que deben adelantarse antes de cerrar esta fase.
+Testing against a real server needs sections 7.1 and 7.2, so they have to be brought forward before closing this phase.
 
-### 5.1 Base del handler
+### 5.1 Handler base
 
-Origen: `pymediasoup/handlers/aiortc_handler.py`
+Origin: `pymediasoup/handlers/aiortc_handler.py`
 
-- [x] `5.1.1` Añadir `webrtc-java` como `api`. Los nativos solo para los tests: en uso real los declara el usuario (`0.5.7`). Ya era `api` desde la Fase 1; los nativos van como `testRuntimeOnly`, con el clasificador según `os.name` y `os.arch`.
-- [x] `5.1.2` Gestión compartida de `PeerConnectionFactory`, con su ciclo de vida y su cierre. `WebRtcJavaHandler.Factory`, con las dos variantes de `createFactory` (ver Decisiones). Tras cerrarla, `getNativeRtpCapabilities` falla con `InvalidStateException`.
-- [x] `5.1.3` Adaptadores de las interfaces de la sección 1.7 sobre webrtc-java: movida a `9.4.12`, porque solo queda la del data channel (las de sender y receiver se descartaron en `1.7.2` y `1.7.3`).
-- [x] `5.1.4` Convertir en futuros los callbacks `createOffer`, `createAnswer`, `setLocalDescription` y `setRemoteDescription`: `PeerConnections`, que los completa en un hilo virtual y no en el de señalización.
-- [x] `5.1.5` La `HandlerFactory` de `WebRtcJavaHandler`, con `name` (`WebRtcJava`). `create` falla hasta la `5.1.8`.
-- [x] `5.1.6` `getNativeRtpCapabilities` por dirección (`sendonly` o `recvonly`), con peer connection temporal (según `0.3.17`). Como `Chrome111`: el transceiver de vídeo lleva `scalabilityMode` `L3T3` para que aparezca la extensión Dependency Descriptor, y se añade NACK a Opus (`OrtcUtils.addNackSupportForOpus`). No se porta `validateAndNormalizeRtpCapabilities`, porque los records ya validan, ni `forcedRtpExtensions`, porque webrtc-java no tiene `setHeaderExtensionsToNegotiate`.
-- [x] `5.1.7` `getNativeSctpCapabilities` (`OS` y `MIS` de 1024).
-- [x] `5.1.8` Constructor: `RemoteSdp` y parámetros de envío por tipo. Los parámetros de envío no se calculan aquí: como en mediasoup-client 3.26, `send` los pide con `getSendExtendedRtpCapabilities` (`6.2.14`). El rol DTLS local es el opuesto del remoto si mediasoup lo fija, y `client` si es `auto`. Los métodos de fases posteriores fallan con `UnsupportedException` hasta entonces, y `getDataChannelMaxMessageSize` da `null` porque webrtc-java no expone el transporte SCTP.
-- [x] `5.1.9` Constructor: configuración de la peer connection con `iceServers` y `iceTransportPolicy`, más `max-bundle` y `rtcp-mux` obligatorio, como `Chrome111`.
-- [x] `5.1.10` Mapear el estado ICE a `ConnectionState`. Con el estado de la peer connection (`onConnectionChange`), como `Chrome111` cuando el navegador lo tiene, y no con el de ICE. También el estado de recogida ICE y los errores de candidatos. Se avisa al transporte desde el hilo de señalización, porque el transporte solo los pasa a su ejecutor y así no se desordenan.
-- [x] `5.1.11` `close`, liberando los recursos nativos: cierra la peer connection. Cerrar la factory cierra los handlers que siguen abiertos.
-- [x] `5.1.12` `setupTransport`: extraer DTLS, fijar el rol, avisar por `@connect` y esperar el resultado.
-- [x] `5.1.13` `assertSendDirection` y `assertRecvDirection`.
-- [x] `5.1.14` Test con `Device.load` real: las capacidades incluyen Opus y VP8. `WebRtcJavaHandlerFactoryTest`.
-- [x] `5.1.15` Comprobar que webrtc-java acepta un SDP generado por el writer de la `3.2` (antes `3.2.8`), y las ofertas y respuestas de `RemoteSdp` en peer connections locales (aceptación de la Fase 3), con el fingerprint `sha-512` que elige `RemoteSdp`. `WebRtcJavaHandlerTest`: una oferta de recepción con audio y vídeo, y una respuesta a una oferta de envío con audio y vídeo.
+- [x] `5.1.1` Add `webrtc-java` as `api`. The natives only for the tests: in real use the user declares them (`0.5.7`). It was already `api` since Phase 1; the natives are `testRuntimeOnly`, with the classifier picked from `os.name` and `os.arch`.
+- [x] `5.1.2` Shared management of the `PeerConnectionFactory`, with its lifecycle and closing. `WebRtcJavaHandler.Factory`, with the two variants of `createFactory` (see Decisions). Once it is closed, `getNativeRtpCapabilities` fails with `InvalidStateException`.
+- [x] `5.1.3` Adapters of the interfaces of section 1.7 over webrtc-java: moved to `9.4.12`, because only the data channel one is left (the sender and receiver ones were discarded in `1.7.2` and `1.7.3`).
+- [x] `5.1.4` Turn the `createOffer`, `createAnswer`, `setLocalDescription` and `setRemoteDescription` callbacks into futures: `PeerConnections`, which completes them on a virtual thread and not on the signaling thread.
+- [x] `5.1.5` The `HandlerFactory` of `WebRtcJavaHandler`, with `name` (`WebRtcJava`). `create` fails until `5.1.8`.
+- [x] `5.1.6` `getNativeRtpCapabilities` by direction (`sendonly` or `recvonly`), with a temporary peer connection (per `0.3.17`). Like `Chrome111`: the video transceiver has `scalabilityMode` `L3T3` so that the Dependency Descriptor extension shows up, and NACK is added to Opus (`OrtcUtils.addNackSupportForOpus`). `validateAndNormalizeRtpCapabilities` is not ported, because the records already validate, nor `forcedRtpExtensions`, because webrtc-java has no `setHeaderExtensionsToNegotiate`.
+- [x] `5.1.7` `getNativeSctpCapabilities` (`OS` and `MIS` of 1024).
+- [x] `5.1.8` Constructor: `RemoteSdp` and sending parameters by kind. The sending parameters are not computed here: as in mediasoup-client 3.26, `send` asks for them with `getSendExtendedRtpCapabilities` (`6.2.14`). The local DTLS role is the opposite of the remote one if mediasoup sets it, and `client` if it is `auto`. The methods of later phases fail with `UnsupportedException` until then, and `getDataChannelMaxMessageSize` gives `null` because webrtc-java does not expose the SCTP transport.
+- [x] `5.1.9` Constructor: peer connection configuration with `iceServers` and `iceTransportPolicy`, plus `max-bundle` and required `rtcp-mux`, like `Chrome111`.
+- [x] `5.1.10` Map the ICE state to `ConnectionState`. With the peer connection state (`onConnectionChange`), as `Chrome111` does when the browser has it, and not with the ICE one. Also the ICE gathering state and the candidate errors. The transport is notified from the signaling thread, because the transport only hands them to its executor, which keeps them in order.
+- [x] `5.1.11` `close`, releasing the native resources: it closes the peer connection. Closing the factory closes the handlers that are still open.
+- [x] `5.1.12` `setupTransport`: extract DTLS, set the role, notify through `@connect` and wait for the result.
+- [x] `5.1.13` `assertSendDirection` and `assertRecvDirection`.
+- [x] `5.1.14` Test with a real `Device.load`: the capabilities include Opus and VP8. `WebRtcJavaHandlerFactoryTest`.
+- [x] `5.1.15` Check that webrtc-java accepts an SDP generated by the writer of `3.2` (formerly `3.2.8`), and the offers and answers of `RemoteSdp` in local peer connections (Phase 3 acceptance), with the `sha-512` fingerprint that `RemoteSdp` picks. `WebRtcJavaHandlerTest`: a receive offer with audio and video, and an answer to a send offer with audio and video.
 
-### 5.2 Recibir
+### 5.2 Receiving
 
-- [x] `5.2.1` `receive`: asignar `localId`. ⚠️ no copiar: `str(len(map))` puede colisionar tras un `stopReceiving`. Usar un contador, como mediasoup-client. El `localId` es el MID que mediasoup da al consumer, como en mediasoup-client 3.26; si no lo hay, un contador que salta los que están en uso (3.26 usa el tamaño del mapa, que tiene el mismo problema).
-- [x] `5.2.2` `receive`: oferta remota con `RemoteSdp.receive`, varias secciones en una negociación (lotes de la `4.5.5`).
-- [x] `5.2.3` `receive`: `setRemoteDescription` y `createAnswer`.
-- [x] `5.2.4` `receive`: `setupTransport` con rol `client` la primera vez, u opuesto al que fije mediasoup.
-- [x] `5.2.5` `receive`: `setLocalDescription` y localizar el transceiver por `mid`.
-- [x] `5.2.6` `applyCodecParameters` para Opus. ⚠️ no copiar: el original busca `rmtp` en vez de `fmtp`. En `CommonUtils`, como en mediasoup-client: `stereo` según `sprop-stereo` de la oferta. ⚠️ no copiar: mediasoup-client escribe `clave=undefined` para un parámetro sin valor; aquí se escribe la clave sola.
-- [x] `5.2.7` Devolver track y receiver envueltos en las abstracciones: sin envolver, los de webrtc-java (`1.7.2`, `1.7.3`). El id del track remoto es el del consumer.
-- [x] `5.2.8` `stopReceiving`: cerrar la sección y renegociar. La primera sección se deshabilita en vez de cerrarse, porque lleva el transporte del BUNDLE; las demás se cierran y webrtc-java retira su transceiver.
-- [ ] `5.2.9` Test E2E: recibir audio de un producer del servidor.
-- [ ] `5.2.10` Test E2E: recibir vídeo de un producer del servidor.
-- [ ] `5.2.11` Test: `connectionState` llega a `connected` y a `closed`.
-- [x] `5.2.12` `receive`: usar `streamId` de `ConsumerOptions` (o el `producerId` si falta) como stream del `msid`, como mediasoup-client. En 3.26, si falta, es el stream del `msid` de mediasoup, su CNAME o `-` (`OrtcUtils.getMsidStreamIdAndTrackId`), no el `producerId`.
+- [x] `5.2.1` `receive`: assign the `localId`. ⚠️ do not copy: `str(len(map))` can collide after a `stopReceiving`. Use a counter, like mediasoup-client. The `localId` is the MID that mediasoup gives the consumer, as in mediasoup-client 3.26; if there is none, a counter that skips the ones in use (3.26 uses the size of the map, which has the same problem).
+- [x] `5.2.2` `receive`: remote offer with `RemoteSdp.receive`, several sections in one negotiation (the batches of `4.5.5`).
+- [x] `5.2.3` `receive`: `setRemoteDescription` and `createAnswer`.
+- [x] `5.2.4` `receive`: `setupTransport` with the `client` role the first time, or the opposite of the one mediasoup sets.
+- [x] `5.2.5` `receive`: `setLocalDescription` and find the transceiver by `mid`.
+- [x] `5.2.6` `applyCodecParameters` for Opus. ⚠️ do not copy: the original looks for `rmtp` instead of `fmtp`. In `CommonUtils`, like mediasoup-client: `stereo` from the `sprop-stereo` of the offer. ⚠️ do not copy: mediasoup-client writes `key=undefined` for a parameter without a value; here the key is written alone.
+- [x] `5.2.7` Return the track and the receiver wrapped in the abstractions: unwrapped, those of webrtc-java (`1.7.2`, `1.7.3`). The id of the remote track is the consumer id.
+- [x] `5.2.8` `stopReceiving`: close the section and renegotiate. The first section is disabled instead of closed, because it carries the BUNDLE transport; the others are closed and webrtc-java removes their transceiver.
+- [ ] `5.2.9` E2E test: receive audio from a producer of the server.
+- [ ] `5.2.10` E2E test: receive video from a producer of the server.
+- [ ] `5.2.11` Test: `connectionState` reaches `connected` and `closed`.
+- [x] `5.2.12` `receive`: use the `streamId` of `ConsumerOptions` (or the `producerId` if missing) as the `msid` stream, like mediasoup-client. In 3.26, if missing, it is the stream of the `msid` from mediasoup, its CNAME or `-` (`OrtcUtils.getMsidStreamIdAndTrackId`), not the `producerId`.
 
-**Aceptación de la Fase 5**
+**Phase 5 acceptance**
 
-- Los sinks reciben audio y vídeo reales desde el servidor mediasoup.
-- Al cerrar no quedan hilos ni recursos nativos vivos.
+- The sinks receive real audio and video from the mediasoup server.
+- After closing, no threads or native resources are left alive.
 
-## Fase 6: WebRtcJavaHandler, envío
+## Phase 6: WebRtcJavaHandler, sending
 
-### 6.1 Fuentes de prueba
+### 6.1 Test sources
 
-Origen: `AudioStreamTrack` y `VideoStreamTrack` de aiortc, usados en `examples/mediasoup.py`
+Origin: the `AudioStreamTrack` and `VideoStreamTrack` of aiortc, used in `examples/mediasoup.py`
 
-- [ ] `6.1.1` Fuente de audio de silencio sobre `CustomAudioSource`.
-- [ ] `6.1.2` Fuente de vídeo con frames de color fijo sobre `CustomVideoSource`.
-- [ ] `6.1.3` Temporización estable de las dos fuentes.
-- [ ] `6.1.4` Parada de las fuentes al cerrar.
+- [ ] `6.1.1` Silent audio source on `CustomAudioSource`.
+- [ ] `6.1.2` Video source with fixed-color frames on `CustomVideoSource`.
+- [ ] `6.1.3` Steady timing of both sources.
+- [ ] `6.1.4` Stop the sources on close.
 
-### 6.2 Enviar
+### 6.2 Sending
 
-- [ ] `6.2.1` `send`: copiar y reducir los parámetros RTP según el codec.
-- [ ] `6.2.2` `send`: `addTransceiver` en `sendonly`.
-- [ ] `6.2.3` `send`: `createOffer` y `setupTransport` con rol `server` la primera vez.
-- [ ] `6.2.4` `send`: `setLocalDescription` y obtener el `mid`.
-- [ ] `6.2.5` `send`: localizar la sección de la oferta por `mid` en vez de confiar solo en el índice.
-- [ ] `6.2.6` `send`: CNAME y encodings desde el SDP local.
-- [ ] `6.2.7` `send`: `RemoteSdp.send` y `setRemoteDescription`.
-- [ ] `6.2.8` `send`: reutilizar el `mid` de una sección cerrada.
-- [ ] `6.2.9` `stopSending` real. ⚠️ no copiar: en el original no hace nada porque aiortc no tiene `removeTrack`.
-- [ ] `6.2.10` Test E2E: enviar audio y comprobar en el servidor que llega RTP.
-- [ ] `6.2.11` Test E2E: enviar vídeo y comprobar en el servidor que llega RTP.
-- [ ] `6.2.12` Test E2E: cerrar un producer y crear otro en el mismo transporte.
-- [ ] `6.2.13` `send`: usar `streamId` de `ProducerOptions` como stream del `msid`, para sincronizar los tracks que lo comparten.
-- [ ] `6.2.14` `send`: calcular las capacidades extendidas de envío con las capacidades locales de la oferta, como mediasoup-client, y no con las de `load`.
+- [ ] `6.2.1` `send`: copy and reduce the RTP parameters according to the codec.
+- [ ] `6.2.2` `send`: `addTransceiver` in `sendonly`.
+- [ ] `6.2.3` `send`: `createOffer` and `setupTransport` with the `server` role the first time.
+- [ ] `6.2.4` `send`: `setLocalDescription` and get the `mid`.
+- [ ] `6.2.5` `send`: find the offer section by `mid` instead of relying only on the index.
+- [ ] `6.2.6` `send`: CNAME and encodings from the local SDP.
+- [ ] `6.2.7` `send`: `RemoteSdp.send` and `setRemoteDescription`.
+- [ ] `6.2.8` `send`: reuse the `mid` of a closed section.
+- [ ] `6.2.9` A real `stopSending`. ⚠️ do not copy: in the original it does nothing because aiortc has no `removeTrack`.
+- [ ] `6.2.10` E2E test: send audio and check on the server that RTP arrives.
+- [ ] `6.2.11` E2E test: send video and check on the server that RTP arrives.
+- [ ] `6.2.12` E2E test: close a producer and create another one on the same transport.
+- [ ] `6.2.13` `send`: use the `streamId` of `ProducerOptions` as the `msid` stream, to synchronize the tracks that share it.
+- [ ] `6.2.14` `send`: compute the extended send capabilities with the local capabilities of the offer, like mediasoup-client, and not with those of `load`.
 
-**Aceptación de la Fase 6**
+**Phase 6 acceptance**
 
-- El servidor recibe RTP de audio y vídeo desde jmediasoup.
-- Producers y consumers se pueden crear y cerrar repetidamente en el mismo transporte.
+- The server receives audio and video RTP from jmediasoup.
+- Producers and consumers can be created and closed repeatedly on the same transport.
 
-## Fase 7: hito MVP
+## Phase 7: MVP milestone
 
-### 7.1 Entorno de integración
+### 7.1 Integration environment
 
-- [x] `7.1.1` Añadir Testcontainers al catálogo de versiones: 2.0.5, solo el módulo base. La extensión de JUnit es propia (`MediasoupServer`), para no mezclar la de Testcontainers con JUnit 6.
-- [x] `7.1.2` Crear un source set o tarea `integrationTest`, separado de `test`: una `JvmTestSuite` en `src/integrationTest`, en el classpath (`javaModuleTesting.classpath`), de la que depende `check`.
-- [x] `7.1.3` Hacer que la tarea sea compatible con el configuration cache.
-- [x] `7.1.4` Arrancar la imagen elegida en `0.4.7` por digest, y esperar a que esté lista: espera a `Server started` en el log. Un solo contenedor para todos los tests, sin capacidades.
-- [x] `7.1.5` Configurar la red y `announcedAddress` según `0.4.8` y `0.4.9`: red del host, con mediasoup escuchando y anunciándose en `127.0.0.1`. Solo Linux; macOS y Windows esperan a la `0.4.9`.
-- [x] `7.1.6` Omitir los tests con un mensaje claro si Docker no está disponible.
-- [x] `7.1.7` Recoger los logs del contenedor si falla un test: se escriben en la salida de error del test, que recoge el informe.
+- [x] `7.1.1` Add Testcontainers to the version catalog: 2.0.5, only the base module. The JUnit extension is our own (`MediasoupServer`), so as not to mix the one of Testcontainers with JUnit 6.
+- [x] `7.1.2` Create an `integrationTest` source set or task, separate from `test`: a `JvmTestSuite` in `src/integrationTest`, on the classpath (`javaModuleTesting.classpath`), which `check` depends on.
+- [x] `7.1.3` Make the task compatible with the configuration cache.
+- [x] `7.1.4` Start the image chosen in `0.4.7` by digest, and wait until it is ready: it waits for `Server started` in the log. A single container for all the tests, without capabilities.
+- [x] `7.1.5` Configure the network and `announcedAddress` per `0.4.8` and `0.4.9`: host network, with mediasoup listening on and announcing `127.0.0.1`. Linux only; macOS and Windows wait for `0.4.9`.
+- [x] `7.1.6` Skip the tests with a clear message if Docker is not available.
+- [x] `7.1.7` Collect the container logs if a test fails: they are written to the error output of the test, which the report collects.
 
-### 7.2 Señalización de los tests
+### 7.2 Test signaling
 
-Este cliente es solo para los tests y se adapta a la señalización de la imagen elegida.
+This client is only for the tests and adapts to the signaling of the chosen image.
 
-- [ ] `7.2.1` Cliente WebSocket o HTTP según la imagen.
-- [ ] `7.2.2` Obtener las capacidades RTP del router.
-- [ ] `7.2.3` Crear transportes WebRTC.
-- [ ] `7.2.4` Conectar transportes (`connect`).
-- [ ] `7.2.5` Crear un producer en el servidor (`produce`).
-- [ ] `7.2.6` Crear y reanudar un consumer en el servidor.
-- [ ] `7.2.7` Consultar las estadísticas del servidor para comprobar que llega RTP.
+- [ ] `7.2.1` WebSocket or HTTP client, depending on the image.
+- [ ] `7.2.2` Get the RTP capabilities of the router.
+- [ ] `7.2.3` Create WebRTC transports.
+- [ ] `7.2.4` Connect transports (`connect`).
+- [ ] `7.2.5` Create a producer on the server (`produce`).
+- [ ] `7.2.6` Create and resume a consumer on the server.
+- [ ] `7.2.7` Query the server stats to check that RTP arrives.
 
-### 7.3 Test E2E de loopback
+### 7.3 Loopback E2E test
 
-- [ ] `7.3.1` Cargar `Device` con las capacidades del router.
-- [ ] `7.3.2` Crear transportes send y recv.
-- [ ] `7.3.3` Producir audio y vídeo.
-- [ ] `7.3.4` Consumir lo producido en el mismo proceso.
-- [ ] `7.3.5` Comprobar que el sink de audio recibe muestras.
-- [ ] `7.3.6` Comprobar que el sink de vídeo recibe frames.
-- [ ] `7.3.7` Comprobar las transiciones de `connectionState`.
-- [ ] `7.3.8` Cerrar todo y comprobar el estado final.
-- [ ] `7.3.9` Ejecutar el test varias veces seguidas para detectar inestabilidad.
+- [ ] `7.3.1` Load the `Device` with the router capabilities.
+- [ ] `7.3.2` Create send and recv transports.
+- [ ] `7.3.3` Produce audio and video.
+- [ ] `7.3.4` Consume what was produced, in the same process.
+- [ ] `7.3.5` Check that the audio sink receives samples.
+- [ ] `7.3.6` Check that the video sink receives frames.
+- [ ] `7.3.7` Check the `connectionState` transitions.
+- [ ] `7.3.8` Close everything and check the final state.
+- [ ] `7.3.9` Run the test several times in a row to detect flakiness.
 
-### 7.4 Entrega del MVP
+### 7.4 MVP delivery
 
-- [ ] `7.4.1` Ejecutar `integrationTest` en CI.
-- [ ] `7.4.2` Ejemplo mínimo ejecutable.
-- [ ] `7.4.3` Sección de uso en el README, con plataformas soportadas y limitaciones.
-- [ ] `7.4.4` Calcular la versión desde git con `gradle-git-versioning`: una etiqueta `vX.Y.Z` da `X.Y.Z`, y cualquier otro commit la siguiente versión menor con `-SNAPSHOT`. Comprobar que funciona con el configuration cache. Sustituye a la versión fija de `0.2.2`.
-- [ ] `7.4.5` Generar los jars de fuentes y Javadoc.
-- [ ] `7.4.6` Completar los metadatos del POM (nombre, URL, licencia, desarrolladores, SCM), e incluir `LICENSE` y `NOTICE` en `META-INF/` de los jars, que hoy no los llevan. MIT e ISC exigen que el aviso y la licencia de los originales acompañen a cada copia.
-- [ ] `7.4.7` Firma GPG en el build.
-- [ ] `7.4.8` Publicar en Central Portal desde el build.
-- [ ] `7.4.9` Workflow de publicación al empujar una etiqueta `vX.Y.Z`.
-- [ ] `7.4.10` Publicar la versión `0.1.0` en Maven Central y probarla desde un proyecto limpio.
+- [x] `7.4.1` Run `integrationTest` in CI: `check` depends on it, so the `build` of the CI runs it.
+- [ ] `7.4.2` Minimal runnable example.
+- [ ] `7.4.3` Usage section in the README, with the supported platforms and the limitations.
+- [ ] `7.4.4` Compute the version from git with `gradle-git-versioning`: a `vX.Y.Z` tag gives `X.Y.Z`, and any other commit the next minor version with `-SNAPSHOT`. Check that it works with the configuration cache. It replaces the fixed version of `0.2.2`.
+- [ ] `7.4.5` Generate the sources and Javadoc jars.
+- [ ] `7.4.6` Complete the POM metadata (name, URL, license, developers, SCM), and include `LICENSE` and `NOTICE` in `META-INF/` of the jars, which do not carry them today. MIT and ISC require the notice and the license of the originals to go with every copy.
+- [ ] `7.4.7` GPG signing in the build.
+- [ ] `7.4.8` Publish to Central Portal from the build.
+- [ ] `7.4.9` Release workflow when a `vX.Y.Z` tag is pushed.
+- [ ] `7.4.10` Publish version `0.1.0` to Maven Central and try it from a clean project.
 
-**Aceptación del MVP**
+**MVP acceptance**
 
-- El test de loopback pasa en CI de forma estable.
-- Cumple la [definición de MVP](#resumen).
-- Un proyecto nuevo puede usar la `0.1.0` desde Maven Central.
+- The loopback test passes steadily in CI.
+- It meets the [MVP definition](#summary).
+- A new project can use `0.1.0` from Maven Central.
 
 ---
 
-# Parte B: del MVP a la paridad
+# Part B: from the MVP to parity
 
-## Fase 8: control de medios
+## Phase 8: media control
 
-### 8.1 Pausa y reanudación
+### 8.1 Pause and resume
 
-Origen: `producer.py`, `consumer.py`
+Origin: `producer.py`, `consumer.py`
 
-- [ ] `8.1.1` `Producer.pause`: deshabilitar el track. ⚠️ no copiar: en el original no lo hace, porque el track de aiortc no tiene `enabled`.
+- [ ] `8.1.1` `Producer.pause`: disable the track. ⚠️ do not copy: the original does not, because the aiortc track has no `enabled`.
 - [ ] `8.1.2` `Producer.resume`.
 - [ ] `8.1.3` `disableTrackOnPause`.
-- [ ] `8.1.4` `zeroRtpOnPause`: sin track al pausar, con track al reanudar. ⚠️ no copiar: el original emite `@replacetrack` sin argumento.
-- [ ] `8.1.5` `Producer.observer` con `pause` y `resume`.
-- [ ] `8.1.6` `Consumer.pause`. ⚠️ no copiar: en el original `_disableTrackOnPause` es siempre `false` y no hace nada.
+- [ ] `8.1.4` `zeroRtpOnPause`: no track on pause, the track back on resume. ⚠️ do not copy: the original emits `@replacetrack` without an argument.
+- [ ] `8.1.5` `Producer.observer` with `pause` and `resume`.
+- [ ] `8.1.6` `Consumer.pause`. ⚠️ do not copy: in the original `_disableTrackOnPause` is always `false` and does nothing.
 - [ ] `8.1.7` `Consumer.resume`.
-- [ ] `8.1.8` `Consumer.observer` con `pause` y `resume`.
-- [ ] `8.1.9` Test E2E: el servidor deja de recibir RTP al pausar con `zeroRtpOnPause`.
+- [ ] `8.1.8` `Consumer.observer` with `pause` and `resume`.
+- [ ] `8.1.9` E2E test: the server stops receiving RTP when pausing with `zeroRtpOnPause`.
 
-### 8.2 Sustitución y fin de track
+### 8.2 Track replacement and end
 
-- [ ] `8.2.1` `Producer.replaceTrack`: validaciones y mismo track.
-- [ ] `8.2.2` `Producer.replaceTrack`: permitir un track nulo, como indica el comentario del original.
-- [ ] `8.2.3` `Producer.replaceTrack`: parar el track anterior según `stopTracks`.
-- [ ] `8.2.4` `Producer.replaceTrack`: aplicar el estado de pausa al track nuevo.
-- [ ] `8.2.5` Si el producer está cerrado, parar el track recibido según `stopTracks`.
+- [ ] `8.2.1` `Producer.replaceTrack`: checks and the same track.
+- [ ] `8.2.2` `Producer.replaceTrack`: allow a null track, as the comment of the original says.
+- [ ] `8.2.3` `Producer.replaceTrack`: stop the previous track according to `stopTracks`.
+- [ ] `8.2.4` `Producer.replaceTrack`: apply the pause state to the new track.
+- [ ] `8.2.5` If the producer is closed, stop the received track according to `stopTracks`.
 - [ ] `8.2.6` `handler.replaceTrack`.
-- [ ] `8.2.7` Conectar `@replacetrack` del producer con el handler.
-- [ ] `8.2.8` `stopTracks` al cerrar.
-- [ ] `8.2.9` Evento y observer `trackended` en `Producer`.
-- [ ] `8.2.10` Evento y observer `trackended` en `Consumer`.
-- [ ] `8.2.11` Retirar el listener del track al destruirlo.
-- [ ] `8.2.12` Si `produce` falla con el transporte cerrado, parar el track según `stopTracks` (antes `4.4.7`).
-- [ ] `8.2.13` Decidir qué es parar un track en webrtc-java, que no tiene `stop()` (`0.3.10`): `dispose()`, que libera el track nativo, o no hacer nada y dejar el track al usuario. Comprobar antes con los nativos qué pasa si se llama dos veces a `dispose()`. Afecta a `8.2.3`, `8.2.5`, `8.2.8` y `8.2.12`.
+- [ ] `8.2.7` Connect the `@replacetrack` of the producer to the handler.
+- [ ] `8.2.8` `stopTracks` on close.
+- [ ] `8.2.9` `trackended` event and observer on `Producer`.
+- [ ] `8.2.10` `trackended` event and observer on `Consumer`.
+- [ ] `8.2.11` Remove the track listener when destroying it.
+- [ ] `8.2.12` If `produce` fails because the transport is closed, stop the track according to `stopTracks` (formerly `4.4.7`).
+- [ ] `8.2.13` Decide what stopping a track means in webrtc-java, which has no `stop()` (`0.3.10`): `dispose()`, which releases the native track, or doing nothing and leaving the track to the user. First check with the natives what happens if `dispose()` is called twice. It affects `8.2.3`, `8.2.5`, `8.2.8` and `8.2.12`.
 
-### 8.3 Probator RTP y reciclado
+### 8.3 RTP probator and recycling
 
-- [ ] `8.3.1` Crear el consumer de probation con el primer consumer de vídeo.
-- [ ] `8.3.2` Comprobar que no se crea más de una vez, también con llamadas concurrentes.
-- [ ] `8.3.3` Decidir si un fallo del probator debe hacer fallar `consume`. mediasoup-client solo registra el error.
-- [ ] `8.3.4` Test E2E de reciclado de secciones: crear y cerrar consumers repetidamente.
-- [ ] `8.3.5` Test E2E de reciclado de una sección de audio con una de vídeo.
-- [ ] `8.3.6` Test E2E: cerrar el consumer de la primera sección (se deshabilita, no se cierra).
-- [ ] `8.3.7` Publicar la versión `0.2.0`.
+- [ ] `8.3.1` Create the probation consumer with the first video consumer.
+- [ ] `8.3.2` Check that it is not created more than once, also with concurrent calls.
+- [ ] `8.3.3` Decide whether a failure of the probator should make `consume` fail. mediasoup-client only logs the error.
+- [ ] `8.3.4` E2E test of section recycling: create and close consumers repeatedly.
+- [ ] `8.3.5` E2E test of recycling an audio section with a video one.
+- [ ] `8.3.6` E2E test: close the consumer of the first section (it is disabled, not closed).
+- [ ] `8.3.7` Publish version `0.2.0`.
 
-**Aceptación de la Fase 8**
+**Phase 8 acceptance**
 
-- `pause` y `resume` afectan al medio de verdad, comprobado desde el servidor.
-- `replaceTrack` no interrumpe la sesión.
+- `pause` and `resume` really affect the media, as checked from the server.
+- `replaceTrack` does not interrupt the session.
 
-## Fase 9: data channels
+## Phase 9: data channels
 
 ### 9.1 DataProducer
 
-Origen: `pymediasoup/data_producer.py`
+Origin: `pymediasoup/data_producer.py`
 
-- [ ] `9.1.1` Propiedades `id`, `closed`, `sctpStreamParameters`, `readyState`, `label`, `protocol` y `appData`.
-- [ ] `9.1.2` `bufferedAmount` y `bufferedAmountLowThreshold` (lectura y escritura).
-- [ ] `9.1.3` `send` de texto.
-- [ ] `9.1.4` `send` binario.
-- [ ] `9.1.5` `close` y `transportClosed`.
-- [ ] `9.1.6` Eventos `open`, `error`, `bufferedamountlow` y `transportclose`.
-- [ ] `9.1.7` Cierre iniciado por el canal: marcar como cerrado y avisar.
-- [ ] `9.1.8` Descartar y registrar los mensajes entrantes.
-- [ ] `9.1.9` `observer` con `close`.
+- [ ] `9.1.1` Properties `id`, `closed`, `sctpStreamParameters`, `readyState`, `label`, `protocol` and `appData`.
+- [ ] `9.1.2` `bufferedAmount` and `bufferedAmountLowThreshold` (read and write).
+- [ ] `9.1.3` Text `send`.
+- [ ] `9.1.4` Binary `send`.
+- [ ] `9.1.5` `close` and `transportClosed`.
+- [ ] `9.1.6` `open`, `error`, `bufferedamountlow` and `transportclose` events.
+- [ ] `9.1.7` Close started by the channel: mark it as closed and notify.
+- [ ] `9.1.8` Discard and log incoming messages.
+- [ ] `9.1.9` `observer` with `close`.
 
 ### 9.2 DataConsumer
 
-Origen: `pymediasoup/data_consumer.py`
+Origin: `pymediasoup/data_consumer.py`
 
-- [ ] `9.2.1` Propiedades `id`, `dataProducerId`, `closed`, `sctpStreamParameters`, `readyState`, `label`, `protocol` y `appData`.
-- [ ] `9.2.2` `binaryType` (lectura y escritura), o una alternativa idiomática en Java. `DataChannelMessage` ya ofrece bytes y texto, así que probablemente baste con documentar que no hace falta.
-- [ ] `9.2.3` `close` y `transportClosed`.
-- [ ] `9.2.4` Eventos `open`, `error`, `message` y `transportclose`.
-- [ ] `9.2.5` Cierre iniciado por el canal.
-- [ ] `9.2.6` `observer` con `close`.
+- [ ] `9.2.1` Properties `id`, `dataProducerId`, `closed`, `sctpStreamParameters`, `readyState`, `label`, `protocol` and `appData`.
+- [ ] `9.2.2` `binaryType` (read and write), or an idiomatic Java alternative. `DataChannelMessage` already offers bytes and text, so documenting that it is not needed is probably enough.
+- [ ] `9.2.3` `close` and `transportClosed`.
+- [ ] `9.2.4` `open`, `error`, `message` and `transportclose` events.
+- [ ] `9.2.5` Close started by the channel.
+- [ ] `9.2.6` `observer` with `close`.
 
 ### 9.3 Transport
 
-Origen: `pymediasoup/transport.py`
+Origin: `pymediasoup/transport.py`
 
-- [ ] `9.3.1` Listener `producedata`, opcional al crear el transporte de envío porque no todos usan data channels: sobrecarga `createSendTransport(options, connect, produce, produceData)`; sin ella, `produceData` falla con `InvalidStateException`.
-- [ ] `9.3.2` `produceData`: validaciones (dirección, SCTP activo, listener `producedata` presente).
-- [ ] `9.3.3` `produceData`: `ordered = false` si hay `maxPacketLifeTime` o `maxRetransmits`, y `true` si no hay ninguno (`validateAndNormalizeSctpStreamParameters` de mediasoup-client). ⚠️ no copiar: el original comprueba si son truthy, así que un valor 0 se ignora.
-- [ ] `9.3.4` `produceData`: flujo con handler y registro.
-- [ ] `9.3.5` `consumeData`: validaciones.
-- [ ] `9.3.6` `consumeData`: flujo con handler y registro.
-- [ ] `9.3.7` Conectar `@close` de los dos tipos con el transporte.
-- [ ] `9.3.8` Avisar a `DataProducer` y `DataConsumer` al cerrar el transporte.
-- [ ] `9.3.9` `observer` con `newdataproducer` y `newdataconsumer`.
+- [ ] `9.3.1` `producedata` listener, optional when creating the send transport because not everyone uses data channels: the overload `createSendTransport(options, connect, produce, produceData)`; without it, `produceData` fails with `InvalidStateException`.
+- [ ] `9.3.2` `produceData`: checks (direction, SCTP enabled, `producedata` listener present).
+- [ ] `9.3.3` `produceData`: `ordered = false` if there is a `maxPacketLifeTime` or `maxRetransmits`, and `true` if there is neither (`validateAndNormalizeSctpStreamParameters` of mediasoup-client). ⚠️ do not copy: the original checks whether they are truthy, so a value of 0 is ignored.
+- [ ] `9.3.4` `produceData`: flow with the handler and registration.
+- [ ] `9.3.5` `consumeData`: checks.
+- [ ] `9.3.6` `consumeData`: flow with the handler and registration.
+- [ ] `9.3.7` Connect the `@close` of both types to the transport.
+- [ ] `9.3.8` Notify `DataProducer` and `DataConsumer` when the transport closes.
+- [ ] `9.3.9` `observer` with `newdataproducer` and `newdataconsumer`.
 
-### 9.4 Handler y SDP
+### 9.4 Handler and SDP
 
-Origen: `aiortc_handler.py`, `media_section.py`, `remote_sdp.py`
+Origin: `aiortc_handler.py`, `media_section.py`, `remote_sdp.py`
 
-- [ ] `9.4.1` `sendDataChannel`: asignar el `streamId` con contador y módulo de `MIS`. ⚠️ no copiar: el original ignora el `streamId` recibido.
-- [ ] `9.4.2` `sendDataChannel`: crear el canal `negotiated`. ⚠️ no copiar: el original no pasa `maxRetransmits`.
-- [ ] `9.4.3` `sendDataChannel`: negociar `m=application` la primera vez.
-- [ ] `9.4.4` `receiveDataChannel`: crear el canal `negotiated`.
-- [ ] `9.4.5` `receiveDataChannel`: negociar `m=application` la primera vez.
-- [ ] `9.4.6` `AnswerMediaSection`: sección `application` con `sctp-port`.
-- [ ] `9.4.7` `AnswerMediaSection`: `sctpmap` antiguo.
-- [ ] `9.4.8` `OfferMediaSection`: sección `application` con `sctp-port`.
-- [ ] `9.4.9` `OfferMediaSection`: `sctpmap` antiguo (`oldDataChannelSpec`).
+- [ ] `9.4.1` `sendDataChannel`: assign the `streamId` with a counter modulo `MIS`. ⚠️ do not copy: the original ignores the `streamId` it receives.
+- [ ] `9.4.2` `sendDataChannel`: create the `negotiated` channel. ⚠️ do not copy: the original does not pass `maxRetransmits`.
+- [ ] `9.4.3` `sendDataChannel`: negotiate `m=application` the first time.
+- [ ] `9.4.4` `receiveDataChannel`: create the `negotiated` channel.
+- [ ] `9.4.5` `receiveDataChannel`: negotiate `m=application` the first time.
+- [ ] `9.4.6` `AnswerMediaSection`: `application` section with `sctp-port`.
+- [ ] `9.4.7` `AnswerMediaSection`: old `sctpmap`.
+- [ ] `9.4.8` `OfferMediaSection`: `application` section with `sctp-port`.
+- [ ] `9.4.9` `OfferMediaSection`: old `sctpmap` (`oldDataChannelSpec`).
 - [ ] `9.4.10` `RemoteSdp.sendSctpAssociation`.
 - [ ] `9.4.11` `RemoteSdp.receiveSctpAssociation`.
-- [ ] `9.4.12` Implementación de `handler.DataChannel` sobre `RTCDataChannel`: copiar cada `RTCDataChannelBuffer` en un `DataChannelMessage`, traducir `onStateChange` a `onOpen` y `onClose`, y calcular `onBufferedAmountLow` con el umbral, que webrtc-java no tiene.
+- [ ] `9.4.12` Implementation of `handler.DataChannel` on `RTCDataChannel`: copy each `RTCDataChannelBuffer` into a `DataChannelMessage`, translate `onStateChange` into `onOpen` and `onClose`, and compute `onBufferedAmountLow` with the threshold, which webrtc-java does not have.
 
 ### 9.5 Tests
 
-- [ ] `9.5.1` Parte de data channels de `test_produce` y `test_consume`, con `FakeHandler`.
-- [ ] `9.5.2` Test E2E: enviar y recibir texto a través del servidor.
-- [ ] `9.5.3` Test E2E: enviar y recibir binario.
-- [ ] `9.5.4` Test E2E: canal no ordenado con `maxRetransmits`.
-- [ ] `9.5.5` Test: `bufferedamountlow` se dispara.
-- [ ] `9.5.6` Test: cerrar el transporte cierra los canales.
-- [ ] `9.5.7` Publicar la versión `0.3.0`.
+- [ ] `9.5.1` The data channel part of `test_produce` and `test_consume`, with `FakeHandler`.
+- [ ] `9.5.2` E2E test: send and receive text through the server.
+- [ ] `9.5.3` E2E test: send and receive binary.
+- [ ] `9.5.4` E2E test: unordered channel with `maxRetransmits`.
+- [ ] `9.5.5` Test: `bufferedamountlow` fires.
+- [ ] `9.5.6` Test: closing the transport closes the channels.
+- [ ] `9.5.7` Publish version `0.3.0`.
 
-**Aceptación de la Fase 9**
+**Phase 9 acceptance**
 
-- Mensajes de texto y binarios llegan de extremo a extremo.
-- Los parámetros de fiabilidad llegan al canal nativo.
+- Text and binary messages arrive end to end.
+- The reliability parameters reach the native channel.
 
-## Fase 10: stats e ICE
+## Phase 10: stats and ICE
 
-### 10.1 Estadísticas
+### 10.1 Statistics
 
-Origen: `transport.py`, `producer.py`, `consumer.py`, `aiortc_handler.py`
+Origin: `transport.py`, `producer.py`, `consumer.py`, `aiortc_handler.py`
 
-- [ ] `10.1.1` `getStats` devuelve el `RTCStatsReport` de webrtc-java (`0.5.5`), y uno vacío o construido a mano con `FakeHandler`.
+- [ ] `10.1.1` `getStats` returns the `RTCStatsReport` of webrtc-java (`0.5.5`), and an empty or hand-built one with `FakeHandler`.
 - [ ] `10.1.2` `handler.getTransportStats`.
 - [ ] `10.1.3` `handler.getSenderStats`.
 - [ ] `10.1.4` `handler.getReceiverStats`.
 - [ ] `10.1.5` `Transport.getStats`.
-- [ ] `10.1.6` `Producer.getStats`. ⚠️ no copiar: el original devuelve la lista de `emit_for_results` y, con el transporte cerrado, devuelve la excepción en vez de lanzarla.
-- [ ] `10.1.7` `Consumer.getStats`, con el mismo cuidado.
-- [ ] `10.1.8` Tests E2E de los tres niveles.
+- [ ] `10.1.6` `Producer.getStats`. ⚠️ do not copy: the original returns the list of `emit_for_results` and, with the transport closed, returns the exception instead of raising it.
+- [ ] `10.1.7` `Consumer.getStats`, with the same care.
+- [ ] `10.1.8` E2E tests of the three levels.
 
 ### 10.2 ICE
 
-Origen: `transport.py`, `aiortc_handler.py`, `remote_sdp.py`
+Origin: `transport.py`, `aiortc_handler.py`, `remote_sdp.py`
 
 - [ ] `10.2.1` `Transport.restartIce`.
-- [ ] `10.2.2` `handler.restartIce` en send, con `RTCOfferOptions.iceRestart`. ⚠️ no copiar: el original no puede pedirlo porque aiortc no tiene esa opción.
-- [ ] `10.2.3` `handler.restartIce` en recv.
-- [ ] `10.2.4` `restartIce` antes de que el transporte esté listo: solo actualiza los parámetros.
+- [ ] `10.2.2` `handler.restartIce` on send, with `RTCOfferOptions.iceRestart`. ⚠️ do not copy: the original cannot ask for it because aiortc does not have that option.
+- [ ] `10.2.3` `handler.restartIce` on recv.
+- [ ] `10.2.4` `restartIce` before the transport is ready: it only updates the parameters.
 - [ ] `10.2.5` `Transport.updateIceServers`.
-- [ ] `10.2.6` `handler.updateIceServers` con `setConfiguration`. ⚠️ no copiar: en el original solo registra un aviso.
-- [ ] `10.2.7` `iceTransportPolicy` (`all` y `relay`).
-- [ ] `10.2.8` `additionalSettings` y `proprietaryConstraints`: decidir cuáles tienen sentido en webrtc-java y añadirlos a `TransportOptions` con su builder, sin campos reservados por jmediasoup. ⚠️ no copiar: el original llama a `copy(deep=True)` sobre un `dict`.
-- [ ] `10.2.9` `RemoteSdp.updateIceParameters`: quitar `icelite` si ya no aplica.
-- [ ] `10.2.10` Test E2E: reiniciar ICE y seguir recibiendo medios.
-- [ ] `10.2.11` Test E2E: conexión a través de un TURN, si la imagen o el entorno lo permiten.
-- [ ] `10.2.12` Publicar la versión `0.4.0`.
+- [ ] `10.2.6` `handler.updateIceServers` with `setConfiguration`. ⚠️ do not copy: in the original it only logs a warning.
+- [ ] `10.2.7` `iceTransportPolicy` (`all` and `relay`).
+- [ ] `10.2.8` `additionalSettings` and `proprietaryConstraints`: decide which ones make sense in webrtc-java and add them to `TransportOptions` with its builder, without fields reserved by jmediasoup. ⚠️ do not copy: the original calls `copy(deep=True)` on a `dict`.
+- [ ] `10.2.9` `RemoteSdp.updateIceParameters`: remove `icelite` if it no longer applies.
+- [ ] `10.2.10` E2E test: restart ICE and keep receiving media.
+- [ ] `10.2.11` E2E test: connection through a TURN server, if the image or the environment allow it.
+- [ ] `10.2.12` Publish version `0.4.0`.
 
-**Aceptación de la Fase 10**
+**Phase 10 acceptance**
 
-- `restartIce` restablece el medio en una sesión activa.
-- Los tres niveles de `getStats` devuelven datos reales.
+- `restartIce` restores the media in an active session.
+- The three levels of `getStats` return real data.
 
-## Fase 11: codecs y encodings
+## Phase 11: codecs and encodings
 
-### 11.1 Opciones de codec
+### 11.1 Codec options
 
-Origen: `media_section.py`
+Origin: `media_section.py`
 
-- [ ] `11.1.0` Decidir cómo devuelve `RemoteAnswerMediaSection` los cambios que las opciones de Opus hacen en los parámetros de la oferta (`sprop-stereo`, `useinbandfec`, `usedtx`, `ptime` y el NACK de `opusNack`): mediasoup-client modifica el objeto que recibe, y aquí los modelos son inmutables.
+- [ ] `11.1.0` Decide how `RemoteAnswerMediaSection` returns the changes that the Opus options make to the parameters of the offer (`sprop-stereo`, `useinbandfec`, `usedtx`, `ptime` and the NACK of `opusNack`): mediasoup-client modifies the object it receives, and here the models are immutable.
 - [ ] `11.1.1` `opusStereo`.
 - [ ] `11.1.2` `opusFec`.
 - [ ] `11.1.3` `opusDtx`.
@@ -949,164 +949,164 @@ Origen: `media_section.py`
 - [ ] `11.1.7` `videoGoogleStartBitrate`.
 - [ ] `11.1.8` `videoGoogleMaxBitrate`.
 - [ ] `11.1.9` `videoGoogleMinBitrate`.
-- [ ] `11.1.10` Comprobar en el SDP de respuesta que cada opción se aplica.
-- [ ] `11.1.11` `applyCodecParameters` con `sprop-stereo`.
-- [ ] `11.1.12` `opusNack`, de mediasoup-client.
+- [ ] `11.1.10` Check in the answer SDP that each option is applied.
+- [ ] `11.1.11` `applyCodecParameters` with `sprop-stereo`.
+- [ ] `11.1.12` `opusNack`, from mediasoup-client.
 
-### 11.2 Selección de codec y encodings
+### 11.2 Codec selection and encodings
 
-Origen: `aiortc_handler.py`, `unified_plan_utils.py`
+Origin: `aiortc_handler.py`, `unified_plan_utils.py`
 
-- [ ] `11.2.1` `produce` con `codec`: enviar el codec elegido.
-- [ ] `11.2.2` Asignar `rid` `r0`, `r1`... a los encodings.
-- [ ] `11.2.3` Un solo encoding: fusionarlo con el que se obtiene del SDP.
-- [ ] `11.2.4` Varios encodings: usarlos tal cual.
-- [ ] `11.2.5` Pasar `dtx`, `maxBitrate`, `maxFramerate`, `scaleResolutionDownBy`, `priority` y `networkPriority` al encoding nativo.
-- [ ] `11.2.6` Test E2E por codec disponible: Opus, VP8, VP9 y H264.
+- [ ] `11.2.1` `produce` with `codec`: send the chosen codec.
+- [ ] `11.2.2` Assign the `rid`s `r0`, `r1`... to the encodings.
+- [ ] `11.2.3` A single encoding: merge it with the one obtained from the SDP.
+- [ ] `11.2.4` Several encodings: use them as they are.
+- [ ] `11.2.5` Pass `dtx`, `maxBitrate`, `maxFramerate`, `scaleResolutionDownBy`, `priority` and `networkPriority` to the native encoding.
+- [ ] `11.2.6` E2E test per available codec: Opus, VP8, VP9 and H264.
 
 ### 11.3 Simulcast
 
-Origen: `aiortc_handler.py`, `media_section.py`. aiortc no soporta simulcast, así que hay que apoyarse en mediasoup-client (`Chrome111.ts`).
+Origin: `aiortc_handler.py`, `media_section.py`. aiortc does not support simulcast, so mediasoup-client (`Chrome111.ts`) has to be the reference.
 
-- [ ] `11.3.1` Pasar `sendEncodings` en `addTransceiver`.
-- [ ] `11.3.2` `AnswerMediaSection`: `simulcast` y `rids`.
-- [ ] `11.3.3` `AnswerMediaSection`: `simulcast_03` del borrador.
-- [ ] `11.3.4` Añadir `S1T3` a cada encoding con VP8 o H264. Revisar si `numTemporalLayers` o `scalabilityMode` debe aplicarse al encoding nativo.
-- [ ] `11.3.5` Test E2E: el servidor recibe varias capas.
-- [ ] `11.3.6` Test E2E: el consumer recibe capas distintas al cambiar la capa preferida en el servidor.
+- [ ] `11.3.1` Pass `sendEncodings` in `addTransceiver`.
+- [ ] `11.3.2` `AnswerMediaSection`: `simulcast` and `rids`.
+- [ ] `11.3.3` `AnswerMediaSection`: `simulcast_03` from the draft.
+- [ ] `11.3.4` Add `S1T3` to each encoding with VP8 or H264. Review whether `numTemporalLayers` or `scalabilityMode` should be applied to the native encoding.
+- [ ] `11.3.5` E2E test: the server receives several layers.
+- [ ] `11.3.6` E2E test: the consumer receives different layers when the preferred layer changes on the server.
 
 ### 11.4 SVC
 
-- [ ] `11.4.1` Detectar VP9 SVC con un encoding y varias capas espaciales.
-- [ ] `11.4.2` `addLegacySimulcast`. ⚠️ no copiar: tiene varios bugs (`.get` sobre una lista, clave `ssrc` en vez de `ssrcs`, `join` de enteros).
-- [ ] `11.4.3` Rama VP9 de `send`. ⚠️ no copiar: asigna `sdp_transform.parse` sin llamarlo.
-- [ ] `11.4.4` Revisar en mediasoup-client si todavía hace falta este truco con `scalabilityMode` nativo.
-- [ ] `11.4.5` Test E2E con VP9 SVC.
+- [ ] `11.4.1` Detect VP9 SVC with one encoding and several spatial layers.
+- [ ] `11.4.2` `addLegacySimulcast`. ⚠️ do not copy: it has several bugs (`.get` on a list, the `ssrc` key instead of `ssrcs`, `join` of integers).
+- [ ] `11.4.3` The VP9 branch of `send`. ⚠️ do not copy: it assigns `sdp_transform.parse` without calling it.
+- [ ] `11.4.4` Review in mediasoup-client whether this trick with a native `scalabilityMode` is still needed.
+- [ ] `11.4.5` E2E test with VP9 SVC.
 
-### 11.5 Control en caliente
+### 11.5 Live control
 
-Origen: `producer.py`, `aiortc_handler.py`
+Origin: `producer.py`, `aiortc_handler.py`
 
-- [ ] `11.5.1` `Producer.setMaxSpatialLayer`. ⚠️ no copiar: usa `self._kind`, que no existe.
-- [ ] `11.5.2` `handler.setMaxSpatialLayer` con `getParameters` y `setParameters`. ⚠️ no copiar: en el original solo registra un aviso.
+- [ ] `11.5.1` `Producer.setMaxSpatialLayer`. ⚠️ do not copy: it uses `self._kind`, which does not exist.
+- [ ] `11.5.2` `handler.setMaxSpatialLayer` with `getParameters` and `setParameters`. ⚠️ do not copy: in the original it only logs a warning.
 - [ ] `11.5.3` `Producer.setRtpEncodingParameters`.
-- [ ] `11.5.4` `handler.setRtpEncodingParameters`. ⚠️ no copiar: en el original solo registra un aviso.
-- [ ] `11.5.5` Conectar `@setmaxspatiallayer` y `@setrtpencodingparameters` con el handler.
-- [ ] `11.5.6` Test E2E: al limitar la capa, el servidor deja de recibir las superiores.
-- [ ] `11.5.7` Publicar la versión `0.5.0`.
+- [ ] `11.5.4` `handler.setRtpEncodingParameters`. ⚠️ do not copy: in the original it only logs a warning.
+- [ ] `11.5.5` Connect `@setmaxspatiallayer` and `@setrtpencodingparameters` to the handler.
+- [ ] `11.5.6` E2E test: when the layer is limited, the server stops receiving the higher ones.
+- [ ] `11.5.7` Publish version `0.5.0`.
 
-**Aceptación de la Fase 11**
+**Phase 11 acceptance**
 
-- El simulcast funciona de extremo a extremo con VP8.
-- Las opciones de codec se reflejan en el SDP y, cuando es posible, en el medio.
+- Simulcast works end to end with VP8.
+- The codec options show in the SDP and, when possible, in the media.
 
-## Fase 12: ejemplos y utilidades de media
+## Phase 12: examples and media utilities
 
-### 12.1 Utilidades de media
+### 12.1 Media utilities
 
-Origen: `aiortc.contrib.media`, usado en `examples/mediasoup.py`
+Origin: `aiortc.contrib.media`, used in `examples/mediasoup.py`
 
-- [ ] `12.1.1` `MediaBlackhole`: consumir tracks y descartar los datos.
-- [ ] `12.1.2` `MediaRecorder`: guardar audio en WAV.
-- [ ] `12.1.3` `MediaRecorder`: guardar vídeo. Decidir el formato y la dependencia.
-- [ ] `12.1.4` `MediaPlayer`: reproducir audio desde un fichero.
-- [ ] `12.1.5` `MediaPlayer`: reproducir vídeo desde un fichero. Decidir la dependencia.
-- [ ] `12.1.6` Decidir si van en un artefacto aparte para no añadir dependencias a la librería.
+- [ ] `12.1.1` `MediaBlackhole`: consume tracks and discard the data.
+- [ ] `12.1.2` `MediaRecorder`: save audio as WAV.
+- [ ] `12.1.3` `MediaRecorder`: save video. Decide the format and the dependency.
+- [ ] `12.1.4` `MediaPlayer`: play audio from a file.
+- [ ] `12.1.5` `MediaPlayer`: play video from a file. Decide the dependency.
+- [ ] `12.1.6` Decide whether they go in a separate artifact so as not to add dependencies to the library.
 
-### 12.2 Port del ejemplo
+### 12.2 Port of the example
 
-Origen: `examples/mediasoup.py`
+Origin: `examples/mediasoup.py`
 
-- [ ] `12.2.1` Crear el subproyecto `examples`.
-- [ ] `12.2.2` Conexión WebSocket con `java.net.http`.
-- [ ] `12.2.3` Peticiones y respuestas (`_send_request`, `_wait_for`, `recv_msg_task`).
-- [ ] `12.2.4` Parámetros de línea de comandos.
-- [ ] `12.2.5` `load`, con `getRouterRtpCapabilities`.
-- [ ] `12.2.6` `createSendTransport`, con `createWebRtcTransport` y `connectWebRtcTransport`.
-- [ ] `12.2.7` Listeners de `produce` y `producedata`.
+- [ ] `12.2.1` Create the `examples` subproject.
+- [ ] `12.2.2` WebSocket connection with `java.net.http`.
+- [ ] `12.2.3` Requests and responses (`_send_request`, `_wait_for`, `recv_msg_task`).
+- [ ] `12.2.4` Command-line parameters.
+- [ ] `12.2.5` `load`, with `getRouterRtpCapabilities`.
+- [ ] `12.2.6` `createSendTransport`, with `createWebRtcTransport` and `connectWebRtcTransport`.
+- [ ] `12.2.7` `produce` and `producedata` listeners.
 - [ ] `12.2.8` `join`.
-- [ ] `12.2.9` `produce` de audio y vídeo.
+- [ ] `12.2.9` `produce` of audio and video.
 - [ ] `12.2.10` `produceData`.
 - [ ] `12.2.11` `createRecvTransport`.
-- [ ] `12.2.12` Atender `newConsumer` con `consume`.
-- [ ] `12.2.13` Atender `newDataConsumer` con `consumeData`.
-- [ ] `12.2.14` Cierre ordenado.
-- [ ] `12.2.15` README del ejemplo, indicando contra qué servidor se ejecuta.
-- [ ] `12.2.16` Publicar la versión `0.6.0`.
+- [ ] `12.2.12` Handle `newConsumer` with `consume`.
+- [ ] `12.2.13` Handle `newDataConsumer` with `consumeData`.
+- [ ] `12.2.14` Orderly shutdown.
+- [ ] `12.2.15` README of the example, saying which server it runs against.
+- [ ] `12.2.16` Publish version `0.6.0`.
 
-**Aceptación de la Fase 12**
+**Phase 12 acceptance**
 
-- El ejemplo intercambia audio, vídeo y datos con el servidor para el que está escrito.
+- The example exchanges audio, video and data with the server it is written for.
 
-## Fase 13: publicación
+## Phase 13: release
 
-### 13.1 Documentación
+### 13.1 Documentation
 
-- [ ] `13.1.1` Javadoc de toda la API pública.
-- [ ] `13.1.2` README completo: instalación, uso y ejemplos.
-- [ ] `13.1.3` Guía de uso de nativos por plataforma, con la dependencia para Gradle y para Maven (`0.5.7`).
-- [ ] `13.1.4` Tabla de diferencias con pymediasoup y mediasoup-client.
-- [ ] `13.1.5` Revisar que `LICENSE` y `NOTICE` están completos.
+- [ ] `13.1.1` Javadoc for the whole public API.
+- [ ] `13.1.2` Complete README: installation, usage and examples.
+- [ ] `13.1.3` Guide to using the natives per platform, with the dependency for Gradle and for Maven (`0.5.7`).
+- [ ] `13.1.4` Table of differences with pymediasoup and mediasoup-client.
+- [ ] `13.1.5` Review that `LICENSE` and `NOTICE` are complete.
 - [ ] `13.1.6` `CHANGELOG.md`.
 - [ ] `13.1.7` `CONTRIBUTING.md`.
 
-### 13.2 CI multiplataforma
+### 13.2 Multiplatform CI
 
-- [ ] `13.2.1` Tests unitarios en Linux, macOS y Windows.
-- [ ] `13.2.2` Carga de nativos en todas las plataformas soportadas.
-- [ ] `13.2.3` Tests de integración en las plataformas en que la red Docker lo permita.
-- [ ] `13.2.4` Tests con una versión reciente de mediasoup además de la 3.19.14 de la imagen (`0.5.14`), construyendo el demo oficial o con otra imagen.
-- [ ] `13.2.5` Prueba de fugas: crear y cerrar transportes en bucle, y vigilar la memoria nativa.
-- [ ] `13.2.6` Valorar variantes de Gradle por SO y CPU para que los nativos se elijan solos (`0.5.7`).
+- [ ] `13.2.1` Unit tests on Linux, macOS and Windows.
+- [ ] `13.2.2` Loading the natives on every supported platform.
+- [ ] `13.2.3` Integration tests on the platforms where Docker networking allows it.
+- [ ] `13.2.4` Tests with a recent mediasoup version besides the 3.19.14 of the image (`0.5.14`), building the official demo or with another image.
+- [ ] `13.2.5` Leak test: create and close transports in a loop, and watch the native memory.
+- [ ] `13.2.6` Consider Gradle variants by OS and CPU so that the natives are picked by themselves (`0.5.7`).
 
 ### 13.3 Maven Central
 
-La publicación en Central Portal se monta en la `7.4`, con la versión `0.1.0`.
+Publishing to Central Portal is set up in `7.4`, with version `0.1.0`.
 
-- [ ] `13.3.1` Comprobar la matriz de paridad completa.
-- [ ] `13.3.2` Publicar la versión `1.0.0`.
+- [ ] `13.3.1` Check that the parity matrix is complete.
+- [ ] `13.3.2` Publish version `1.0.0`.
 
-**Aceptación de la Fase 13**
+**Phase 13 acceptance**
 
-- Un proyecto nuevo puede usar `io.github.hectorespert:jmediasoup` desde Maven Central y completar el flujo básico.
+- A new project can use `io.github.hectorespert:jmediasoup` from Maven Central and complete the basic flow.
 
 ---
 
-# Parte C: más allá de pymediasoup
+# Part C: beyond pymediasoup
 
-## Fase 14: más allá de pymediasoup (opcional)
+## Phase 14: beyond pymediasoup (optional)
 
-Funcionalidades de mediasoup-client (`src/Transport.ts`) que pymediasoup no tiene.
+Features of mediasoup-client (`src/Transport.ts`) that pymediasoup does not have.
 
-- [x] `14.1.1` Crear consumers por lotes en una sola renegociación (`createPendingConsumers`): movida a `4.5.5`, con el cierre por lotes en la `4.5.6`.
-- [ ] `14.1.2` Pausar consumers por lotes (`pausePendingConsumers`).
-- [ ] `14.1.3` Reanudar consumers por lotes (`resumePendingConsumers`).
-- [x] `14.1.4` `Transport.iceGatheringState`: movida a `4.3.4`, con los eventos `icegatheringstatechange` e `icecandidateerror`.
+- [x] `14.1.1` Create consumers in batches in a single renegotiation (`createPendingConsumers`): moved to `4.5.5`, with closing in batches in `4.5.6`.
+- [ ] `14.1.2` Pause consumers in batches (`pausePendingConsumers`).
+- [ ] `14.1.3` Resume consumers in batches (`resumePendingConsumers`).
+- [x] `14.1.4` `Transport.iceGatheringState`: moved to `4.3.4`, with the `icegatheringstatechange` and `icecandidateerror` events.
 - [ ] `14.1.5` `Transport.getDataChannelMaxMessageSize`.
-- [ ] `14.1.6` Callbacks `onRtpSender` y `onRtpReceiver` de `ProducerOptions` y `ConsumerOptions`: decidir cómo se ejecutan con la cola del transporte.
-- [ ] `14.1.7` Comparar periódicamente con mediasoup-client para detectar funcionalidades nuevas.
+- [ ] `14.1.6` The `onRtpSender` and `onRtpReceiver` callbacks of `ProducerOptions` and `ConsumerOptions`: decide how they run with the transport queue.
+- [ ] `14.1.7` Compare with mediasoup-client from time to time to spot new features.
 
 ---
 
-# Matriz de paridad
+# Parity matrix
 
-Cubre la API de pymediasoup. `Fase` es la fase donde queda funcional; una propiedad básica puede aparecer antes.
+It covers the pymediasoup API. `Phase` is the phase where it becomes functional; a basic property can appear earlier.
 
 ## Device
 
-| Elemento | Fase |
+| Item | Phase |
 |---|---|
 | Constructor (`handlerFactory`) | 4.2 |
 | `load` | 4.2 |
 | `loaded`, `handlerName` | 4.2 |
-| `rtpCapabilities`, `sctpCapabilities` (y `recvRtpCapabilities`, `sendRtpCapabilities`, de mediasoup-client) | 4.2 |
+| `rtpCapabilities`, `sctpCapabilities` (and `recvRtpCapabilities`, `sendRtpCapabilities`, from mediasoup-client) | 4.2 |
 | `canProduce` | 4.2 |
 | `createSendTransport`, `createRecvTransport` | 4.3 |
 | `observer`: `newtransport` | 4.3 |
 
 ## Transport
 
-| Elemento | Fase |
+| Item | Phase |
 |---|---|
 | `id`, `closed`, `direction`, `handler`, `connectionState`, `appData` | 4.3 |
 | `close` | 4.3 |
@@ -1115,15 +1115,15 @@ Cubre la API de pymediasoup. `Fase` es la fase donde queda funcional; una propie
 | `produceData`, `consumeData` | 9.3 |
 | `getStats` | 10.1 |
 | `restartIce`, `updateIceServers` | 10.2 |
-| Eventos `connect`, `connectionstatechange`, `produce` | 4.3 |
-| Evento `producedata` | 9.3 |
+| `connect`, `connectionstatechange`, `produce` events | 4.3 |
+| `producedata` event | 9.3 |
 | `observer`: `close`, `newproducer`, `newconsumer` | 4.3, 4.4, 4.5 |
 | `observer`: `newdataproducer`, `newdataconsumer` | 9.3 |
-| Probator RTP (`probatorConsumerCreated`) | 8.3 |
+| RTP probator (`probatorConsumerCreated`) | 8.3 |
 
 ## Producer
 
-| Elemento | Fase |
+| Item | Phase |
 |---|---|
 | `id`, `localId`, `closed`, `kind`, `rtpSender`, `track`, `rtpParameters`, `paused`, `maxSpatialLayer`, `appData` | 4.4 |
 | `close`, `transportClosed` | 4.4 |
@@ -1131,52 +1131,52 @@ Cubre la API de pymediasoup. `Fase` es la fase donde queda funcional; una propie
 | `replaceTrack` | 8.2 |
 | `getStats` | 10.1 |
 | `setMaxSpatialLayer`, `setRtpEncodingParameters` | 11.5 |
-| Opciones `stopTracks`, `disableTrackOnPause`, `zeroRtpOnPause` | 8.1, 8.2 |
-| Eventos `transportclose`, `trackended` | 4.4, 8.2 |
+| `stopTracks`, `disableTrackOnPause`, `zeroRtpOnPause` options | 8.1, 8.2 |
+| `transportclose`, `trackended` events | 4.4, 8.2 |
 | `observer`: `close`, `pause`, `resume`, `trackended` | 4.4, 8.1, 8.2 |
-| Internos `@close`, `@replacetrack`, `@setmaxspatiallayer`, `@setrtpencodingparameters`, `@getstats` | 4.4, 8.2, 11.5, 10.1 |
+| Internal `@close`, `@replacetrack`, `@setmaxspatiallayer`, `@setrtpencodingparameters`, `@getstats` | 4.4, 8.2, 11.5, 10.1 |
 
 ## Consumer
 
-| Elemento | Fase |
+| Item | Phase |
 |---|---|
 | `id`, `localId`, `producerId`, `closed`, `kind`, `rtpReceiver`, `track`, `rtpParameters`, `paused`, `appData` | 4.5 |
 | `close`, `transportClosed` | 4.5 |
 | `pause`, `resume` | 8.1 |
 | `getStats` | 10.1 |
-| Eventos `transportclose`, `trackended` | 4.5, 8.2 |
+| `transportclose`, `trackended` events | 4.5, 8.2 |
 | `observer`: `close`, `pause`, `resume`, `trackended` | 4.5, 8.1, 8.2 |
-| Internos `@close`, `@getstats` | 4.5, 10.1 |
+| Internal `@close`, `@getstats` | 4.5, 10.1 |
 
 ## DataProducer
 
-| Elemento | Fase |
+| Item | Phase |
 |---|---|
 | `id`, `closed`, `sctpStreamParameters`, `readyState`, `label`, `protocol`, `appData` | 9.1 |
 | `bufferedAmount`, `bufferedAmountLowThreshold` | 9.1 |
 | `send` | 9.1 |
 | `close`, `transportClosed` | 9.1 |
-| Eventos `open`, `error`, `bufferedamountlow`, `transportclose` | 9.1 |
+| `open`, `error`, `bufferedamountlow`, `transportclose` events | 9.1 |
 | `observer`: `close` | 9.1 |
 
 ## DataConsumer
 
-| Elemento | Fase |
+| Item | Phase |
 |---|---|
 | `id`, `dataProducerId`, `closed`, `sctpStreamParameters`, `readyState`, `label`, `protocol`, `appData` | 9.2 |
 | `binaryType` | 9.2 |
 | `close`, `transportClosed` | 9.2 |
-| Eventos `open`, `error`, `message`, `transportclose` | 9.2 |
+| `open`, `error`, `message`, `transportclose` events | 9.2 |
 | `observer`: `close` | 9.2 |
 
-## HandlerInterface (Handler) y AiortcHandler (WebRtcJavaHandler)
+## HandlerInterface (Handler) and AiortcHandler (WebRtcJavaHandler)
 
-| Elemento | Fase |
+| Item | Phase |
 |---|---|
 | `name`, `createFactory`, `close` | 5.1 |
-| `pc`, `remoteSdp` (accesores internos) | 5.1 |
+| `pc`, `remoteSdp` (internal accessors) | 5.1 |
 | `getNativeRtpCapabilities`, `getNativeSctpCapabilities` | 5.1 |
-| `run` (constructor del handler en jmediasoup) | 4.1, 5.1 |
+| `run` (the handler constructor in jmediasoup) | 4.1, 5.1 |
 | `_setupTransport`, `_assertSendDirection`, `_assertRecvDirection` | 5.1 |
 | `receive`, `stopReceiving` | 5.2 |
 | `send`, `stopSending` | 6.2 |
@@ -1185,38 +1185,38 @@ Cubre la API de pymediasoup. `Fase` es la fase donde queda funcional; una propie
 | `getTransportStats`, `getSenderStats`, `getReceiverStats` | 10.1 |
 | `restartIce`, `updateIceServers` | 10.2 |
 | `setMaxSpatialLayer`, `setRtpEncodingParameters` | 11.5 |
-| Eventos `@connect`, `@connectionstatechange` | 4.1 |
+| `@connect`, `@connectionstatechange` events | 4.1 |
 
 ## ortc.py
 
-| Elemento | Fase |
+| Item | Phase |
 |---|---|
 | `RTP_PROBATOR_MID`, `RTP_PROBATOR_SSRC`, `RTP_PROBATOR_CODEC_PAYLOAD_TYPE` | 2.3 |
 | `matchCodecs`, `isRtxCodec`, `reduceRtcpFeedback`, `matchHeaderExtensions` | 2.3 |
-| `getExtendedRtpCapabilities`, `getRecvRtpCapabilities`, `canSend`, `canReceive` (y `getSendRtpCapabilities`, de mediasoup-client) | 2.4 |
+| `getExtendedRtpCapabilities`, `getRecvRtpCapabilities`, `canSend`, `canReceive` (and `getSendRtpCapabilities`, from mediasoup-client) | 2.4 |
 | `getSendingRtpParameters`, `getSendingRemoteRtpParameters`, `reduceCodecs`, `generateProbatorRtpParameters` | 2.5 |
 
 ## handlers/sdp
 
-| Elemento | Fase |
+| Item | Phase |
 |---|---|
 | `extractRtpCapabilities`, `extractDtlsParameters`, `getCname` | 3.3 |
 | `applyCodecParameters` | 5.2, 11.1 |
 | `getRtpEncodings` | 3.3 |
 | `addLegacySimulcast` | 11.4 |
 | `getCodecName`, `MediaSection` (`mid`, `closed`, `getDict`, `setIceParameters`, `disable`, `close`, `setDtlsRole`) | 3.4 |
-| `AnswerMediaSection`, `OfferMediaSection`: audio y vídeo | 3.4 |
+| `AnswerMediaSection`, `OfferMediaSection`: audio and video | 3.4 |
 | `AnswerMediaSection`, `OfferMediaSection`: `application` | 9.4 |
 | `AnswerMediaSection`: `simulcast`, `simulcast_03`, `rids` | 11.3 |
 | `AnswerMediaSection`: `codecOptions` | 11.1 |
 | `RemoteSdp`: `updateIceParameters`, `updateDtlsRole`, `getNextMediaSectionIdx`, `send`, `receive`, `disableMediaSection`, `closeMediaSection`, `getSdp` | 3.5 |
 | `RemoteSdp`: `_addMediaSection`, `_replaceMediaSection`, `_regenerateBundleMids`, `MediaSectionIdx` | 3.5 |
 | `RemoteSdp`: `sendSctpAssociation`, `receiveSctpAssociation` | 9.4 |
-| `planBReceive`, `planBStopReceiving` | Excluido (Plan B) |
+| `planBReceive`, `planBStopReceiving` | Excluded (Plan B) |
 
-## Modelos y utilidades
+## Models and utilities
 
-| Elemento | Fase |
+| Item | Phase |
 |---|---|
 | `Error`, `UnsupportedError`, `InvalidStateError` (`MediasoupClientException`, `UnsupportedException`, `InvalidStateException`) | 1.1 |
 | `EnhancedEventEmitter`, `emit_for_results` | 1.2 |
@@ -1227,19 +1227,19 @@ Cubre la API de pymediasoup. `Fase` es la fase donde queda funcional; una propie
 | `IceParameters`, `IceCandidate`, `DtlsFingerprint`, `DtlsRole`, `DtlsParameters`, `ConnectionState` | 1.5 |
 | `IpVersion`, `PlainRtpParameters`, `TransportOptions` | 1.5 |
 | `InternalTransportOptions` | 4.3 |
-| `RTCIceServer` de aiortc (`IceServer`) | 1.5 |
+| The `RTCIceServer` of aiortc (`IceServer`) | 1.5 |
 | `ProducerCodecOptions`, `ProducerOptions`, `ConsumerOptions`, `DataProducerOptions`, `DataConsumerOptions` | 1.6 |
 | `MediaStreamTrackKind` | 1.3 (`MediaKind`) |
 | `HandlerRunOptions` (`HandlerOptions`), `HandlerSendOptions`, `HandlerSendResult`, `HandlerReceiveOptions`, `HandlerReceiveResult` | 4.1 |
 | `HandlerSendDataChannelResult`, `HandlerReceiveDataChannelOptions`, `HandlerReceiveDataChannelResult` | 4.1 |
-| `ScalabilityMode`, `parse` (internos) | 2.2 |
+| `ScalabilityMode`, `parse` (internal) | 2.2 |
 
-## Dependencias de pymediasoup y su equivalente
+## pymediasoup dependencies and their equivalent
 
-| Dependencia | Equivalente | Fase |
+| Dependency | Equivalent | Phase |
 |---|---|---|
 | `aiortc` | `webrtc-java` | 0.3, 5, 6 |
-| `pydantic` | `record` con validación y anotaciones de Jackson | 1 |
-| `pyee` | Listeners tipados | 1.2 |
-| `sdp-transform` | Port propio, interno | 3.1, 3.2 |
-| `h264-profile-level-id` | Port propio, interno | 2.1 |
+| `pydantic` | `record`s with validation and Jackson annotations | 1 |
+| `pyee` | Typed listeners | 1.2 |
+| `sdp-transform` | Our own port, internal | 3.1, 3.2 |
+| `h264-profile-level-id` | Our own port, internal | 2.1 |
