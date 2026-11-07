@@ -767,7 +767,79 @@ This client is only for the tests and adapts to the signaling of the chosen imag
 - [x] `7.4.7` GPG signing in the build, with Gradle's `signing` plugin and the armored key in memory: the `signingInMemoryKey` and `signingInMemoryKeyPassword` properties, which CI passes as `ORG_GRADLE_PROJECT_*` variables, without gpg installed. Signing is required when there is a key or the version is a release, so a snapshot without a key is published to Maven local unsigned and a release without a key fails. Checked with a throwaway key: `gpg --verify` accepts the signatures of the jar, sources, Javadoc, POM and Gradle module, and a release tag without a key fails with no signatory.
 - [x] `7.4.8` Publish to Central Portal from the build with nmcp (GradleUp, MIT), since Sonatype has no official Gradle plugin: it uploads the signed publication as it is, so it keeps the jars and POM of `7.4.5` and `7.4.6`, which vanniktech's plugin would have replaced with its own DSL. `publishAggregationToCentralPortal` uploads with the portal token in `mavenCentralUsername` and `mavenCentralPassword`, and the publishing type is `AUTOMATIC`: a deployment that passes validation is published without a manual step. The aggregation plugin goes in the library project, because nmcp refuses two projects with the same name and the root project is also `jmediasoup`. Checked with `nmcpZipAggregation` (signatures and checksums of every file); the upload itself waits for `7.4.10`.
 - [ ] `7.4.9` Release workflow when a GitHub release is published, as in the other Java libraries of the author, with the tag `X.Y.Z` of the release as the version. It checks that axion computes the version of the tag, runs the whole build, integration tests included, and publishes to the Central Portal. Pre-releases are not published. The secrets are those of the other libraries (`MAVEN_GPG_PRIVATE_KEY`, `MAVEN_GPG_PASSPHRASE`, `OSSRH_USERNAME` and `OSSRH_PASSWORD`, the portal token), in a `maven-central` environment. It listens to `published` rather than `created`, which also fires when a draft is saved. The author creates the workflow from the web UI.
-- [ ] `7.4.10` Publish version `0.1.0` to Maven Central and try it from a clean project.
+  Pending steps of the author, in the GitHub web UI (the token of the assistant cannot write workflows):
+  - [ ] Create the `maven-central` environment (Settings, Environments), limited to tags with the pattern `*.*.*`.
+  - [ ] Add to it the four secrets, with the same values as in the other libraries (the same GPG key and portal token): `MAVEN_GPG_PRIVATE_KEY` (the armored private key), `MAVEN_GPG_PASSPHRASE`, `OSSRH_USERNAME` and `OSSRH_PASSWORD`.
+  - [ ] Create `.github/workflows/release.yml` with this content:
+
+    ```yaml
+    name: Release
+
+    # Publishes to Maven Central the version of a GitHub release, whose tag is X.Y.Z, once the build of the
+    # tagged commit passes. Pre-releases are not published.
+    on:
+      release:
+        types: [published]
+
+    permissions:
+      contents: read
+
+    concurrency:
+      group: ${{ github.workflow }}
+      cancel-in-progress: false
+
+    jobs:
+      publish:
+        if: ${{ !github.event.release.prerelease }}
+        runs-on: ubuntu-24.04
+        timeout-minutes: 30
+        # The signing key and the Central Portal token are secrets of this environment.
+        environment: maven-central
+        steps:
+          - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            with:
+              persist-credentials: false
+
+          - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+            with:
+              distribution: temurin
+              java-version: 21
+
+          - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+            with:
+              cache-provider: basic
+
+          # axion-release computes the version from the tag of the release; stop if they do not match.
+          - name: Check the version
+            run: |
+              version=$(./gradlew -q currentVersion | sed -n 's/^Project version: //p')
+              if [ "$version" != "$GITHUB_REF_NAME" ]; then
+                echo "::error::the version is '$version', but the tag of the release is '$GITHUB_REF_NAME'"
+                exit 1
+              fi
+
+          - name: Build and publish to Maven Central
+            run: ./gradlew build publishAggregationToCentralPortal
+            env:
+              ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+              ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+              ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.OSSRH_USERNAME }}
+              ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.OSSRH_PASSWORD }}
+
+          - name: Upload test reports
+            if: ${{ failure() }}
+            uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+            with:
+              name: test-reports
+              path: |
+                jmediasoup/build/reports/tests/
+                jmediasoup/build/test-results/
+              if-no-files-found: ignore
+              retention-days: 14
+    ```
+
+  If the GPG key signs with a subkey instead of the primary key, the build also needs its id (`useInMemoryPgpKeys(keyId, key, password)`); the first release will tell.
+- [ ] `7.4.10` Publish version `0.1.0` to Maven Central and try it from a clean project. The author publishes the GitHub release with the tag `0.1.0` on `main`, not as a pre-release, once `7.4.9` is in place.
 
 **MVP acceptance**
 
@@ -785,15 +857,15 @@ This client is only for the tests and adapts to the signaling of the chosen imag
 
 Origin: `producer.py`, `consumer.py`
 
-- [ ] `8.1.1` `Producer.pause`: disable the track. ⚠️ do not copy: the original does not, because the aiortc track has no `enabled`.
-- [ ] `8.1.2` `Producer.resume`.
-- [ ] `8.1.3` `disableTrackOnPause`.
-- [ ] `8.1.4` `zeroRtpOnPause`: no track on pause, the track back on resume. ⚠️ do not copy: the original emits `@replacetrack` without an argument.
-- [ ] `8.1.5` `Producer.observer` with `pause` and `resume`.
-- [ ] `8.1.6` `Consumer.pause`. ⚠️ do not copy: in the original `_disableTrackOnPause` is always `false` and does nothing.
-- [ ] `8.1.7` `Consumer.resume`.
-- [ ] `8.1.8` `Consumer.observer` with `pause` and `resume`.
-- [ ] `8.1.9` E2E test: the server stops receiving RTP when pausing with `zeroRtpOnPause`.
+- [x] `8.1.1` `Producer.pause`: disable the track. ⚠️ do not copy: the original does not, because the aiortc track has no `enabled`. `pause()` and `resume()` return nothing, as in mediasoup-client 3.26 and like `close()`: the state and the track change at once, and the work of the handler goes to the queue of the transport, where a failure is only logged. They do nothing on a closed producer.
+- [x] `8.1.2` `Producer.resume`.
+- [x] `8.1.3` `disableTrackOnPause`.
+- [x] `8.1.4` `zeroRtpOnPause`: as in mediasoup-client 3.26, the transceiver goes `inactive` on pause and `sendonly` on resume (`pauseSending` and `resumeSending` of the handler, which renegotiate). ⚠️ do not copy: the original emits `@replacetrack` without an argument.
+- [x] `8.1.5` `Producer.observer` with `pause` and `resume`.
+- [x] `8.1.6` `Consumer.pause`, as in mediasoup-client 3.26: it disables the track, and the transport pauses together, in one `pauseReceiving` of the handler, the consumers paused while another operation is in progress; a resume before the pause runs cancels it, and so does closing the consumer. Pausing twice does nothing. ⚠️ do not copy: in the original `_disableTrackOnPause` is always `false` and does nothing.
+- [x] `8.1.7` `Consumer.resume`, batched in `resumeReceiving` in the same way.
+- [x] `8.1.8` `Consumer.observer` with `pause` and `resume`.
+- [x] `8.1.9` E2E test: the server stops receiving RTP when pausing with `zeroRtpOnPause`, and receives it again on resume.
 
 ### 8.2 Track replacement and end
 

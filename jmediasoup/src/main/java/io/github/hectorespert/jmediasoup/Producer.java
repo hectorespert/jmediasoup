@@ -12,7 +12,6 @@ import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,13 +41,17 @@ public final class Producer {
     // RTP parameters.
     private final RtpParameters rtpParameters;
     // Paused flag.
-    private final boolean paused;
+    private volatile boolean paused;
+    // Whether the Producer should disable the track when paused.
+    private final boolean disableTrackOnPause;
+    // Whether we should mark the transceiver as inactive when paused.
+    private final boolean zeroRtpOnPause;
     // App custom data.
     private final Map<String, @Nullable Object> appData;
     // The executor of the transport, where the listeners run.
     private final Executor executor;
-    // Tells the transport that the application closed the producer.
-    private final Consumer<Producer> closeHandler;
+    // Tells the transport that the application closed, paused or resumed the producer.
+    private final TransportListener transportListener;
     private final RunnableListeners transportCloseListeners = new RunnableListeners("transportclose", logger);
     // Observer instance.
     private final ProducerObserver observer = new ProducerObserver(logger);
@@ -61,9 +64,10 @@ public final class Producer {
             MediaKind kind,
             RtpParameters rtpParameters,
             boolean disableTrackOnPause,
+            boolean zeroRtpOnPause,
             Map<String, @Nullable Object> appData,
             Executor executor,
-            Consumer<Producer> closeHandler) {
+            TransportListener transportListener) {
         logger.debug("constructor()");
 
         this.id = id;
@@ -73,9 +77,11 @@ public final class Producer {
         this.kind = kind;
         this.rtpParameters = rtpParameters;
         this.paused = disableTrackOnPause && !track.isEnabled();
+        this.disableTrackOnPause = disableTrackOnPause;
+        this.zeroRtpOnPause = zeroRtpOnPause;
         this.appData = appData;
         this.executor = executor;
-        this.closeHandler = closeHandler;
+        this.transportListener = transportListener;
     }
 
     /**
@@ -180,6 +186,64 @@ public final class Producer {
     }
 
     /**
+     * Pauses sending: it disables the track if {@link ProducerOptions#disableTrackOnPause()} is set,
+     * and, if {@link ProducerOptions#zeroRtpOnPause()} is set, the transport makes the handler stop
+     * sending RTP, after its pending operations; a failure of the handler is only logged. The observer
+     * emits {@code pause}. The application should pause the mediasoup producer too. It does nothing if
+     * the producer is closed.
+     */
+    public void pause() {
+        logger.debug("pause()");
+
+        if (closed.get()) {
+            logger.error("pause() | Producer closed");
+            return;
+        }
+
+        paused = true;
+
+        if (disableTrackOnPause) {
+            track.setEnabled(false);
+        }
+
+        if (zeroRtpOnPause) {
+            transportListener.paused(this);
+        }
+
+        // Emit observer event.
+        executor.execute(observer::emitPause);
+    }
+
+    /**
+     * Resumes sending: it enables the track if {@link ProducerOptions#disableTrackOnPause()} is set,
+     * and, if {@link ProducerOptions#zeroRtpOnPause()} is set, the transport makes the handler send RTP
+     * again, after its pending operations; a failure of the handler is only logged. The observer emits
+     * {@code resume}. The application should resume the mediasoup producer too. It does nothing if the
+     * producer is closed.
+     */
+    public void resume() {
+        logger.debug("resume()");
+
+        if (closed.get()) {
+            logger.error("resume() | Producer closed");
+            return;
+        }
+
+        paused = false;
+
+        if (disableTrackOnPause) {
+            track.setEnabled(true);
+        }
+
+        if (zeroRtpOnPause) {
+            transportListener.resumed(this);
+        }
+
+        // Emit observer event.
+        executor.execute(observer::emitResume);
+    }
+
+    /**
      * Closes the producer: the transport stops sending its track, and the observer emits {@code
      * close}; after that no listener is called again. The application should close the mediasoup
      * producer too. Calling it again does nothing.
@@ -191,7 +255,7 @@ public final class Producer {
 
         logger.debug("close()");
 
-        closeHandler.accept(this);
+        transportListener.closed(this);
 
         executor.execute(() -> {
             // Emit observer event.
@@ -232,5 +296,30 @@ public final class Producer {
     private void clearListeners() {
         transportCloseListeners.clear();
         observer.clear();
+    }
+
+    /** What the transport does when the application closes, pauses or resumes a producer. */
+    interface TransportListener {
+
+        /**
+         * The producer was closed.
+         *
+         * @param producer the producer
+         */
+        void closed(Producer producer);
+
+        /**
+         * The producer was paused, with {@link ProducerOptions#zeroRtpOnPause()} set.
+         *
+         * @param producer the producer
+         */
+        void paused(Producer producer);
+
+        /**
+         * The producer was resumed, with {@link ProducerOptions#zeroRtpOnPause()} set.
+         *
+         * @param producer the producer
+         */
+        void resumed(Producer producer);
     }
 }

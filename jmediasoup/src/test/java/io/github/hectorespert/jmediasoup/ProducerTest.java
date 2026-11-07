@@ -519,6 +519,99 @@ class ProducerTest {
         assertFalse(transport.closed());
     }
 
+    // Waits until the operations pushed before have completed.
+    private static void flush(Transport transport) {
+        await(transport.queue().push("flush", () -> CompletableFuture.completedFuture(null)));
+        drain(transport);
+    }
+
+    @Test
+    void pauseAndResumeDisableAndEnableTheTrackAndEmitTheObserverEvents() {
+        var track = FakeMediaStreamTrack.video();
+        Producer producer = produce(track);
+        List<String> events = new CopyOnWriteArrayList<>();
+        producer.observer().onPause(() -> events.add("pause"));
+        producer.observer().onResume(() -> events.add("resume"));
+
+        producer.pause();
+
+        assertTrue(producer.paused());
+        assertFalse(track.isEnabled());
+
+        producer.resume();
+        flush(transport);
+
+        assertFalse(producer.paused());
+        assertTrue(track.isEnabled());
+        assertEquals(List.of("pause", "resume"), events);
+        // Without zeroRtpOnPause, the handler keeps sending.
+        assertTrue(handler(transport).pauseCalls().isEmpty());
+    }
+
+    @Test
+    void withoutDisableTrackOnPauseTheTrackStaysEnabled() {
+        var track = FakeMediaStreamTrack.audio();
+        Producer producer = await(transport.produce(
+                ProducerOptions.builder(track).disableTrackOnPause(false).build()));
+
+        producer.pause();
+
+        assertTrue(producer.paused());
+        assertTrue(track.isEnabled());
+    }
+
+    @Test
+    void withZeroRtpOnPauseTheHandlerStopsAndResumesSending() {
+        Producer producer = await(transport.produce(ProducerOptions.builder(FakeMediaStreamTrack.video())
+                .zeroRtpOnPause(true)
+                .build()));
+
+        producer.pause();
+        producer.resume();
+        flush(transport);
+
+        assertEquals(
+                List.of("pauseSending " + producer.localId(), "resumeSending " + producer.localId()),
+                handler(transport).pauseCalls());
+    }
+
+    @Test
+    void aFailedPauseOfTheHandlerIsOnlyLogged() {
+        var track = FakeMediaStreamTrack.video();
+        Producer producer = await(transport.produce(
+                ProducerOptions.builder(track).zeroRtpOnPause(true).build()));
+        handler(transport).failNextOperation(new MediasoupClientException("pause failed"));
+
+        producer.pause();
+        flush(transport);
+
+        assertTrue(producer.paused());
+        assertFalse(track.isEnabled());
+        // The transport keeps working.
+        produce(FakeMediaStreamTrack.audio());
+    }
+
+    @Test
+    void pauseAndResumeDoNothingOnAClosedProducer() {
+        var track = FakeMediaStreamTrack.video();
+        Producer producer = await(transport.produce(
+                ProducerOptions.builder(track).zeroRtpOnPause(true).build()));
+        var events = new AtomicInteger();
+        producer.observer().onPause(events::incrementAndGet);
+        producer.close();
+
+        producer.pause();
+        flush(transport);
+
+        assertFalse(producer.paused());
+        assertTrue(track.isEnabled());
+        assertEquals(0, events.get());
+        assertTrue(handler(transport).pauseCalls().isEmpty());
+
+        producer.resume();
+        assertFalse(producer.paused());
+    }
+
     @Test
     void closingTheTransportClosesItsProducers() {
         Producer producer = produce(FakeMediaStreamTrack.audio());

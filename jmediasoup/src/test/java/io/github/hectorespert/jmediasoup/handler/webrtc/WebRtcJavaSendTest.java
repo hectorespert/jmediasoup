@@ -15,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.onvoid.webrtc.PeerConnectionFactory;
 import dev.onvoid.webrtc.RTCRtpTransceiver;
+import dev.onvoid.webrtc.RTCRtpTransceiverDirection;
 import dev.onvoid.webrtc.RTCSignalingState;
 import dev.onvoid.webrtc.media.MediaStreamTrack;
 import dev.onvoid.webrtc.media.audio.HeadlessAudioDeviceModule;
@@ -324,6 +325,80 @@ class WebRtcJavaSendTest {
         RTCRtpTransceiver first = handler().peerConnection().getTransceivers()[0];
         assertNull(first.getSender().getTrack());
         assertEquals("1", again.localId());
+    }
+
+    private RTCRtpTransceiver transceiver(String mid) {
+        for (RTCRtpTransceiver transceiver : handler().peerConnection().getTransceivers()) {
+            if (mid.equals(transceiver.getMid())) {
+                return transceiver;
+            }
+        }
+        throw new AssertionError("no transceiver with mid " + mid);
+    }
+
+    @Test
+    void pausingAndResumingSendingRenegotiatesTheDirection() {
+        Producer audio = produce(audioTrack());
+        Producer video = produce(videoTrack());
+
+        await(handler().pauseSending(video.localId()));
+
+        assertEquals(
+                RTCRtpTransceiverDirection.INACTIVE,
+                transceiver(video.localId()).getCurrentDirection());
+        assertEquals(
+                RTCRtpTransceiverDirection.SEND_ONLY,
+                transceiver(audio.localId()).getCurrentDirection());
+        assertEquals(RTCSignalingState.STABLE, handler().peerConnection().getSignalingState());
+
+        await(handler().resumeSending(video.localId()));
+
+        assertEquals(
+                RTCRtpTransceiverDirection.SEND_ONLY,
+                transceiver(video.localId()).getCurrentDirection());
+        assertEquals(RTCSignalingState.STABLE, handler().peerConnection().getSignalingState());
+    }
+
+    @Test
+    void aProducerWithZeroRtpOnPausePausesItsTransceiver() {
+        Producer video = await(transport.produce(
+                ProducerOptions.builder(videoTrack()).zeroRtpOnPause(true).build()));
+
+        video.pause();
+        // Waits for the pauseSending in the queue, by producing after it.
+        produce(audioTrack());
+
+        assertEquals(
+                RTCRtpTransceiverDirection.INACTIVE,
+                transceiver(video.localId()).getCurrentDirection());
+
+        video.resume();
+        produce(audioTrack());
+
+        assertEquals(
+                RTCRtpTransceiverDirection.SEND_ONLY,
+                transceiver(video.localId()).getCurrentDirection());
+    }
+
+    @Test
+    void pausingOrResumingAnUnknownLocalIdFails() {
+        CompletionException pause =
+                assertThrows(CompletionException.class, () -> await(handler().pauseSending("42")));
+        CompletionException resume =
+                assertThrows(CompletionException.class, () -> await(handler().resumeSending("42")));
+
+        assertInstanceOf(MediasoupClientException.class, pause.getCause());
+        assertInstanceOf(MediasoupClientException.class, resume.getCause());
+    }
+
+    @Test
+    void pausingSendingOnAClosedHandlerFails() {
+        handler().close();
+
+        CompletionException failure =
+                assertThrows(CompletionException.class, () -> await(handler().pauseSending("0")));
+
+        assertInstanceOf(InvalidStateException.class, failure.getCause());
     }
 
     @Test

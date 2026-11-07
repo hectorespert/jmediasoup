@@ -14,9 +14,13 @@ import org.slf4j.Logger;
 public final class ConsumerObserver {
 
     private final RunnableListeners closeListeners;
+    private final RunnableListeners pauseListeners;
+    private final RunnableListeners resumeListeners;
 
     ConsumerObserver(Logger logger) {
         this.closeListeners = new RunnableListeners("observer close", logger);
+        this.pauseListeners = new RunnableListeners("observer pause", logger);
+        this.resumeListeners = new RunnableListeners("observer resume", logger);
     }
 
     /**
@@ -30,11 +34,41 @@ public final class ConsumerObserver {
         return closeListeners.add(listener);
     }
 
+    /**
+     * Listens for the consumer being paused by {@link Consumer#pause()}.
+     *
+     * @param listener called on each pause
+     * @return the subscription that removes the listener
+     */
+    public Subscription onPause(Runnable listener) {
+        return pauseListeners.add(listener);
+    }
+
+    /**
+     * Listens for the consumer being resumed by {@link Consumer#resume()}.
+     *
+     * @param listener called on each resume
+     * @return the subscription that removes the listener
+     */
+    public Subscription onResume(Runnable listener) {
+        return resumeListeners.add(listener);
+    }
+
     void emitClose() {
         closeListeners.emit();
     }
 
+    void emitPause() {
+        pauseListeners.emit();
+    }
+
+    void emitResume() {
+        resumeListeners.emit();
+    }
+
     void clear() {
         closeListeners.clear();
+        pauseListeners.clear();
+        resumeListeners.clear();
     }
 }

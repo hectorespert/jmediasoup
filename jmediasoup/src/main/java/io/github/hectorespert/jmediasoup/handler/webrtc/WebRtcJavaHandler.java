@@ -706,12 +706,66 @@ public final class WebRtcJavaHandler implements Handler {
 
     @Override
     public CompletableFuture<Void> pauseSending(String localId) {
-        return notImplemented("pauseSending");
+        requireNonNull(localId, "localId");
+        try {
+            assertNotClosed();
+            assertSendDirection();
+
+            logger.debug("pauseSending() [localId:{}]", localId);
+
+            RTCRtpTransceiver transceiver = mapMidTransceiver.get(localId);
+
+            if (transceiver == null) {
+                throw new MediasoupClientException("associated RTCRtpTransceiver not found");
+            }
+
+            transceiver.setDirection(RTCRtpTransceiverDirection.INACTIVE);
+            remoteSdp.pauseMediaSection(localId);
+        } catch (MediasoupClientException | RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        return renegotiateSending("pauseSending");
     }
 
     @Override
     public CompletableFuture<Void> resumeSending(String localId) {
-        return notImplemented("resumeSending");
+        requireNonNull(localId, "localId");
+        try {
+            assertNotClosed();
+            assertSendDirection();
+
+            logger.debug("resumeSending() [localId:{}]", localId);
+
+            RTCRtpTransceiver transceiver = mapMidTransceiver.get(localId);
+
+            remoteSdp.resumeSendingMediaSection(localId);
+
+            if (transceiver == null) {
+                throw new MediasoupClientException("associated RTCRtpTransceiver not found");
+            }
+
+            transceiver.setDirection(RTCRtpTransceiverDirection.SEND_ONLY);
+        } catch (MediasoupClientException | RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        return renegotiateSending("resumeSending");
+    }
+
+    // Sets a new local offer and the answer of the remote SDP, after changing the direction of a
+    // sending transceiver.
+    private CompletableFuture<Void> renegotiateSending(String method) {
+        return PeerConnections.createOffer(pc, new RTCOfferOptions())
+                .thenCompose(offer -> {
+                    logger.debug("{}() | calling pc.setLocalDescription() [offer:{}]", method, offer.sdp);
+                    return PeerConnections.setLocalDescription(pc, offer);
+                })
+                .thenCompose(ignored -> {
+                    var answer = new RTCSessionDescription(RTCSdpType.ANSWER, remoteSdp.getSdp());
+                    logger.debug("{}() | calling pc.setRemoteDescription() [answer:{}]", method, answer.sdp);
+                    return PeerConnections.setRemoteDescription(pc, answer);
+                });
     }
 
     @Override
@@ -876,12 +930,69 @@ public final class WebRtcJavaHandler implements Handler {
 
     @Override
     public CompletableFuture<Void> pauseReceiving(List<String> localIds) {
-        return notImplemented("pauseReceiving");
+        requireNonNull(localIds, "localIds");
+        try {
+            assertNotClosed();
+            assertRecvDirection();
+
+            for (String localId : localIds) {
+                logger.debug("pauseReceiving() [localId:{}]", localId);
+
+                RTCRtpTransceiver transceiver = mapMidTransceiver.get(localId);
+
+                if (transceiver == null) {
+                    throw new MediasoupClientException("associated RTCRtpTransceiver not found");
+                }
+
+                transceiver.setDirection(RTCRtpTransceiverDirection.INACTIVE);
+                remoteSdp.pauseMediaSection(localId);
+            }
+        } catch (MediasoupClientException | RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        return renegotiateReceiving("pauseReceiving");
     }
 
     @Override
     public CompletableFuture<Void> resumeReceiving(List<String> localIds) {
-        return notImplemented("resumeReceiving");
+        requireNonNull(localIds, "localIds");
+        try {
+            assertNotClosed();
+            assertRecvDirection();
+
+            for (String localId : localIds) {
+                logger.debug("resumeReceiving() [localId:{}]", localId);
+
+                RTCRtpTransceiver transceiver = mapMidTransceiver.get(localId);
+
+                if (transceiver == null) {
+                    throw new MediasoupClientException("associated RTCRtpTransceiver not found");
+                }
+
+                transceiver.setDirection(RTCRtpTransceiverDirection.RECV_ONLY);
+                remoteSdp.resumeReceivingMediaSection(localId);
+            }
+        } catch (MediasoupClientException | RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        return renegotiateReceiving("resumeReceiving");
+    }
+
+    // Sets the remote SDP as a new offer and a new local answer, after changing the direction of some
+    // receiving transceivers.
+    private CompletableFuture<Void> renegotiateReceiving(String method) {
+        RTCSessionDescription offer = new RTCSessionDescription(RTCSdpType.OFFER, remoteSdp.getSdp());
+
+        logger.debug("{}() | calling pc.setRemoteDescription() [offer:{}]", method, offer.sdp);
+
+        return PeerConnections.setRemoteDescription(pc, offer)
+                .thenCompose(ignored -> PeerConnections.createAnswer(pc))
+                .thenCompose(answer -> {
+                    logger.debug("{}() | calling pc.setLocalDescription() [answer:{}]", method, answer.sdp);
+                    return PeerConnections.setLocalDescription(pc, answer);
+                });
     }
 
     @Override

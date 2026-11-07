@@ -118,9 +118,25 @@ public final class SendTransport extends Transport {
                             kind,
                             result.rtpParameters(),
                             options.disableTrackOnPause(),
+                            options.zeroRtpOnPause(),
                             options.appData(),
                             executor(),
-                            this::producerClosed);
+                            new Producer.TransportListener() {
+                                @Override
+                                public void closed(Producer producer) {
+                                    producerClosed(producer);
+                                }
+
+                                @Override
+                                public void paused(Producer producer) {
+                                    producerPaused(producer);
+                                }
+
+                                @Override
+                                public void resumed(Producer producer) {
+                                    producerResumed(producer);
+                                }
+                            });
                     producers.put(id, producer);
                     // The transport may have closed while the application created the producer.
                     if (closed()) {
@@ -167,6 +183,32 @@ public final class SendTransport extends Transport {
                 .whenComplete((ignored, error) -> {
                     if (error != null) {
                         logger.warn("producer closure failed", error);
+                    }
+                });
+    }
+
+    private void producerPaused(Producer producer) {
+        if (closed()) {
+            return;
+        }
+
+        queue().push("producer @pause event", () -> handler().pauseSending(producer.localId()))
+                .whenComplete((ignored, error) -> {
+                    if (error != null) {
+                        logger.warn("producer pause failed", error);
+                    }
+                });
+    }
+
+    private void producerResumed(Producer producer) {
+        if (closed()) {
+            return;
+        }
+
+        queue().push("producer @resume event", () -> handler().resumeSending(producer.localId()))
+                .whenComplete((ignored, error) -> {
+                    if (error != null) {
+                        logger.warn("producer resume failed", error);
                     }
                 });
     }

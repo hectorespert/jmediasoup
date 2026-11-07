@@ -305,6 +305,130 @@ class ConsumerTest {
     }
 
     @Test
+    void pauseAndResumeDisableAndEnableTheTrackAndEmitTheObserverEvents() {
+        Consumer consumer = consume("video/VP8");
+        List<String> events = new CopyOnWriteArrayList<>();
+        consumer.observer().onPause(() -> events.add("pause"));
+        consumer.observer().onResume(() -> events.add("resume"));
+
+        consumer.pause();
+        flush(transport);
+
+        assertTrue(consumer.paused());
+        assertFalse(consumer.track().isEnabled());
+        assertEquals(
+                List.of("pauseReceiving [" + consumer.localId() + "]"),
+                handler(transport).pauseCalls());
+
+        consumer.resume();
+        flush(transport);
+
+        assertFalse(consumer.paused());
+        assertTrue(consumer.track().isEnabled());
+        assertEquals(List.of("pause", "resume"), events);
+        assertEquals(
+                List.of("pauseReceiving [" + consumer.localId() + "]", "resumeReceiving [" + consumer.localId() + "]"),
+                handler(transport).pauseCalls());
+    }
+
+    @Test
+    void pausingTwiceOrResumingWhatIsNotPausedDoesNothing() {
+        Consumer consumer = consume("audio/opus");
+        var events = new AtomicInteger();
+        consumer.observer().onPause(events::incrementAndGet);
+        consumer.observer().onResume(events::incrementAndGet);
+
+        consumer.resume();
+        consumer.pause();
+        consumer.pause();
+        flush(transport);
+
+        assertTrue(consumer.paused());
+        assertEquals(1, events.get());
+        assertEquals(
+                List.of("pauseReceiving [" + consumer.localId() + "]"),
+                handler(transport).pauseCalls());
+    }
+
+    @Test
+    void consumersPausedTogetherArePausedInOneBatch() {
+        Consumer audio = consume("audio/opus");
+        Consumer video = consume("video/VP8");
+        CompletableFuture<Void> release = block(transport);
+
+        audio.pause();
+        video.pause();
+        release.complete(null);
+        flush(transport);
+
+        assertEquals(
+                List.of("pauseReceiving [" + audio.localId() + ", " + video.localId() + "]"),
+                handler(transport).pauseCalls());
+    }
+
+    @Test
+    void aResumeBeforeThePauseRunsCancelsIt() {
+        Consumer audio = consume("audio/opus");
+        Consumer video = consume("video/VP8");
+        CompletableFuture<Void> release = block(transport);
+
+        audio.pause();
+        video.pause();
+        audio.resume();
+        release.complete(null);
+        flush(transport);
+
+        assertFalse(audio.paused());
+        assertEquals(
+                List.of("pauseReceiving [" + video.localId() + "]", "resumeReceiving [" + audio.localId() + "]"),
+                handler(transport).pauseCalls());
+    }
+
+    @Test
+    void closingAPausedConsumerBeforeThePauseRunsOnlyClosesIt() {
+        Consumer consumer = consume("audio/opus");
+        CompletableFuture<Void> release = block(transport);
+
+        consumer.pause();
+        consumer.close();
+        release.complete(null);
+        flush(transport);
+
+        assertTrue(handler(transport).pauseCalls().isEmpty());
+        assertEquals(List.of(1), handler(transport).stopReceivingBatches());
+    }
+
+    @Test
+    void aFailedPauseOfTheHandlerIsOnlyLogged() {
+        Consumer consumer = consume("audio/opus");
+        handler(transport).failNextOperation(new MediasoupClientException("pause failed"));
+
+        consumer.pause();
+        flush(transport);
+
+        assertTrue(consumer.paused());
+        assertFalse(consumer.track().isEnabled());
+        // The transport keeps working.
+        consume("video/VP8");
+    }
+
+    @Test
+    void pauseAndResumeDoNothingOnAClosedConsumer() {
+        Consumer consumer = consume("audio/opus");
+        var events = new AtomicInteger();
+        consumer.observer().onPause(events::incrementAndGet);
+        consumer.close();
+
+        consumer.pause();
+        flush(transport);
+
+        assertFalse(consumer.paused());
+        assertTrue(consumer.track().isEnabled());
+        assertEquals(0, events.get());
+        assertTrue(handler(transport).pauseCalls().isEmpty());
+    }
+
+    @Test
     void closingTheTransportClosesItsConsumers() {
         Consumer consumer = consume("audio/opus");
         List<String> events = new CopyOnWriteArrayList<>();

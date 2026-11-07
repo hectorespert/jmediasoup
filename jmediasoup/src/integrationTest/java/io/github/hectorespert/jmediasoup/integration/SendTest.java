@@ -140,6 +140,56 @@ class SendTest {
         assertInstanceOf(ProtooClient.RequestFailedException.class, closed.getCause());
     }
 
+    @Test
+    void pausingWithZeroRtpOnPauseStopsTheRtp() throws InterruptedException {
+        Producer video = await(transport.produce(
+                ProducerOptions.builder(videoTrack()).zeroRtpOnPause(true).build()));
+        awaitReceived(video);
+
+        video.pause();
+        // The packets sent before the pause still arrive for a while.
+        awaitStopped(video);
+
+        video.resume();
+        long paused = packetCount(video);
+        long deadline = System.nanoTime() + TIMEOUT.toNanos();
+        while (packetCount(video) == paused) {
+            if (System.nanoTime() > deadline) {
+                throw new AssertionError("no RTP received after resuming");
+            }
+            Thread.sleep(200);
+        }
+    }
+
+    /**
+     * Waits for the server to stop receiving RTP from a producer: two readings of its packet count, a
+     * second apart, are equal.
+     */
+    private void awaitStopped(Producer producer) throws InterruptedException {
+        long deadline = System.nanoTime() + TIMEOUT.toNanos();
+        long previous = packetCount(producer);
+        do {
+            Thread.sleep(1000);
+            long current = packetCount(producer);
+            if (current == previous) {
+                return;
+            }
+            previous = current;
+        } while (System.nanoTime() < deadline);
+        throw new AssertionError("the server still receives RTP from the paused producer");
+    }
+
+    // The packets that the server received from a producer, in all its streams.
+    private long packetCount(Producer producer) {
+        long count = 0;
+        for (JsonNode stat : await(peer.producerStats(producer.id()))) {
+            if (stat.path("type").asString().equals("inbound-rtp")) {
+                count += stat.path("packetCount").asLong();
+            }
+        }
+        return count;
+    }
+
     /**
      * Waits for the server to receive RTP from a producer.
      *

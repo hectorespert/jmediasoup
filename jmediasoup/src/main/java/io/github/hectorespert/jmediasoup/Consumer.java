@@ -43,13 +43,13 @@ public final class Consumer {
     // RTP parameters.
     private final RtpParameters rtpParameters;
     // Paused flag.
-    private final boolean paused;
+    private volatile boolean paused;
     // App custom data.
     private final Map<String, @Nullable Object> appData;
     // The executor of the transport, where the listeners run.
     private final Executor executor;
-    // Tells the transport that the application closed the consumer.
-    private final java.util.function.Consumer<Consumer> closeHandler;
+    // Tells the transport that the application closed, paused or resumed the consumer.
+    private final TransportListener transportListener;
     private final RunnableListeners transportCloseListeners = new RunnableListeners("transportclose", logger);
     // Observer instance.
     private final ConsumerObserver observer = new ConsumerObserver(logger);
@@ -64,7 +64,7 @@ public final class Consumer {
             RtpParameters rtpParameters,
             Map<String, @Nullable Object> appData,
             Executor executor,
-            java.util.function.Consumer<Consumer> closeHandler) {
+            TransportListener transportListener) {
         logger.debug("constructor()");
 
         this.id = id;
@@ -77,7 +77,7 @@ public final class Consumer {
         this.paused = !track.isEnabled();
         this.appData = appData;
         this.executor = executor;
-        this.closeHandler = closeHandler;
+        this.transportListener = transportListener;
     }
 
     /**
@@ -180,6 +180,62 @@ public final class Consumer {
     }
 
     /**
+     * Pauses receiving: it disables the track, and the transport makes the handler stop receiving its
+     * RTP, together with the other consumers paused meanwhile, after its pending operations; a failure
+     * of the handler is only logged. The observer emits {@code pause}. The application should pause the
+     * mediasoup consumer too. It does nothing if the consumer is closed or already paused.
+     */
+    public void pause() {
+        logger.debug("pause()");
+
+        if (closed.get()) {
+            logger.error("pause() | Consumer closed");
+            return;
+        }
+
+        if (paused) {
+            logger.debug("pause() | Consumer is already paused");
+            return;
+        }
+
+        paused = true;
+        track.setEnabled(false);
+
+        transportListener.paused(this);
+
+        // Emit observer event.
+        executor.execute(observer::emitPause);
+    }
+
+    /**
+     * Resumes receiving: it enables the track, and the transport makes the handler receive its RTP
+     * again, together with the other consumers resumed meanwhile, after its pending operations; a
+     * failure of the handler is only logged. The observer emits {@code resume}. The application should
+     * resume the mediasoup consumer too. It does nothing if the consumer is closed or not paused.
+     */
+    public void resume() {
+        logger.debug("resume()");
+
+        if (closed.get()) {
+            logger.error("resume() | Consumer closed");
+            return;
+        }
+
+        if (!paused) {
+            logger.debug("resume() | Consumer is already resumed");
+            return;
+        }
+
+        paused = false;
+        track.setEnabled(true);
+
+        transportListener.resumed(this);
+
+        // Emit observer event.
+        executor.execute(observer::emitResume);
+    }
+
+    /**
      * Closes the consumer: the transport stops receiving its track, and the observer emits {@code
      * close}; after that no listener is called again. The application should close the mediasoup
      * consumer too. Calling it again does nothing.
@@ -191,7 +247,7 @@ public final class Consumer {
 
         logger.debug("close()");
 
-        closeHandler.accept(this);
+        transportListener.closed(this);
 
         executor.execute(() -> {
             // Emit observer event.
@@ -232,5 +288,30 @@ public final class Consumer {
     private void clearListeners() {
         transportCloseListeners.clear();
         observer.clear();
+    }
+
+    /** What the transport does when the application closes, pauses or resumes a consumer. */
+    interface TransportListener {
+
+        /**
+         * The consumer was closed.
+         *
+         * @param consumer the consumer
+         */
+        void closed(Consumer consumer);
+
+        /**
+         * The consumer was paused.
+         *
+         * @param consumer the consumer
+         */
+        void paused(Consumer consumer);
+
+        /**
+         * The consumer was resumed.
+         *
+         * @param consumer the consumer
+         */
+        void resumed(Consumer consumer);
     }
 }

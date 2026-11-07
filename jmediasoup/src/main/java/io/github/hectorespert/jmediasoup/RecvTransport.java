@@ -6,6 +6,7 @@ package io.github.hectorespert.jmediasoup;
 
 import static java.util.Objects.requireNonNull;
 
+import io.github.hectorespert.jmediasoup.handler.Handler;
 import io.github.hectorespert.jmediasoup.handler.HandlerFactory;
 import io.github.hectorespert.jmediasoup.handler.HandlerReceiveOptions;
 import io.github.hectorespert.jmediasoup.handler.HandlerReceiveResult;
@@ -22,6 +23,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,7 +40,7 @@ public final class RecvTransport extends Transport {
     private final RtpCapabilities recvRtpCapabilities;
     // Map of Consumers indexed by id.
     private final Map<String, Consumer> consumers = new ConcurrentHashMap<>();
-    // Guards the pending consumer creations and closures.
+    // Guards the pending consumer creations, closures, pauses and resumes.
     private final ReentrantLock lock = new ReentrantLock();
     // Consumer creation tasks awaiting to be processed.
     private final List<ConsumerCreationTask> pendingConsumerTasks = new ArrayList<>();
@@ -47,9 +49,11 @@ public final class RecvTransport extends Transport {
     // Consumer creation in progress flag.
     private boolean consumerCreationInProgress;
     // Consumers pending to be closed.
-    private final Map<String, Consumer> pendingCloseConsumers = new LinkedHashMap<>();
-    // Consumer close in progress flag.
-    private boolean consumerCloseInProgress;
+    private final PendingConsumers pendingCloseConsumers = new PendingConsumers("close", Handler::stopReceiving);
+    // Consumers pending to be paused.
+    private final PendingConsumers pendingPauseConsumers = new PendingConsumers("pause", Handler::pauseReceiving);
+    // Consumers pending to be resumed.
+    private final PendingConsumers pendingResumeConsumers = new PendingConsumers("resume", Handler::resumeReceiving);
 
     // A consume waiting to be created in the next batch.
     private record ConsumerCreationTask(ConsumerOptions options, CompletableFuture<Consumer> result) {}
@@ -198,7 +202,22 @@ public final class RecvTransport extends Transport {
                     options.rtpParameters(),
                     options.appData(),
                     executor(),
-                    this::consumerClosed);
+                    new Consumer.TransportListener() {
+                        @Override
+                        public void closed(Consumer consumer) {
+                            consumerClosed(consumer);
+                        }
+
+                        @Override
+                        public void paused(Consumer consumer) {
+                            consumerPaused(consumer);
+                        }
+
+                        @Override
+                        public void resumed(Consumer consumer) {
+                            consumerResumed(consumer);
+                        }
+                    });
 
             consumers.put(consumer.id(), consumer);
             // The transport may have closed while the handler received.
@@ -217,72 +236,147 @@ public final class RecvTransport extends Transport {
 
     private void consumerClosed(Consumer consumer) {
         consumers.remove(consumer.id());
+        lock.lock();
+        try {
+            pendingPauseConsumers.remove(consumer);
+            pendingResumeConsumers.remove(consumer);
+        } finally {
+            lock.unlock();
+        }
 
         if (closed()) {
             return;
         }
 
-        boolean close;
+        // Store the Consumer into the close list.
+        pendingCloseConsumers.add(consumer);
+    }
+
+    private void consumerPaused(Consumer consumer) {
+        if (closed()) {
+            return;
+        }
+
         lock.lock();
         try {
-            // Store the Consumer into the close list.
-            pendingCloseConsumers.put(consumer.id(), consumer);
-            close = !consumerCloseInProgress;
-            consumerCloseInProgress = true;
+            // If Consumer is pending to be resumed, remove from pending resume list.
+            pendingResumeConsumers.remove(consumer);
         } finally {
             lock.unlock();
         }
 
-        // There is no Consumer close in progress, do it now.
-        if (close) {
-            closePendingConsumers();
-        }
+        // Store the Consumer into the pending list.
+        pendingPauseConsumers.add(consumer);
     }
 
-    private void closePendingConsumers() {
-        queue().push("transport.closePendingConsumers()", () -> {
-                    List<String> localIds;
-                    lock.lock();
-                    try {
-                        localIds = pendingCloseConsumers.values().stream()
-                                .map(Consumer::localId)
-                                .toList();
-                        // Clear pending close Consumer map.
-                        pendingCloseConsumers.clear();
-                    } finally {
-                        lock.unlock();
-                    }
+    private void consumerResumed(Consumer consumer) {
+        if (closed()) {
+            return;
+        }
 
-                    if (localIds.isEmpty()) {
-                        logger.debug("closePendingConsumers() | there is no Consumer to be closed");
-                        return CompletableFuture.completedFuture(null);
-                    }
+        lock.lock();
+        try {
+            // If Consumer is pending to be paused, remove from pending pause list.
+            pendingPauseConsumers.remove(consumer);
+        } finally {
+            lock.unlock();
+        }
 
-                    CompletableFuture<Void> stopped;
-                    try {
-                        stopped = handler().stopReceiving(localIds);
-                    } catch (RuntimeException e) {
-                        stopped = CompletableFuture.failedFuture(e);
-                    }
-                    return stopped.exceptionally(error -> {
-                        logger.error("closePendingConsumers() | failed to close Consumers", unwrap(error));
-                        return null;
+        // Store the Consumer into the pending list.
+        pendingResumeConsumers.add(consumer);
+    }
+
+    /**
+     * Consumers waiting to be closed, paused or resumed by the handler, all in one call, as the
+     * closePendingConsumers(), pausePendingConsumers() and resumePendingConsumers() of mediasoup-client.
+     * The lock of the transport guards it.
+     */
+    private final class PendingConsumers {
+
+        private final String action;
+        private final BiFunction<Handler, List<String>, CompletableFuture<Void>> handlerCall;
+        private final Map<String, Consumer> consumers = new LinkedHashMap<>();
+        // Handler call in progress flag.
+        private boolean inProgress;
+
+        PendingConsumers(String action, BiFunction<Handler, List<String>, CompletableFuture<Void>> handlerCall) {
+            this.action = action;
+            this.handlerCall = handlerCall;
+        }
+
+        void add(Consumer consumer) {
+            boolean process;
+            lock.lock();
+            try {
+                consumers.put(consumer.id(), consumer);
+                process = !inProgress;
+                inProgress = true;
+            } finally {
+                lock.unlock();
+            }
+
+            // There is no handler call in progress, do it now.
+            if (process) {
+                process();
+            }
+        }
+
+        // Called with the lock held.
+        void remove(Consumer consumer) {
+            consumers.remove(consumer.id());
+        }
+
+        // Called with the lock held.
+        void clear() {
+            consumers.clear();
+        }
+
+        private void process() {
+            String method = action + "PendingConsumers()";
+            queue().push("transport." + method, () -> {
+                        List<String> localIds;
+                        lock.lock();
+                        try {
+                            localIds = consumers.values().stream()
+                                    .map(Consumer::localId)
+                                    .toList();
+                            // Clear pending Consumer map.
+                            consumers.clear();
+                        } finally {
+                            lock.unlock();
+                        }
+
+                        if (localIds.isEmpty()) {
+                            logger.debug("{} | there is no Consumer to {}", method, action);
+                            return CompletableFuture.completedFuture(null);
+                        }
+
+                        CompletableFuture<Void> done;
+                        try {
+                            done = handlerCall.apply(handler(), localIds);
+                        } catch (RuntimeException e) {
+                            done = CompletableFuture.failedFuture(e);
+                        }
+                        return done.exceptionally(error -> {
+                            logger.error("{} | failed to {} Consumers", method, action, unwrap(error));
+                            return null;
+                        });
+                    })
+                    .whenComplete((ignored, error) -> {
+                        boolean again;
+                        lock.lock();
+                        try {
+                            // There are pending Consumers, do it again.
+                            again = !closed() && !consumers.isEmpty();
+                            inProgress = again;
+                        } finally {
+                            lock.unlock();
+                        }
+                        if (again) {
+                            process();
+                        }
                     });
-                })
-                .whenComplete((ignored, error) -> {
-                    boolean again;
-                    lock.lock();
-                    try {
-                        // There are pending Consumers to be closed, do it.
-                        again = !closed() && !pendingCloseConsumers.isEmpty();
-                        consumerCloseInProgress = again;
-                    } finally {
-                        lock.unlock();
-                    }
-                    if (again) {
-                        closePendingConsumers();
-                    }
-                });
+        }
     }
 
     @Override
@@ -294,6 +388,8 @@ public final class RecvTransport extends Transport {
             tasks.addAll(pendingConsumerTasks);
             pendingConsumerTasks.clear();
             pendingCloseConsumers.clear();
+            pendingPauseConsumers.clear();
+            pendingResumeConsumers.clear();
         } finally {
             lock.unlock();
         }

@@ -85,6 +85,7 @@ public final class FakeHandler implements Handler {
     // The number of receivings in each call to receive and stopReceiving.
     private final List<Integer> receiveBatches = new CopyOnWriteArrayList<>();
     private final List<Integer> stopReceivingBatches = new CopyOnWriteArrayList<>();
+    private final List<String> pauseCalls = new CopyOnWriteArrayList<>();
     private volatile boolean closed;
     // Got transport local and remote parameters.
     private volatile boolean transportReady;
@@ -190,6 +191,16 @@ public final class FakeHandler implements Handler {
     }
 
     /**
+     * Returns the calls to pause and resume sending and receiving, such as {@code pauseSending 1} or
+     * {@code resumeReceiving [1, 2]}.
+     *
+     * @return the method and its local ids, in the order of the calls
+     */
+    public List<String> pauseCalls() {
+        return List.copyOf(pauseCalls);
+    }
+
+    /**
      * Simulates a change in the connection state.
      *
      * @param connectionState the new state
@@ -264,12 +275,18 @@ public final class FakeHandler implements Handler {
 
     @Override
     public CompletableFuture<Void> pauseSending(String localId) {
-        return run(() -> null);
+        return run(() -> {
+            pauseCalls.add("pauseSending " + localId);
+            return null;
+        });
     }
 
     @Override
     public CompletableFuture<Void> resumeSending(String localId) {
-        return run(() -> null);
+        return run(() -> {
+            pauseCalls.add("resumeSending " + localId);
+            return null;
+        });
     }
 
     @Override
@@ -345,12 +362,18 @@ public final class FakeHandler implements Handler {
 
     @Override
     public CompletableFuture<Void> pauseReceiving(List<String> localIds) {
-        return run(() -> null);
+        return run(() -> {
+            pauseCalls.add("pauseReceiving " + localIds);
+            return null;
+        });
     }
 
     @Override
     public CompletableFuture<Void> resumeReceiving(List<String> localIds) {
-        return run(() -> null);
+        return run(() -> {
+            pauseCalls.add("resumeReceiving " + localIds);
+            return null;
+        });
     }
 
     @Override

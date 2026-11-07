@@ -14,12 +14,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import dev.onvoid.webrtc.PeerConnectionFactory;
 import dev.onvoid.webrtc.RTCRtpTransceiver;
 import dev.onvoid.webrtc.RTCRtpTransceiverDirection;
+import dev.onvoid.webrtc.RTCSignalingState;
 import dev.onvoid.webrtc.media.audio.AudioTrack;
 import dev.onvoid.webrtc.media.audio.HeadlessAudioDeviceModule;
 import dev.onvoid.webrtc.media.video.VideoTrack;
 import io.github.hectorespert.jmediasoup.Consumer;
 import io.github.hectorespert.jmediasoup.ConsumerOptions;
 import io.github.hectorespert.jmediasoup.Device;
+import io.github.hectorespert.jmediasoup.InvalidStateException;
 import io.github.hectorespert.jmediasoup.MediasoupClientException;
 import io.github.hectorespert.jmediasoup.RecvTransport;
 import io.github.hectorespert.jmediasoup.fake.FakeParameters;
@@ -219,6 +221,74 @@ class WebRtcJavaReceiveTest {
                 .toList();
         assertFalse(mids.contains("1"), mids.toString());
         assertEquals(2, mids.size(), mids.toString());
+    }
+
+    @Test
+    void pausingAndResumingReceivingRenegotiatesTheDirection() {
+        Consumer audio = await(transport.consume(FakeParameters.consumerRemoteParameters("audio/opus")));
+        Consumer video = await(transport.consume(FakeParameters.consumerRemoteParameters("video/VP8")));
+
+        await(handler().pauseReceiving(List.of(audio.localId(), video.localId())));
+
+        assertEquals(
+                RTCRtpTransceiverDirection.INACTIVE,
+                transceiver(audio.localId()).getCurrentDirection());
+        assertEquals(
+                RTCRtpTransceiverDirection.INACTIVE,
+                transceiver(video.localId()).getCurrentDirection());
+        assertEquals(RTCSignalingState.STABLE, handler().peerConnection().getSignalingState());
+
+        await(handler().resumeReceiving(List.of(video.localId())));
+
+        assertEquals(
+                RTCRtpTransceiverDirection.INACTIVE,
+                transceiver(audio.localId()).getCurrentDirection());
+        assertEquals(
+                RTCRtpTransceiverDirection.RECV_ONLY,
+                transceiver(video.localId()).getCurrentDirection());
+    }
+
+    @Test
+    void pausingAConsumerPausesItsTransceiver() {
+        Consumer audio = await(transport.consume(FakeParameters.consumerRemoteParameters("audio/opus")));
+
+        audio.pause();
+        // Waits for the pauseReceiving in the queue, by consuming after it.
+        await(transport.consume(FakeParameters.consumerRemoteParameters("video/VP8")));
+
+        assertFalse(audio.track().isEnabled());
+        assertEquals(
+                RTCRtpTransceiverDirection.INACTIVE,
+                transceiver(audio.localId()).getCurrentDirection());
+
+        audio.resume();
+        await(transport.consume(withSsrc(FakeParameters.consumerRemoteParameters("audio/opus"), 1234)));
+
+        assertTrue(audio.track().isEnabled());
+        assertEquals(
+                RTCRtpTransceiverDirection.RECV_ONLY,
+                transceiver(audio.localId()).getCurrentDirection());
+    }
+
+    @Test
+    void pausingOrResumingAnUnknownLocalIdFails() {
+        CompletionException pause =
+                assertThrows(CompletionException.class, () -> await(handler().pauseReceiving(List.of("42"))));
+        CompletionException resume =
+                assertThrows(CompletionException.class, () -> await(handler().resumeReceiving(List.of("42"))));
+
+        assertInstanceOf(MediasoupClientException.class, pause.getCause());
+        assertInstanceOf(MediasoupClientException.class, resume.getCause());
+    }
+
+    @Test
+    void pausingReceivingOnAClosedHandlerFails() {
+        handler().close();
+
+        CompletionException failure =
+                assertThrows(CompletionException.class, () -> await(handler().pauseReceiving(List.of("0"))));
+
+        assertInstanceOf(InvalidStateException.class, failure.getCause());
     }
 
     @Test

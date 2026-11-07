@@ -105,7 +105,7 @@ sendTransport.onConnectionStateChange(state -> System.out.println("send transpor
 consumer.onTransportClose(() -> System.out.println("consumer closed with its transport"));
 ```
 
-Closing a producer or a consumer stops sending or receiving it; tell the server too. Closing a transport closes its producers and consumers. Close the factory last: it disposes the `PeerConnectionFactory` if it created it:
+`pause()` and `resume()` on a producer or a consumer stop and restart the media: they disable and enable the track, and with `zeroRtpOnPause` a producer sends no RTP at all while paused. Closing a producer or a consumer stops sending or receiving it. Tell the server too, so that it pauses, resumes or closes its side. Closing a transport closes its producers and consumers. Close the factory last: it disposes the `PeerConnectionFactory` if it created it:
 
 ```java
 producer.close();
@@ -130,11 +130,11 @@ webrtc-java publishes natives for these platforms, as classifiers of `dev.onvoid
 
 ## Limitations
 
-`0.1.0` covers the basic flow: load the device, send and receive audio and video, and close. These are not supported yet:
+`0.1.0` covers the basic flow: load the device, send and receive audio and video, pause and resume, and close. These are not supported yet:
 
 - Simulcast and SVC: `produce` with more than one encoding fails with `UnsupportedException`.
 - Codec options (`ProducerCodecOptions`, such as `opusStereo` or `videoGoogleStartBitrate`): they are ignored, with a warning.
-- Pausing and resuming producers and consumers, and replacing the track of a producer.
+- Replacing the track of a producer.
 - Data channels (`produceData` and `consumeData`).
 - Stats, ICE restart and updating the ICE servers.
 
