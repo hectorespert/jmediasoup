@@ -746,15 +746,15 @@ This client is only for the tests and adapts to the signaling of the chosen imag
 
 ### 7.3 Loopback E2E test
 
-- [ ] `7.3.1` Load the `Device` with the router capabilities.
-- [ ] `7.3.2` Create send and recv transports.
-- [ ] `7.3.3` Produce audio and video.
-- [ ] `7.3.4` Consume what was produced, in the same process.
-- [ ] `7.3.5` Check that the audio sink receives samples.
-- [ ] `7.3.6` Check that the video sink receives frames.
-- [ ] `7.3.7` Check the `connectionState` transitions.
-- [ ] `7.3.8` Close everything and check the final state.
-- [ ] `7.3.9` Run the test several times in a row to detect flakiness.
+- [x] `7.3.1` Load the `Device` with the router capabilities.
+- [x] `7.3.2` Create send and recv transports.
+- [x] `7.3.3` Produce audio and video.
+- [x] `7.3.4` Consume what was produced, in the same process. The demo server only consumes the producers of other peers, so a second peer, with its own `Device` and handler factory, consumes them.
+- [x] `7.3.5` Check that the audio sink receives the 440 Hz tone, from its zero crossings.
+- [x] `7.3.6` Check that the video sink receives 320x240 frames with the luma of the green.
+- [x] `7.3.7` Check the `connectionState` transitions.
+- [x] `7.3.8` Close everything and check the final state.
+- [x] `7.3.9` Run the test several times in a row to detect flakiness: it is a `@RepeatedTest(3)`.
 
 ### 7.4 MVP delivery
 
@@ -961,12 +961,12 @@ Origin: `media_section.py`
 
 Origin: `aiortc_handler.py`, `unified_plan_utils.py`
 
-- [ ] `11.2.1` `produce` with `codec`: send the chosen codec.
+- [x] `11.2.1` `produce` with `codec`: send the chosen codec. Done in `6.2`; `SendTest` sends H264 by choosing it.
 - [ ] `11.2.2` Assign the `rid`s `r0`, `r1`... to the encodings.
-- [ ] `11.2.3` A single encoding: merge it with the one obtained from the SDP.
+- [x] `11.2.3` A single encoding: merge it with the one obtained from the SDP. Done in `6.2`.
 - [ ] `11.2.4` Several encodings: use them as they are.
-- [ ] `11.2.5` Pass `dtx`, `maxBitrate`, `maxFramerate`, `scaleResolutionDownBy`, `priority` and `networkPriority` to the native encoding.
-- [ ] `11.2.6` E2E test per available codec: Opus, VP8, VP9 and H264. Receiving Opus, VP8 and H264 is already checked in `5.2.9` and `5.2.10`.
+- [x] `11.2.5` Pass `dtx`, `maxBitrate`, `maxFramerate`, `scaleResolutionDownBy`, `priority` and `networkPriority` to the native encoding. Done in `6.2`, except `dtx`, which the `RTCRtpEncodingParameters` of webrtc-java does not have; `priority` goes to its `bitratePriority`, as in the browsers.
+- [ ] `11.2.6` E2E test per available codec: Opus, VP8, VP9 and H264. Receiving Opus, VP8 and H264 is already checked in `5.2.9` and `5.2.10`, and sending them in `6.2.10` and `6.2.11`.
 
 ### 11.3 Simulcast
 
