@@ -8,7 +8,11 @@ import dev.onvoid.webrtc.CreateSessionDescriptionObserver;
 import dev.onvoid.webrtc.RTCAnswerOptions;
 import dev.onvoid.webrtc.RTCOfferOptions;
 import dev.onvoid.webrtc.RTCPeerConnection;
+import dev.onvoid.webrtc.RTCRtpReceiver;
+import dev.onvoid.webrtc.RTCRtpSender;
 import dev.onvoid.webrtc.RTCSessionDescription;
+import dev.onvoid.webrtc.RTCStatsCollectorCallback;
+import dev.onvoid.webrtc.RTCStatsReport;
 import dev.onvoid.webrtc.SetSessionDescriptionObserver;
 import io.github.hectorespert.jmediasoup.MediasoupClientException;
 import java.util.concurrent.CompletableFuture;
@@ -52,6 +56,28 @@ final class PeerConnections {
         var result = new CompletableFuture<Void>();
         pc.setRemoteDescription(description, setObserver("setRemoteDescription", result));
         return result;
+    }
+
+    static CompletableFuture<RTCStatsReport> getStats(RTCPeerConnection pc) {
+        var result = new CompletableFuture<RTCStatsReport>();
+        pc.getStats(statsCallback(result));
+        return result;
+    }
+
+    static CompletableFuture<RTCStatsReport> getStats(RTCPeerConnection pc, RTCRtpSender sender) {
+        var result = new CompletableFuture<RTCStatsReport>();
+        pc.getStats(sender, statsCallback(result));
+        return result;
+    }
+
+    static CompletableFuture<RTCStatsReport> getStats(RTCPeerConnection pc, RTCRtpReceiver receiver) {
+        var result = new CompletableFuture<RTCStatsReport>();
+        pc.getStats(receiver, statsCallback(result));
+        return result;
+    }
+
+    private static RTCStatsCollectorCallback statsCallback(CompletableFuture<RTCStatsReport> result) {
+        return report -> EXECUTOR.execute(() -> result.complete(report));
     }
 
     private static CreateSessionDescriptionObserver descriptionObserver(

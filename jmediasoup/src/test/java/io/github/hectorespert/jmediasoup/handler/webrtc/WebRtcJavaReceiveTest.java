@@ -7,6 +7,7 @@ package io.github.hectorespert.jmediasoup.handler.webrtc;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -15,6 +16,9 @@ import dev.onvoid.webrtc.PeerConnectionFactory;
 import dev.onvoid.webrtc.RTCRtpTransceiver;
 import dev.onvoid.webrtc.RTCRtpTransceiverDirection;
 import dev.onvoid.webrtc.RTCSignalingState;
+import dev.onvoid.webrtc.RTCStats;
+import dev.onvoid.webrtc.RTCStatsReport;
+import dev.onvoid.webrtc.RTCStatsType;
 import dev.onvoid.webrtc.media.audio.AudioTrack;
 import dev.onvoid.webrtc.media.audio.HeadlessAudioDeviceModule;
 import dev.onvoid.webrtc.media.video.VideoTrack;
@@ -31,6 +35,7 @@ import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
 import io.github.hectorespert.jmediasoup.rtp.Rtx;
 import io.github.hectorespert.jmediasoup.transport.DtlsParameters;
 import io.github.hectorespert.jmediasoup.transport.DtlsRole;
+import io.github.hectorespert.jmediasoup.transport.IceParameters;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -316,6 +321,46 @@ class WebRtcJavaReceiveTest {
         assertEquals(
                 RTCRtpTransceiverDirection.RECV_ONLY,
                 transceiver(audio.localId()).getCurrentDirection());
+    }
+
+    @Test
+    void statsComeFromTheReceiver() {
+        Consumer audio = await(transport.consume(FakeParameters.consumerRemoteParameters("audio/opus")));
+
+        RTCStatsReport stats = await(audio.getStats());
+
+        // Without a server no RTP arrives, so there is no inbound-rtp yet (the E2E tests check it), but
+        // the report is the one of the receiver, not the one of the whole peer connection.
+        var types = stats.getStats().values().stream().map(RTCStats::getType).toList();
+        assertFalse(types.contains(RTCStatsType.PEER_CONNECTION), types.toString());
+    }
+
+    @Test
+    void receiverStatsOfAnUnknownLocalIdFail() {
+        CompletionException failure =
+                assertThrows(CompletionException.class, () -> await(handler().getReceiverStats("42")));
+
+        assertInstanceOf(MediasoupClientException.class, failure.getCause());
+    }
+
+    @Test
+    void restartIceNegotiatesNewIceParameters() {
+        await(transport.consume(FakeParameters.consumerRemoteParameters("audio/opus")));
+        String localUfrag = iceUfrag(handler().peerConnection().getLocalDescription().sdp);
+
+        await(transport.restartIce(new IceParameters("new-ufrag", "new-password-1234567890", true)));
+
+        assertNotEquals(localUfrag, iceUfrag(handler().peerConnection().getLocalDescription().sdp));
+        assertEquals("new-ufrag", iceUfrag(handler().peerConnection().getRemoteDescription().sdp));
+        assertEquals(RTCSignalingState.STABLE, handler().peerConnection().getSignalingState());
+    }
+
+    private static String iceUfrag(String sdp) {
+        return sdp.lines()
+                .filter(line -> line.startsWith("a=ice-ufrag:"))
+                .findFirst()
+                .orElseThrow()
+                .substring("a=ice-ufrag:".length());
     }
 
     @Test

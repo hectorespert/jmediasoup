@@ -14,9 +14,16 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.onvoid.webrtc.PeerConnectionFactory;
+import dev.onvoid.webrtc.RTCIceServer;
+import dev.onvoid.webrtc.RTCIceTransportPolicy;
+import dev.onvoid.webrtc.RTCPeerConnection;
 import dev.onvoid.webrtc.RTCRtpTransceiver;
 import dev.onvoid.webrtc.RTCRtpTransceiverDirection;
+import dev.onvoid.webrtc.RTCSessionDescription;
 import dev.onvoid.webrtc.RTCSignalingState;
+import dev.onvoid.webrtc.RTCStats;
+import dev.onvoid.webrtc.RTCStatsReport;
+import dev.onvoid.webrtc.RTCStatsType;
 import dev.onvoid.webrtc.media.MediaStreamTrack;
 import dev.onvoid.webrtc.media.audio.HeadlessAudioDeviceModule;
 import io.github.hectorespert.jmediasoup.Device;
@@ -38,6 +45,9 @@ import io.github.hectorespert.jmediasoup.testfixtures.ColorVideoSource;
 import io.github.hectorespert.jmediasoup.testfixtures.ToneAudioSource;
 import io.github.hectorespert.jmediasoup.transport.DtlsParameters;
 import io.github.hectorespert.jmediasoup.transport.DtlsRole;
+import io.github.hectorespert.jmediasoup.transport.IceParameters;
+import io.github.hectorespert.jmediasoup.transport.IceServer;
+import io.github.hectorespert.jmediasoup.transport.IceTransportPolicy;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -404,6 +414,100 @@ class WebRtcJavaSendTest {
                 assertThrows(CompletionException.class, () -> await(handler().replaceTrack("42", null)));
 
         assertInstanceOf(MediasoupClientException.class, failure.getCause());
+    }
+
+    @Test
+    void statsComeFromThePeerConnectionAndTheSender() {
+        Producer video = produce(videoTrack());
+
+        RTCStatsReport transportStats = await(transport.getStats());
+        RTCStatsReport senderStats = await(video.getStats());
+
+        assertTrue(
+                types(transportStats).contains(RTCStatsType.PEER_CONNECTION),
+                types(transportStats).toString());
+        assertTrue(
+                types(senderStats).contains(RTCStatsType.OUTBOUND_RTP),
+                types(senderStats).toString());
+        assertFalse(
+                types(senderStats).contains(RTCStatsType.PEER_CONNECTION),
+                types(senderStats).toString());
+    }
+
+    @Test
+    void senderStatsOfAnUnknownLocalIdFail() {
+        CompletionException failure =
+                assertThrows(CompletionException.class, () -> await(handler().getSenderStats("42")));
+
+        assertInstanceOf(MediasoupClientException.class, failure.getCause());
+    }
+
+    private static java.util.Set<RTCStatsType> types(RTCStatsReport report) {
+        return report.getStats().values().stream().map(RTCStats::getType).collect(java.util.stream.Collectors.toSet());
+    }
+
+    private static String iceUfrag(RTCSessionDescription description) {
+        return description
+                .sdp
+                .lines()
+                .filter(line -> line.startsWith("a=ice-ufrag:"))
+                .findFirst()
+                .orElseThrow()
+                .substring("a=ice-ufrag:".length());
+    }
+
+    @Test
+    void restartIceNegotiatesNewIceParameters() {
+        produce(audioTrack());
+        String localUfrag = iceUfrag(handler().peerConnection().getLocalDescription());
+
+        await(transport.restartIce(new IceParameters("new-ufrag", "new-password-1234567890", true)));
+
+        RTCPeerConnection pc = handler().peerConnection();
+        assertNotEquals(localUfrag, iceUfrag(pc.getLocalDescription()));
+        assertEquals("new-ufrag", iceUfrag(pc.getRemoteDescription()));
+        assertEquals(RTCSignalingState.STABLE, pc.getSignalingState());
+    }
+
+    @Test
+    void restartIceBeforeConnectingOnlyKeepsTheParameters() {
+        await(transport.restartIce(new IceParameters("new-ufrag", "new-password-1234567890", true)));
+
+        // Nothing is negotiated: the remote SDP has no media section yet.
+        assertNull(handler().peerConnection().getLocalDescription());
+
+        // The first send uses them.
+        produce(audioTrack());
+
+        assertEquals("new-ufrag", iceUfrag(handler().peerConnection().getRemoteDescription()));
+    }
+
+    @Test
+    void updateIceServersChangesTheConfiguration() {
+        await(transport.updateIceServers(List.of(IceServer.of("stun:stun.example.com:3478"))));
+
+        List<RTCIceServer> servers = handler().peerConnection().getConfiguration().iceServers;
+        assertEquals(1, servers.size());
+        assertEquals(List.of("stun:stun.example.com:3478"), servers.getFirst().urls);
+    }
+
+    @Test
+    void theIceTransportPolicyReachesThePeerConnection() throws Exception {
+        var device = new Device(factory);
+        await(device.load(FakeParameters.routerRtpCapabilities()));
+        SendTransport relay = device.createSendTransport(
+                FakeParameters.transportRemoteParameters().toBuilder()
+                        .iceTransportPolicy(IceTransportPolicy.RELAY)
+                        .build(),
+                dtls -> CompletableFuture.completedFuture(null),
+                request -> CompletableFuture.completedFuture(UUID.randomUUID().toString()));
+        try {
+            assertEquals(
+                    RTCIceTransportPolicy.RELAY,
+                    ((WebRtcJavaHandler) relay.handler()).peerConnection().getConfiguration().iceTransportPolicy);
+        } finally {
+            relay.close();
+        }
     }
 
     @Test

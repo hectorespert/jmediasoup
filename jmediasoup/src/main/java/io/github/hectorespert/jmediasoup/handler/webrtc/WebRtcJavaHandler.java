@@ -357,17 +357,70 @@ public final class WebRtcJavaHandler implements Handler {
 
     @Override
     public CompletableFuture<Void> updateIceServers(List<IceServer> iceServers) {
-        return notImplemented("updateIceServers");
+        requireNonNull(iceServers, "iceServers");
+        try {
+            assertNotClosed();
+
+            logger.debug("updateIceServers()");
+
+            RTCConfiguration configuration = pc.getConfiguration();
+
+            configuration.iceServers = toRtcIceServers(iceServers);
+
+            pc.setConfiguration(configuration);
+        } catch (InvalidStateException | RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
     public CompletableFuture<Void> restartIce(IceParameters iceParameters) {
-        return notImplemented("restartIce");
+        requireNonNull(iceParameters, "iceParameters");
+        try {
+            assertNotClosed();
+        } catch (InvalidStateException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        logger.debug("restartIce()");
+
+        // Provide the remote SDP handler with new remote ICE parameters.
+        remoteSdp.updateIceParameters(iceParameters);
+
+        if (!transportReady) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        if (direction == TransportDirection.SEND) {
+            var offerOptions = new RTCOfferOptions();
+            offerOptions.iceRestart = true;
+
+            return PeerConnections.createOffer(pc, offerOptions)
+                    .thenCompose(offer -> {
+                        logger.debug("restartIce() | calling pc.setLocalDescription() [offer:{}]", offer.sdp);
+                        return PeerConnections.setLocalDescription(pc, offer);
+                    })
+                    .thenCompose(ignored -> {
+                        var answer = new RTCSessionDescription(RTCSdpType.ANSWER, remoteSdp.getSdp());
+                        logger.debug("restartIce() | calling pc.setRemoteDescription() [answer:{}]", answer.sdp);
+                        return PeerConnections.setRemoteDescription(pc, answer);
+                    });
+        } else {
+            return renegotiateReceiving("restartIce");
+        }
     }
 
     @Override
     public CompletableFuture<RTCStatsReport> getTransportStats() {
-        return notImplemented("getTransportStats");
+        try {
+            assertNotClosed();
+        } catch (InvalidStateException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        return PeerConnections.getStats(pc);
     }
 
     /**
@@ -807,7 +860,22 @@ public final class WebRtcJavaHandler implements Handler {
 
     @Override
     public CompletableFuture<RTCStatsReport> getSenderStats(String localId) {
-        return notImplemented("getSenderStats");
+        requireNonNull(localId, "localId");
+        RTCRtpTransceiver transceiver;
+        try {
+            assertNotClosed();
+            assertSendDirection();
+
+            transceiver = mapMidTransceiver.get(localId);
+
+            if (transceiver == null) {
+                throw new MediasoupClientException("associated RTCRtpTransceiver not found");
+            }
+        } catch (MediasoupClientException | RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        return PeerConnections.getStats(pc, transceiver.getSender());
     }
 
     @Override
@@ -1019,7 +1087,22 @@ public final class WebRtcJavaHandler implements Handler {
 
     @Override
     public CompletableFuture<RTCStatsReport> getReceiverStats(String localId) {
-        return notImplemented("getReceiverStats");
+        requireNonNull(localId, "localId");
+        RTCRtpTransceiver transceiver;
+        try {
+            assertNotClosed();
+            assertRecvDirection();
+
+            transceiver = mapMidTransceiver.get(localId);
+
+            if (transceiver == null) {
+                throw new MediasoupClientException("associated RTCRtpTransceiver not found");
+            }
+        } catch (MediasoupClientException | RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        return PeerConnections.getStats(pc, transceiver.getReceiver());
     }
 
     @Override

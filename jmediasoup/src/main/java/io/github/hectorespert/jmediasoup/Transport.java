@@ -7,6 +7,7 @@ package io.github.hectorespert.jmediasoup;
 import static java.util.Objects.requireNonNull;
 
 import dev.onvoid.webrtc.RTCPeerConnectionIceErrorEvent;
+import dev.onvoid.webrtc.RTCStatsReport;
 import io.github.hectorespert.jmediasoup.handler.Handler;
 import io.github.hectorespert.jmediasoup.handler.HandlerFactory;
 import io.github.hectorespert.jmediasoup.handler.HandlerListener;
@@ -21,8 +22,11 @@ import io.github.hectorespert.jmediasoup.sctp.SctpParameters;
 import io.github.hectorespert.jmediasoup.transport.ConnectionState;
 import io.github.hectorespert.jmediasoup.transport.DtlsParameters;
 import io.github.hectorespert.jmediasoup.transport.IceGatheringState;
+import io.github.hectorespert.jmediasoup.transport.IceParameters;
+import io.github.hectorespert.jmediasoup.transport.IceServer;
 import io.github.hectorespert.jmediasoup.transport.TransportDirection;
 import io.github.hectorespert.jmediasoup.transport.TransportOptions;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -192,6 +196,61 @@ public abstract sealed class Transport permits SendTransport, RecvTransport {
      */
     public TransportObserver observer() {
         return observer;
+    }
+
+    /**
+     * Restarts ICE with new remote ICE parameters, after the pending operations of the transport. Get
+     * them by restarting ICE on the server, with {@code webRtcTransport.restartIce()} in mediasoup.
+     * Before the transport connects, it only keeps the new parameters for the first negotiation.
+     *
+     * @param iceParameters the new ICE parameters of the server
+     * @return a future that completes when the handler has negotiated them; it fails with an {@link
+     *     InvalidStateException} if the transport is closed, before or while restarting, or with the
+     *     failure of the handler
+     */
+    public CompletableFuture<Void> restartIce(IceParameters iceParameters) {
+        requireNonNull(iceParameters, "iceParameters");
+        logger.debug("restartIce()");
+
+        if (closed()) {
+            return CompletableFuture.failedFuture(new InvalidStateException("closed"));
+        }
+
+        return queue.push("transport.restartIce()", () -> handler.restartIce(iceParameters));
+    }
+
+    /**
+     * Replaces the STUN and TURN servers of the transport, after its pending operations. The new
+     * servers apply to the next ICE gathering, such as the one of {@link #restartIce}.
+     *
+     * @param iceServers the new servers, empty for none
+     * @return a future that completes when the handler has applied them; it fails with an {@link
+     *     InvalidStateException} if the transport is closed, before or while updating, or with the
+     *     failure of the handler
+     */
+    public CompletableFuture<Void> updateIceServers(List<IceServer> iceServers) {
+        List<IceServer> servers = List.copyOf(requireNonNull(iceServers, "iceServers"));
+        logger.debug("updateIceServers()");
+
+        if (closed()) {
+            return CompletableFuture.failedFuture(new InvalidStateException("closed"));
+        }
+
+        return queue.push("transport.updateIceServers()", () -> handler.updateIceServers(servers));
+    }
+
+    /**
+     * Returns the statistics of the transport, those of the peer connection of the handler.
+     *
+     * @return a future with the report; it fails with an {@link InvalidStateException} if the
+     *     transport is closed, or with the failure of the handler
+     */
+    public CompletableFuture<RTCStatsReport> getStats() {
+        if (closed()) {
+            return CompletableFuture.failedFuture(new InvalidStateException("closed"));
+        }
+
+        return handler.getTransportStats();
     }
 
     /**

@@ -5,6 +5,7 @@
 package io.github.hectorespert.jmediasoup;
 
 import dev.onvoid.webrtc.RTCRtpSender;
+import dev.onvoid.webrtc.RTCStatsReport;
 import dev.onvoid.webrtc.media.MediaStreamTrack;
 import dev.onvoid.webrtc.media.MediaStreamTrackEndedListener;
 import dev.onvoid.webrtc.media.MediaStreamTrackState;
@@ -309,6 +310,20 @@ public final class Producer {
     }
 
     /**
+     * Returns the statistics of the RTP sender of the producer.
+     *
+     * @return a future with the report; it fails with an {@link InvalidStateException} if the producer or
+     *     its transport is closed, or with the failure of the handler
+     */
+    public CompletableFuture<RTCStatsReport> getStats() {
+        if (closed.get()) {
+            return CompletableFuture.failedFuture(new InvalidStateException("closed"));
+        }
+
+        return transportListener.getStats(this);
+    }
+
+    /**
      * Closes the producer: the transport stops sending its track, and the observer emits {@code
      * close}; after that no listener is called again. The application should close the mediasoup
      * producer too. Calling it again does nothing.
@@ -443,5 +458,13 @@ public final class Producer {
          * @return a future that completes once the handler sends the new track
          */
         CompletableFuture<Void> replaceTrack(Producer producer, @Nullable MediaStreamTrack track);
+
+        /**
+         * The application asks for the statistics of the producer.
+         *
+         * @param producer the producer
+         * @return a future with the statistics of its RTP sender
+         */
+        CompletableFuture<RTCStatsReport> getStats(Producer producer);
     }
 }

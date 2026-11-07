@@ -8,8 +8,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.onvoid.webrtc.PeerConnectionFactory;
+import dev.onvoid.webrtc.RTCStatsReport;
+import dev.onvoid.webrtc.RTCStatsType;
 import dev.onvoid.webrtc.media.MediaStreamTrack;
 import io.github.hectorespert.jmediasoup.Device;
 import io.github.hectorespert.jmediasoup.Producer;
@@ -20,6 +23,7 @@ import io.github.hectorespert.jmediasoup.integration.DemoPeer.Direction;
 import io.github.hectorespert.jmediasoup.rtp.RtpCodecCapability;
 import io.github.hectorespert.jmediasoup.testfixtures.ColorVideoSource;
 import io.github.hectorespert.jmediasoup.testfixtures.ToneAudioSource;
+import io.github.hectorespert.jmediasoup.transport.ConnectionState;
 import io.github.hectorespert.jmediasoup.transport.TransportOptions;
 import java.time.Duration;
 import java.util.UUID;
@@ -179,6 +183,49 @@ class SendTest {
             }
             Thread.sleep(200);
         }
+    }
+
+    @Test
+    void theStatsReportWhatIsSent() throws InterruptedException {
+        Producer video =
+                await(transport.produce(ProducerOptions.builder(videoTrack()).build()));
+        awaitReceived(video);
+
+        RTCStatsReport producerStats = await(video.getStats());
+        RTCStatsReport transportStats = await(transport.getStats());
+
+        assertTrue(sum(producerStats, RTCStatsType.OUTBOUND_RTP, "packetsSent") > 0, producerStats.toString());
+        assertTrue(sum(transportStats, RTCStatsType.TRANSPORT, "bytesSent") > 0, transportStats.toString());
+    }
+
+    /** Adds up an attribute of the stats of a type. */
+    static long sum(RTCStatsReport report, RTCStatsType type, String attribute) {
+        return report.getStats().values().stream()
+                .filter(stats -> stats.getType() == type)
+                .map(stats -> stats.getAttributes().get(attribute))
+                .filter(Number.class::isInstance)
+                .mapToLong(value -> ((Number) value).longValue())
+                .sum();
+    }
+
+    @Test
+    void restartingIceKeepsSending() throws InterruptedException {
+        Producer video =
+                await(transport.produce(ProducerOptions.builder(videoTrack()).build()));
+        awaitReceived(video);
+
+        await(transport.restartIce(await(peer.restartIce(transport.id()))));
+
+        // The packets keep arriving through the new ICE session.
+        long restarted = packetCount(video);
+        long deadline = System.nanoTime() + TIMEOUT.toNanos();
+        while (packetCount(video) <= restarted + 50) {
+            if (System.nanoTime() > deadline) {
+                throw new AssertionError("no RTP received after restarting ICE");
+            }
+            Thread.sleep(200);
+        }
+        assertEquals(ConnectionState.CONNECTED, transport.connectionState());
     }
 
     /**

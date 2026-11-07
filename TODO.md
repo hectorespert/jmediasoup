@@ -977,29 +977,29 @@ Origin: `aiortc_handler.py`, `media_section.py`, `remote_sdp.py`
 
 Origin: `transport.py`, `producer.py`, `consumer.py`, `aiortc_handler.py`
 
-- [ ] `10.1.1` `getStats` returns the `RTCStatsReport` of webrtc-java (`0.5.5`), and an empty or hand-built one with `FakeHandler`.
-- [ ] `10.1.2` `handler.getTransportStats`.
-- [ ] `10.1.3` `handler.getSenderStats`.
-- [ ] `10.1.4` `handler.getReceiverStats`.
-- [ ] `10.1.5` `Transport.getStats`.
-- [ ] `10.1.6` `Producer.getStats`. ⚠️ do not copy: the original returns the list of `emit_for_results` and, with the transport closed, returns the exception instead of raising it.
-- [ ] `10.1.7` `Consumer.getStats`, with the same care.
-- [ ] `10.1.8` E2E tests of the three levels.
+- [x] `10.1.1` `getStats` returns the `RTCStatsReport` of webrtc-java (`0.5.5`), and an empty or hand-built one with `FakeHandler`. As in mediasoup-client, it does not go through the queue of the transport.
+- [x] `10.1.2` `handler.getTransportStats`: `pc.getStats`.
+- [x] `10.1.3` `handler.getSenderStats`: `pc.getStats(sender)`, which webrtc-java offers instead of `sender.getStats()`.
+- [x] `10.1.4` `handler.getReceiverStats`: `pc.getStats(receiver)`.
+- [x] `10.1.5` `Transport.getStats`.
+- [x] `10.1.6` `Producer.getStats`, which fails with `InvalidStateException` if the producer or its transport is closed. ⚠️ do not copy: the original returns the list of `emit_for_results` and, with the transport closed, returns the exception instead of raising it.
+- [x] `10.1.7` `Consumer.getStats`, with the same care.
+- [x] `10.1.8` E2E tests of the three levels: `packetsSent` of the producer, `bytesSent` of the transport and `packetsReceived` of the consumer are positive.
 
 ### 10.2 ICE
 
 Origin: `transport.py`, `aiortc_handler.py`, `remote_sdp.py`
 
-- [ ] `10.2.1` `Transport.restartIce`.
-- [ ] `10.2.2` `handler.restartIce` on send, with `RTCOfferOptions.iceRestart`. ⚠️ do not copy: the original cannot ask for it because aiortc does not have that option.
-- [ ] `10.2.3` `handler.restartIce` on recv.
-- [ ] `10.2.4` `restartIce` before the transport is ready: it only updates the parameters.
-- [ ] `10.2.5` `Transport.updateIceServers`.
-- [ ] `10.2.6` `handler.updateIceServers` with `setConfiguration`. ⚠️ do not copy: in the original it only logs a warning.
-- [ ] `10.2.7` `iceTransportPolicy` (`all` and `relay`).
-- [ ] `10.2.8` `additionalSettings` and `proprietaryConstraints`: decide which ones make sense in webrtc-java and add them to `TransportOptions` with its builder, without fields reserved by jmediasoup. ⚠️ do not copy: the original calls `copy(deep=True)` on a `dict`.
-- [ ] `10.2.9` `RemoteSdp.updateIceParameters`: remove `icelite` if it no longer applies.
-- [ ] `10.2.10` E2E test: restart ICE and keep receiving media.
+- [x] `10.2.1` `Transport.restartIce`, through the queue of the transport.
+- [x] `10.2.2` `handler.restartIce` on send, with `RTCOfferOptions.iceRestart`. ⚠️ do not copy: the original cannot ask for it because aiortc does not have that option.
+- [x] `10.2.3` `handler.restartIce` on recv.
+- [x] `10.2.4` `restartIce` before the transport is ready: it only updates the parameters.
+- [x] `10.2.5` `Transport.updateIceServers`, through the queue of the transport.
+- [x] `10.2.6` `handler.updateIceServers` with `setConfiguration`. ⚠️ do not copy: in the original it only logs a warning.
+- [x] `10.2.7` `iceTransportPolicy` (`all` and `relay`), which the handler already passed to the peer connection; a test checks it.
+- [x] `10.2.8` ~~`additionalSettings` and `proprietaryConstraints`: decide which ones make sense in webrtc-java and add them to `TransportOptions` with its builder, without fields reserved by jmediasoup. ⚠️ do not copy: the original calls `copy(deep=True)` on a `dict`.~~ Dropped for now: `proprietaryConstraints` no longer exists in mediasoup-client 3.26, and webrtc-java has no constraints; `additionalSettings` would expose the mutable `RTCConfiguration` of webrtc-java or a selection of its fields, and nobody needs it yet. Only `iceServers` and `iceTransportPolicy` reach the peer connection.
+- [x] `10.2.9` `RemoteSdp.updateIceParameters`: remove `icelite` if it no longer applies. Already done by the port of `RemoteSdp` (`3.5`): it adds or removes `a=ice-lite` with the new parameters.
+- [x] `10.2.10` E2E test: restart ICE and keep receiving media (the server keeps receiving the RTP of a producer after the `restartIce` of the demo).
 - [ ] `10.2.11` E2E test: connection through a TURN server, if the image or the environment allow it.
 - [ ] `10.2.12` Publish version `0.4.0`.
 

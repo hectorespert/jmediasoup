@@ -6,6 +6,7 @@ package io.github.hectorespert.jmediasoup;
 
 import static java.util.Objects.requireNonNull;
 
+import dev.onvoid.webrtc.RTCStatsReport;
 import dev.onvoid.webrtc.media.MediaStreamTrack;
 import dev.onvoid.webrtc.media.MediaStreamTrackState;
 import io.github.hectorespert.jmediasoup.handler.HandlerFactory;
@@ -145,6 +146,11 @@ public final class SendTransport extends Transport {
                                                     "producer @replacetrack event",
                                                     () -> handler().replaceTrack(producer.localId(), track));
                                 }
+
+                                @Override
+                                public CompletableFuture<RTCStatsReport> getStats(Producer producer) {
+                                    return producerStats(producer);
+                                }
                             });
                     producers.put(id, producer);
                     // The transport may have closed while the application created the producer.
@@ -220,6 +226,14 @@ public final class SendTransport extends Transport {
                         logger.warn("producer resume failed", error);
                     }
                 });
+    }
+
+    private CompletableFuture<RTCStatsReport> producerStats(Producer producer) {
+        if (closed()) {
+            return CompletableFuture.failedFuture(new InvalidStateException("closed"));
+        }
+
+        return handler().getSenderStats(producer.localId());
     }
 
     @Override

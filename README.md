@@ -130,12 +130,11 @@ webrtc-java publishes natives for these platforms, as classifiers of `dev.onvoid
 
 ## Limitations
 
-`0.1.0` covers the basic flow: load the device, send and receive audio and video, pause and resume, replace the track being sent, and close. These are not supported yet:
+`0.1.0` covers the basic flow: load the device, send and receive audio and video, pause and resume, replace the track being sent, get stats, restart ICE, and close. These are not supported yet:
 
 - Simulcast and SVC: `produce` with more than one encoding fails with `UnsupportedException`.
 - Codec options (`ProducerCodecOptions`, such as `opusStereo` or `videoGoogleStartBitrate`): they are ignored, with a warning.
 - Data channels (`produceData` and `consumeData`).
-- Stats, ICE restart and updating the ICE servers.
 
 [TODO.md](TODO.md) holds the plan up to parity with pymediasoup and mediasoup-client.
 

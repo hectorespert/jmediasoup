@@ -177,6 +177,17 @@ final class DemoPeer implements AutoCloseable {
     }
 
     /**
+     * {@code restartIce}: the server restarts ICE on a transport.
+     *
+     * @param transportId the transport
+     * @return the new ICE parameters of the server
+     */
+    CompletableFuture<IceParameters> restartIce(String transportId) {
+        return protoo.request("restartIce", Map.of("transportId", transportId))
+                .thenApply(data -> MAPPER.treeToValue(data.get("iceParameters"), IceParameters.class));
+    }
+
+    /**
      * {@code closeProducer}, a notification in this demo: the server closes the producer without
      * answering.
      *

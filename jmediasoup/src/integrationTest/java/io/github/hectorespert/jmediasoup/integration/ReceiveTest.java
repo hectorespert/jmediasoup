@@ -7,6 +7,8 @@ package io.github.hectorespert.jmediasoup.integration;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.onvoid.webrtc.RTCStatsReport;
+import dev.onvoid.webrtc.RTCStatsType;
 import dev.onvoid.webrtc.media.audio.AudioTrack;
 import dev.onvoid.webrtc.media.audio.AudioTrackSink;
 import dev.onvoid.webrtc.media.video.VideoFrame;
@@ -75,6 +77,8 @@ class ReceiveTest {
             assertTrue(sentPackets(
                             await(peer.consumerStats(consumers.get(Stream.OPUS).id())))
                     > 0);
+            RTCStatsReport stats = await(consumers.get(Stream.OPUS).getStats());
+            assertTrue(SendTest.sum(stats, RTCStatsType.INBOUND_RTP, "packetsReceived") > 0, stats.toString());
         });
     }
 

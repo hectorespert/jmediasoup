@@ -87,6 +87,7 @@ public final class FakeHandler implements Handler {
     private final List<Integer> receiveBatches = new CopyOnWriteArrayList<>();
     private final List<Integer> stopReceivingBatches = new CopyOnWriteArrayList<>();
     private final List<String> pauseCalls = new CopyOnWriteArrayList<>();
+    private final List<String> iceCalls = new CopyOnWriteArrayList<>();
     private volatile boolean closed;
     // Got transport local and remote parameters.
     private volatile boolean transportReady;
@@ -212,6 +213,16 @@ public final class FakeHandler implements Handler {
     }
 
     /**
+     * Returns the calls to restart ICE and update the ICE servers, such as {@code restartIce ufrag} or
+     * {@code updateIceServers [stun:stun.example.com]}.
+     *
+     * @return the method and its argument, in the order of the calls
+     */
+    public List<String> iceCalls() {
+        return List.copyOf(iceCalls);
+    }
+
+    /**
      * Simulates a change in the connection state.
      *
      * @param connectionState the new state
@@ -261,12 +272,21 @@ public final class FakeHandler implements Handler {
 
     @Override
     public CompletableFuture<Void> updateIceServers(List<IceServer> iceServers) {
-        return run(() -> null);
+        return run(() -> {
+            iceCalls.add("updateIceServers "
+                    + iceServers.stream()
+                            .flatMap(server -> server.urls().stream())
+                            .toList());
+            return null;
+        });
     }
 
     @Override
     public CompletableFuture<Void> restartIce(IceParameters iceParameters) {
-        return run(() -> null);
+        return run(() -> {
+            iceCalls.add("restartIce " + iceParameters.usernameFragment());
+            return null;
+        });
     }
 
     @Override

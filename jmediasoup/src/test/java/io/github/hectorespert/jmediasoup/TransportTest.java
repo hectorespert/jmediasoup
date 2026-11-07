@@ -7,6 +7,7 @@ package io.github.hectorespert.jmediasoup;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -24,6 +25,8 @@ import io.github.hectorespert.jmediasoup.sctp.SctpParameters;
 import io.github.hectorespert.jmediasoup.transport.ConnectionState;
 import io.github.hectorespert.jmediasoup.transport.DtlsParameters;
 import io.github.hectorespert.jmediasoup.transport.IceGatheringState;
+import io.github.hectorespert.jmediasoup.transport.IceParameters;
+import io.github.hectorespert.jmediasoup.transport.IceServer;
 import io.github.hectorespert.jmediasoup.transport.TransportDirection;
 import io.github.hectorespert.jmediasoup.transport.TransportOptions;
 import java.lang.reflect.Constructor;
@@ -384,5 +387,52 @@ class TransportTest {
 
         assertEquals(1, maxRunning.get());
         assertEquals(0, otherThread.get());
+    }
+
+    @Test
+    void getStatsReturnsTheReportOfTheHandlerUntilClosed() throws Exception {
+        SendTransport transport =
+                device.createSendTransport(FakeParameters.transportRemoteParameters(), CONNECT, PRODUCE);
+
+        assertNotNull(await(transport.getStats()));
+
+        transport.close();
+
+        assertInstanceOf(InvalidStateException.class, cause(transport.getStats()));
+    }
+
+    @Test
+    void restartIceAndUpdateIceServersRunInTheQueueOfTheTransport() throws Exception {
+        SendTransport transport =
+                device.createSendTransport(FakeParameters.transportRemoteParameters(), CONNECT, PRODUCE);
+        var release = new CompletableFuture<Void>();
+        transport.queue().push("block", () -> release);
+
+        CompletableFuture<Void> restarted = transport.restartIce(new IceParameters("new-ufrag", "new-password", null));
+        CompletableFuture<Void> updated = transport.updateIceServers(List.of(IceServer.of("stun:stun.example.com")));
+
+        assertFalse(restarted.isDone());
+        assertTrue(handler(transport).iceCalls().isEmpty());
+
+        release.complete(null);
+        await(restarted);
+        await(updated);
+
+        assertEquals(
+                List.of("restartIce new-ufrag", "updateIceServers [stun:stun.example.com]"),
+                handler(transport).iceCalls());
+    }
+
+    @Test
+    void restartIceAndUpdateIceServersFailIfTheTransportIsClosed() throws Exception {
+        SendTransport transport =
+                device.createSendTransport(FakeParameters.transportRemoteParameters(), CONNECT, PRODUCE);
+        transport.close();
+
+        assertInstanceOf(
+                InvalidStateException.class,
+                cause(transport.restartIce(new IceParameters("new-ufrag", "new-password", null))));
+        assertInstanceOf(InvalidStateException.class, cause(transport.updateIceServers(List.of())));
+        assertTrue(handler(transport).iceCalls().isEmpty());
     }
 }

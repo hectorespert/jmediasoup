@@ -7,6 +7,7 @@ package io.github.hectorespert.jmediasoup;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -486,6 +487,22 @@ class ConsumerTest {
         // The next video consumer creates it: video, failed probator, video and probator.
         assertEquals(List.of(1, 1, 1, 1), handler(transport).receiveBatches());
         assertEquals(2 + 1, handler(transport).localIds().size());
+    }
+
+    @Test
+    void getStatsReturnsTheReportOfTheReceiverUntilClosed() {
+        Consumer consumer = consume("audio/opus");
+        Consumer other = consume("audio/opus");
+
+        assertNotNull(await(consumer.getStats()));
+
+        consumer.close();
+
+        assertInstanceOf(InvalidStateException.class, cause(consumer.getStats()));
+
+        transport.close();
+
+        assertInstanceOf(InvalidStateException.class, cause(other.getStats()));
     }
 
     @Test

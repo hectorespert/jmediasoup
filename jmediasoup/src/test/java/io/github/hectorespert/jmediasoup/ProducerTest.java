@@ -717,6 +717,22 @@ class ProducerTest {
     }
 
     @Test
+    void getStatsReturnsTheReportOfTheSenderUntilClosed() {
+        Producer producer = produce(FakeMediaStreamTrack.audio());
+        Producer other = produce(FakeMediaStreamTrack.video());
+
+        assertNotNull(await(producer.getStats()));
+
+        producer.close();
+
+        assertInstanceOf(InvalidStateException.class, cause(producer.getStats()));
+
+        transport.close();
+
+        assertInstanceOf(InvalidStateException.class, cause(other.getStats()));
+    }
+
+    @Test
     void closingTheTransportClosesItsProducers() {
         Producer producer = produce(FakeMediaStreamTrack.audio());
         List<String> events = new CopyOnWriteArrayList<>();

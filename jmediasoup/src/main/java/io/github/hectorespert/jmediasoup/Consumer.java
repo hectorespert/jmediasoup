@@ -5,12 +5,14 @@
 package io.github.hectorespert.jmediasoup;
 
 import dev.onvoid.webrtc.RTCRtpReceiver;
+import dev.onvoid.webrtc.RTCStatsReport;
 import dev.onvoid.webrtc.media.MediaStreamTrack;
 import dev.onvoid.webrtc.media.MediaStreamTrackEndedListener;
 import io.github.hectorespert.jmediasoup.internal.event.RunnableListeners;
 import io.github.hectorespert.jmediasoup.rtp.MediaKind;
 import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
@@ -243,6 +245,20 @@ public final class Consumer {
     }
 
     /**
+     * Returns the statistics of the RTP receiver of the consumer.
+     *
+     * @return a future with the report; it fails with an {@link InvalidStateException} if the consumer or
+     *     its transport is closed, or with the failure of the handler
+     */
+    public CompletableFuture<RTCStatsReport> getStats() {
+        if (closed.get()) {
+            return CompletableFuture.failedFuture(new InvalidStateException("closed"));
+        }
+
+        return transportListener.getStats(this);
+    }
+
+    /**
      * Closes the consumer: the transport stops receiving its track, and the observer emits {@code
      * close}; after that no listener is called again. The application should close the mediasoup
      * consumer too. Calling it again does nothing.
@@ -353,5 +369,13 @@ public final class Consumer {
          * @param consumer the consumer
          */
         void resumed(Consumer consumer);
+
+        /**
+         * The application asks for the statistics of the consumer.
+         *
+         * @param consumer the consumer
+         * @return a future with the statistics of its RTP receiver
+         */
+        CompletableFuture<RTCStatsReport> getStats(Consumer consumer);
     }
 }

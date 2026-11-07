@@ -6,6 +6,7 @@ package io.github.hectorespert.jmediasoup;
 
 import static java.util.Objects.requireNonNull;
 
+import dev.onvoid.webrtc.RTCStatsReport;
 import io.github.hectorespert.jmediasoup.handler.Handler;
 import io.github.hectorespert.jmediasoup.handler.HandlerFactory;
 import io.github.hectorespert.jmediasoup.handler.HandlerReceiveOptions;
@@ -230,6 +231,11 @@ public final class RecvTransport extends Transport {
                         public void resumed(Consumer consumer) {
                             consumerResumed(consumer);
                         }
+
+                        @Override
+                        public CompletableFuture<RTCStatsReport> getStats(Consumer consumer) {
+                            return consumerStats(consumer);
+                        }
                     });
 
             consumers.put(consumer.id(), consumer);
@@ -425,6 +431,14 @@ public final class RecvTransport extends Transport {
                         }
                     });
         }
+    }
+
+    private CompletableFuture<RTCStatsReport> consumerStats(Consumer consumer) {
+        if (closed()) {
+            return CompletableFuture.failedFuture(new InvalidStateException("closed"));
+        }
+
+        return handler().getReceiverStats(consumer.localId());
     }
 
     @Override
