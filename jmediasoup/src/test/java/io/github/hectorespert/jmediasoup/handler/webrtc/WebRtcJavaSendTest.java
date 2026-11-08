@@ -410,7 +410,9 @@ class WebRtcJavaSendTest {
         assertEquals("L1T3", video.rtpParameters().encodings().getFirst().scalabilityMode());
         // The answer has the x-google-start-bitrate of the router, with which the libwebrtc of
         // webrtc-java 0.20.0 drops the scalability mode. This fails once it no longer does.
-        assertTrue(answerParameters(video.localId(), 96).containsKey("x-google-start-bitrate"));
+        // The payload type of the codec depends on the natives: on macOS VideoToolbox lists its codecs first.
+        int payloadType = video.rtpParameters().codecs().getFirst().payloadType();
+        assertTrue(answerParameters(video.localId(), payloadType).containsKey("x-google-start-bitrate"));
         assertEquals("L1T1", video.rtpSender().getParameters().encodings.getFirst().scalabilityMode);
     }
 
