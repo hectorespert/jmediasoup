@@ -7,6 +7,7 @@ package io.github.hectorespert.jmediasoup.internal.sdp;
 import io.github.hectorespert.jmediasoup.internal.sdptransform.JavaScript;
 import io.github.hectorespert.jmediasoup.rtp.RtcpFeedback;
 import io.github.hectorespert.jmediasoup.rtp.RtpCodecParameters;
+import io.github.hectorespert.jmediasoup.sctp.SctpParameters;
 import io.github.hectorespert.jmediasoup.transport.DtlsParameters;
 import io.github.hectorespert.jmediasoup.transport.DtlsRole;
 import io.github.hectorespert.jmediasoup.transport.IceCandidate;
@@ -238,6 +239,34 @@ public abstract class RemoteMediaSection {
                         codecs.stream()
                                 .map(codec -> String.valueOf(codec.payloadType()))
                                 .toList()));
+    }
+
+    /**
+     * Sets a field of the media object, unless the value is absent.
+     *
+     * @param key the field
+     * @param value the value, or {@code null} to leave the field out
+     */
+    protected void putIfPresent(String key, @Nullable Object value) {
+        if (value != null) {
+            mediaObject.put(key, value);
+        }
+    }
+
+    /**
+     * Returns the {@code a=sctpmap} of the old data channel spec.
+     *
+     * @param sctpParameters the SCTP parameters of the mediasoup transport
+     * @return the parsed line, with the SCTP port and the maximum message size if there is one
+     */
+    protected static Map<String, Object> sctpmap(SctpParameters sctpParameters) {
+        var sctpmap = new LinkedHashMap<String, Object>();
+        sctpmap.put("app", "webrtc-datachannel");
+        sctpmap.put("sctpmapNumber", sctpParameters.port());
+        if (sctpParameters.maxMessageSize() != null) {
+            sctpmap.put("maxMessageSize", sctpParameters.maxMessageSize());
+        }
+        return sctpmap;
     }
 
     /**

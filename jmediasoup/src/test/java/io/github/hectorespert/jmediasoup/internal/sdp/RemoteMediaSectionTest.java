@@ -328,14 +328,96 @@ class RemoteMediaSectionTest {
     }
 
     @Test
-    void sectionsOfAnotherKindOnlyHaveTheirHeader() {
-        var section = new RemoteOfferMediaSection(null, null, null, "data", "application", null, null, null);
-
-        assertEquals(
-                lines("m=application 7 UDP/TLS/RTP/SAVPF ", "c=IN IP4 127.0.0.1", "a=extmap-allow-mixed", "a=mid:data"),
-                write(section));
+    void audioAndVideoOfferSectionsNeedRtpParameters() {
         assertThrows(
                 NullPointerException.class,
                 () -> new RemoteOfferMediaSection(null, null, null, "0", "audio", null, null, null));
+    }
+
+    private static RemoteOfferMediaSection sctpOfferSection(boolean oldDataChannelSpec) {
+        return new RemoteOfferMediaSection(
+                null,
+                null,
+                null,
+                TRANSPORT.sctpParameters(),
+                "datachannel",
+                "application",
+                null,
+                null,
+                null,
+                oldDataChannelSpec);
+    }
+
+    @Test
+    void theOfferOfTheSctpAssociationHasItsPort() {
+        assertEquals(
+                lines(
+                        "m=application 7 UDP/DTLS/SCTP webrtc-datachannel",
+                        "c=IN IP4 127.0.0.1",
+                        "a=extmap-allow-mixed",
+                        "a=mid:datachannel",
+                        "a=sctp-port:5000",
+                        "a=max-message-size:2000000"),
+                write(sctpOfferSection(false)));
+    }
+
+    @Test
+    void theOfferOfTheSctpAssociationCanUseTheOldSpec() {
+        assertEquals(
+                lines(
+                        "m=application 7 UDP/DTLS/SCTP 5000",
+                        "c=IN IP4 127.0.0.1",
+                        "a=extmap-allow-mixed",
+                        "a=mid:datachannel",
+                        "a=sctpmap:5000 webrtc-datachannel 2000000"),
+                write(sctpOfferSection(true)));
+    }
+
+    @Test
+    void theAnswerToTheSctpAssociationOfWebRtcJavaHasThePortOfMediasoup() {
+        var section = new RemoteAnswerMediaSection(
+                null, null, null, TRANSPORT.sctpParameters(), offerSection("offer-datachannel.sdp", 0), null);
+
+        assertEquals(
+                lines(
+                        "m=application 7 UDP/DTLS/SCTP webrtc-datachannel",
+                        "c=IN IP4 127.0.0.1",
+                        "a=mid:0",
+                        "a=sctp-port:5000",
+                        "a=max-message-size:2000000"),
+                write(section));
+    }
+
+    @Test
+    void theAnswerToAnOldSpecOfferUsesTheOldSpec() {
+        var offer = new LinkedHashMap<String, Object>();
+        offer.put("type", "application");
+        offer.put("protocol", "DTLS/SCTP");
+        offer.put("mid", "data");
+        offer.put("sctpmap", new LinkedHashMap<>(Map.of("app", "webrtc-datachannel", "sctpmapNumber", 5000)));
+
+        var section = new RemoteAnswerMediaSection(null, null, null, TRANSPORT.sctpParameters(), offer, null);
+
+        assertEquals(
+                lines(
+                        "m=application 7 DTLS/SCTP 5000",
+                        "c=IN IP4 127.0.0.1",
+                        "a=mid:data",
+                        "a=sctpmap:5000 webrtc-datachannel 2000000"),
+                write(section));
+    }
+
+    @Test
+    void applicationSectionsNeedSctpParameters() {
+        assertThrows(NullPointerException.class, () -> sctpOfferSectionWithoutSctp());
+        assertThrows(
+                NullPointerException.class,
+                () -> new RemoteAnswerMediaSection(
+                        null, null, null, null, offerSection("offer-datachannel.sdp", 0), null));
+    }
+
+    private static RemoteOfferMediaSection sctpOfferSectionWithoutSctp() {
+        return new RemoteOfferMediaSection(
+                null, null, null, null, "datachannel", "application", null, null, null, false);
     }
 }

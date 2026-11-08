@@ -10,6 +10,8 @@ import dev.onvoid.webrtc.PeerConnectionFactory;
 import dev.onvoid.webrtc.PeerConnectionObserver;
 import dev.onvoid.webrtc.RTCBundlePolicy;
 import dev.onvoid.webrtc.RTCConfiguration;
+import dev.onvoid.webrtc.RTCDataChannel;
+import dev.onvoid.webrtc.RTCDataChannelInit;
 import dev.onvoid.webrtc.RTCIceCandidate;
 import dev.onvoid.webrtc.RTCIceGatheringState;
 import dev.onvoid.webrtc.RTCIceServer;
@@ -65,7 +67,7 @@ import io.github.hectorespert.jmediasoup.rtp.RtpEncodingParameters;
 import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
 import io.github.hectorespert.jmediasoup.sctp.NumSctpStreams;
 import io.github.hectorespert.jmediasoup.sctp.SctpCapabilities;
-import io.github.hectorespert.jmediasoup.sctp.SctpParameters;
+import io.github.hectorespert.jmediasoup.sctp.SctpStreamParameters;
 import io.github.hectorespert.jmediasoup.transport.ConnectionState;
 import io.github.hectorespert.jmediasoup.transport.DtlsParameters;
 import io.github.hectorespert.jmediasoup.transport.DtlsRole;
@@ -117,9 +119,6 @@ public final class WebRtcJavaHandler implements Handler {
     private final TransportDirection direction;
     // Where the handler reports to its transport.
     private final HandlerListener listener;
-    // SCTP parameters of the mediasoup transport, for the data channels.
-    @SuppressWarnings("unused")
-    private final @Nullable SctpParameters sctpParameters;
     // Remote SDP handler.
     private final RemoteSdp remoteSdp;
     // Callback to request sending extended RTP capabilities on demand.
@@ -138,6 +137,12 @@ public final class WebRtcJavaHandler implements Handler {
     private int nextLocalId;
     // The stream of the tracks to send, as the MediaStream of mediasoup-client.
     private final String sendStreamId = UUID.randomUUID().toString();
+    // Whether a DataChannel m=application section has been created.
+    private volatile boolean hasDataChannelMediaSection;
+    // Sending DataChannel id value counter. Incremented for each new DataChannel.
+    private int nextSendSctpStreamId;
+    // The data channels, which the handler releases when it closes.
+    private final Set<WebRtcJavaDataChannel> dataChannels = ConcurrentHashMap.newKeySet();
 
     private WebRtcJavaHandler(Factory factory, HandlerOptions options) {
         logger.debug("constructor()");
@@ -145,8 +150,8 @@ public final class WebRtcJavaHandler implements Handler {
         this.factory = factory;
         this.direction = options.direction();
         this.listener = options.listener();
-        this.sctpParameters = options.sctpParameters();
-        this.remoteSdp = new RemoteSdp(options.iceParameters(), options.iceCandidates(), options.dtlsParameters());
+        this.remoteSdp = new RemoteSdp(
+                options.iceParameters(), options.iceCandidates(), options.dtlsParameters(), options.sctpParameters());
         this.getSendExtendedRtpCapabilities = options.getSendExtendedRtpCapabilities();
 
         DtlsRole remoteRole = options.dtlsParameters().role();
@@ -344,6 +349,11 @@ public final class WebRtcJavaHandler implements Handler {
         }
 
         logger.debug("close()");
+
+        // Release the data channels before the peer connection closes them, so that their closing does
+        // not reach the data producers and consumers, which the transport closes.
+        dataChannels.forEach(WebRtcJavaDataChannel::dispose);
+        dataChannels.clear();
 
         // Close RTCPeerConnection.
         try {
@@ -878,9 +888,91 @@ public final class WebRtcJavaHandler implements Handler {
         return PeerConnections.getStats(pc, transceiver.getSender());
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>As in mediasoup-client, the channel is {@code negotiated}, with the given stream id or, if
+     * none, the next one of a counter modulo the number of streams. The first channel negotiates the
+     * {@code m=application} section.
+     */
     @Override
     public CompletableFuture<HandlerSendDataChannelResult> sendDataChannel(HandlerSendDataChannelOptions options) {
-        return notImplemented("sendDataChannel");
+        requireNonNull(options, "options");
+        SctpStreamParameters requested = options.sctpStreamParameters();
+        WebRtcJavaDataChannel dataChannel;
+        SctpStreamParameters sctpStreamParameters;
+        try {
+            assertNotClosed();
+            assertSendDirection();
+
+            // ⚠️ pymediasoup ignores the stream id it receives.
+            int streamId = requested.streamId() != null ? requested.streamId() : nextSendSctpStreamId;
+            boolean ordered = !Boolean.FALSE.equals(requested.ordered());
+            String label = requested.label() != null ? requested.label() : "";
+
+            logger.debug("sendDataChannel() [streamId:{}, label:{}]", streamId, label);
+
+            // ⚠️ pymediasoup does not pass maxRetransmits.
+            dataChannel = createDataChannel(
+                    label,
+                    streamId,
+                    ordered,
+                    requested.maxPacketLifeTime(),
+                    requested.maxRetransmits(),
+                    requested.protocol());
+
+            // Increase next id.
+            if (requested.streamId() == null) {
+                nextSendSctpStreamId = (nextSendSctpStreamId + 1) % SCTP_NUM_STREAMS;
+            }
+
+            sctpStreamParameters = new SctpStreamParameters(
+                    streamId, ordered, requested.maxPacketLifeTime(), requested.maxRetransmits(), null, null);
+        } catch (MediasoupClientException | RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        // If this is the first DataChannel we need to create the SDP answer with m=application section.
+        CompletableFuture<Void> negotiated =
+                hasDataChannelMediaSection ? CompletableFuture.completedFuture(null) : negotiateSendingDataChannel();
+
+        return negotiated
+                .thenApply(ignored -> new HandlerSendDataChannelResult(dataChannel, sctpStreamParameters))
+                .whenComplete((result, error) -> {
+                    if (error != null) {
+                        closeDataChannel(dataChannel);
+                    }
+                });
+    }
+
+    private CompletableFuture<Void> negotiateSendingDataChannel() {
+        return PeerConnections.createOffer(pc, new RTCOfferOptions()).thenCompose(offer -> {
+            Map<String, Object> localSdpObject = Parser.parse(offer.sdp);
+            Map<String, Object> offerMediaObject = mediaSections(localSdpObject).stream()
+                    .filter(m -> "application".equals(m.get("type")))
+                    .findFirst()
+                    .orElseThrow(() -> new CompletionException(
+                            new MediasoupClientException("no m=application section in the offer")));
+
+            CompletableFuture<Void> ready = transportReady
+                    ? CompletableFuture.completedFuture(null)
+                    : setupTransport(localDtlsRole(), localSdpObject);
+
+            return ready.thenCompose(ignored -> {
+                        logger.debug("sendDataChannel() | calling pc.setLocalDescription() [offer:{}]", offer.sdp);
+                        return PeerConnections.setLocalDescription(pc, offer);
+                    })
+                    .thenCompose(ignored -> {
+                        remoteSdp.sendSctpAssociation(offerMediaObject);
+
+                        var answer = new RTCSessionDescription(RTCSdpType.ANSWER, remoteSdp.getSdp());
+
+                        logger.debug("sendDataChannel() | calling pc.setRemoteDescription() [answer:{}]", answer.sdp);
+
+                        return PeerConnections.setRemoteDescription(pc, answer);
+                    })
+                    .thenRun(() -> hasDataChannelMediaSection = true);
+        });
     }
 
     /**
@@ -1105,10 +1197,109 @@ public final class WebRtcJavaHandler implements Handler {
         return PeerConnections.getStats(pc, transceiver.getReceiver());
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>As in mediasoup-client, the channel is {@code negotiated}, with the stream id that mediasoup
+     * gives. The first channel negotiates the {@code m=application} section.
+     */
     @Override
     public CompletableFuture<HandlerReceiveDataChannelResult> receiveDataChannel(
             HandlerReceiveDataChannelOptions options) {
-        return notImplemented("receiveDataChannel");
+        requireNonNull(options, "options");
+        SctpStreamParameters sctpStreamParameters = options.sctpStreamParameters();
+        WebRtcJavaDataChannel dataChannel;
+        try {
+            assertNotClosed();
+            assertRecvDirection();
+
+            Integer streamId = sctpStreamParameters.streamId();
+            if (streamId == null) {
+                throw new MediasoupClientException("missing sctpStreamParameters.streamId");
+            }
+            String label = options.label() != null ? options.label() : "";
+
+            logger.debug("receiveDataChannel() [streamId:{}, label:{}]", streamId, label);
+
+            dataChannel = createDataChannel(
+                    label,
+                    streamId,
+                    !Boolean.FALSE.equals(sctpStreamParameters.ordered()),
+                    sctpStreamParameters.maxPacketLifeTime(),
+                    sctpStreamParameters.maxRetransmits(),
+                    options.protocol());
+        } catch (MediasoupClientException | RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        // If this is the first DataChannel we need to create the SDP offer with m=application section.
+        CompletableFuture<Void> negotiated =
+                hasDataChannelMediaSection ? CompletableFuture.completedFuture(null) : negotiateReceivingDataChannel();
+
+        return negotiated
+                .thenApply(ignored -> new HandlerReceiveDataChannelResult(dataChannel))
+                .whenComplete((result, error) -> {
+                    if (error != null) {
+                        closeDataChannel(dataChannel);
+                    }
+                });
+    }
+
+    private CompletableFuture<Void> negotiateReceivingDataChannel() {
+        RTCSessionDescription offer;
+        try {
+            remoteSdp.receiveSctpAssociation(false);
+
+            offer = new RTCSessionDescription(RTCSdpType.OFFER, remoteSdp.getSdp());
+        } catch (RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        logger.debug("receiveDataChannel() | calling pc.setRemoteDescription() [offer:{}]", offer.sdp);
+
+        return PeerConnections.setRemoteDescription(pc, offer)
+                .thenCompose(ignored -> PeerConnections.createAnswer(pc))
+                .thenCompose(answer -> {
+                    CompletableFuture<Void> ready = transportReady
+                            ? CompletableFuture.completedFuture(null)
+                            : setupTransport(localDtlsRole(), Parser.parse(answer.sdp));
+
+                    return ready.thenCompose(ignored -> {
+                        logger.debug("receiveDataChannel() | calling pc.setLocalDescription() [answer:{}]", answer.sdp);
+                        return PeerConnections.setLocalDescription(pc, answer);
+                    });
+                })
+                .thenRun(() -> hasDataChannelMediaSection = true);
+    }
+
+    // Creates a negotiated data channel, whose stream both sides agree on through mediasoup.
+    private WebRtcJavaDataChannel createDataChannel(
+            String label,
+            int streamId,
+            boolean ordered,
+            @Nullable Integer maxPacketLifeTime,
+            @Nullable Integer maxRetransmits,
+            @Nullable String protocol) {
+        var init = new RTCDataChannelInit();
+        init.negotiated = true;
+        init.id = streamId;
+        init.ordered = ordered;
+        // webrtc-java takes -1 as absent.
+        init.maxPacketLifeTime = maxPacketLifeTime != null ? maxPacketLifeTime : -1;
+        init.maxRetransmits = maxRetransmits != null ? maxRetransmits : -1;
+        init.protocol = protocol != null ? protocol : "";
+
+        RTCDataChannel channel = pc.createDataChannel(label, init);
+        var dataChannel = new WebRtcJavaDataChannel(channel);
+        dataChannels.add(dataChannel);
+        return dataChannel;
+    }
+
+    private void closeDataChannel(WebRtcJavaDataChannel dataChannel) {
+        dataChannel.close();
+        if (dataChannels.remove(dataChannel)) {
+            dataChannel.dispose();
+        }
     }
 
     /**

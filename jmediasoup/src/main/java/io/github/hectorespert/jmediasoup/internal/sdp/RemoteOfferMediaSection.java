@@ -10,6 +10,7 @@ import io.github.hectorespert.jmediasoup.rtp.RtpCodecParameters;
 import io.github.hectorespert.jmediasoup.rtp.RtpEncodingParameters;
 import io.github.hectorespert.jmediasoup.rtp.RtpHeaderExtensionParameters;
 import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
+import io.github.hectorespert.jmediasoup.sctp.SctpParameters;
 import io.github.hectorespert.jmediasoup.transport.DtlsParameters;
 import io.github.hectorespert.jmediasoup.transport.DtlsRole;
 import io.github.hectorespert.jmediasoup.transport.IceCandidate;
@@ -22,9 +23,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * A media section of a remote offer, for receiving: mediasoup offers to send what a consumer
- * receives.
- *
- * <p>Data channel sections arrive with the phase that uses them.
+ * receives, or the SCTP association of the data consumers.
  */
 public final class RemoteOfferMediaSection extends RemoteMediaSection {
 
@@ -40,7 +39,6 @@ public final class RemoteOfferMediaSection extends RemoteMediaSection {
      * @param streamId the stream of the {@code a=msid}, or {@code null}
      * @param trackId the track of the {@code a=msid}, or {@code null}
      */
-    @SuppressWarnings("unchecked")
     public RemoteOfferMediaSection(
             @Nullable IceParameters iceParameters,
             @Nullable List<IceCandidate> iceCandidates,
@@ -50,12 +48,53 @@ public final class RemoteOfferMediaSection extends RemoteMediaSection {
             @Nullable RtpParameters offerRtpParameters,
             @Nullable String streamId,
             @Nullable String trackId) {
+        this(
+                iceParameters,
+                iceCandidates,
+                dtlsParameters,
+                null,
+                mid,
+                kind,
+                offerRtpParameters,
+                streamId,
+                trackId,
+                false);
+    }
+
+    /**
+     * Creates a media section of the remote offer, which may be the SCTP association.
+     *
+     * @param iceParameters the ICE parameters of the mediasoup transport, or {@code null}
+     * @param iceCandidates the ICE candidates of the mediasoup transport, or {@code null}
+     * @param dtlsParameters the DTLS parameters of the mediasoup transport, or {@code null}
+     * @param sctpParameters the SCTP parameters of the mediasoup transport, required for application
+     *     sections, which they make {@code UDP/DTLS/SCTP}
+     * @param mid the MID of the section
+     * @param kind {@code audio}, {@code video} or {@code application}
+     * @param offerRtpParameters the RTP parameters that mediasoup sends, required for audio and video
+     * @param streamId the stream of the {@code a=msid}, or {@code null}
+     * @param trackId the track of the {@code a=msid}, or {@code null}
+     * @param oldDataChannelSpec whether to write the SCTP association with the old {@code a=sctpmap}
+     *     instead of {@code a=sctp-port}
+     */
+    @SuppressWarnings("unchecked")
+    public RemoteOfferMediaSection(
+            @Nullable IceParameters iceParameters,
+            @Nullable List<IceCandidate> iceCandidates,
+            @Nullable DtlsParameters dtlsParameters,
+            @Nullable SctpParameters sctpParameters,
+            String mid,
+            String kind,
+            @Nullable RtpParameters offerRtpParameters,
+            @Nullable String streamId,
+            @Nullable String trackId,
+            boolean oldDataChannelSpec) {
         super(iceParameters, iceCandidates, dtlsParameters);
 
         mediaObject.put("mid", mid);
         mediaObject.put("type", kind);
         mediaObject.put("connection", defaultConnection());
-        mediaObject.put("protocol", "UDP/TLS/RTP/SAVPF");
+        mediaObject.put("protocol", sctpParameters == null ? "UDP/TLS/RTP/SAVPF" : "UDP/DTLS/SCTP");
         mediaObject.put("port", 7);
 
         // Allow both 1 byte and 2 bytes length header extensions since mediasoup can send both at
@@ -125,6 +164,19 @@ public final class RemoteOfferMediaSection extends RemoteMediaSection {
 
             mediaObject.put("ssrcs", ssrcs);
             mediaObject.put("ssrcGroups", ssrcGroups);
+        } else if (kind.equals("application")) {
+            requireNonNull(sctpParameters, "sctpParameters");
+            // New spec.
+            if (!oldDataChannelSpec) {
+                mediaObject.put("payloads", "webrtc-datachannel");
+                mediaObject.put("sctpPort", sctpParameters.port());
+                putIfPresent("maxMessageSize", sctpParameters.maxMessageSize());
+            }
+            // Old spec.
+            else {
+                mediaObject.put("payloads", String.valueOf(sctpParameters.port()));
+                mediaObject.put("sctpmap", sctpmap(sctpParameters));
+            }
         }
     }
 

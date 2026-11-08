@@ -17,11 +17,15 @@ public final class TransportObserver {
     private final RunnableListeners closeListeners;
     private final Listeners<Producer> newProducerListeners;
     private final Listeners<Consumer> newConsumerListeners;
+    private final Listeners<DataProducer> newDataProducerListeners;
+    private final Listeners<DataConsumer> newDataConsumerListeners;
 
     TransportObserver(Logger logger) {
         this.closeListeners = new RunnableListeners("observer close", logger);
         this.newProducerListeners = new Listeners<>("observer newproducer", logger);
         this.newConsumerListeners = new Listeners<>("observer newconsumer", logger);
+        this.newDataProducerListeners = new Listeners<>("observer newdataproducer", logger);
+        this.newDataConsumerListeners = new Listeners<>("observer newdataconsumer", logger);
     }
 
     /**
@@ -54,6 +58,26 @@ public final class TransportObserver {
         return newConsumerListeners.add(listener);
     }
 
+    /**
+     * Listens for new data producers.
+     *
+     * @param listener called with each data producer that {@link SendTransport#produceData} creates
+     * @return the subscription that removes the listener
+     */
+    public Subscription onNewDataProducer(java.util.function.Consumer<? super DataProducer> listener) {
+        return newDataProducerListeners.add(listener);
+    }
+
+    /**
+     * Listens for new data consumers.
+     *
+     * @param listener called with each data consumer that {@link RecvTransport#consumeData} creates
+     * @return the subscription that removes the listener
+     */
+    public Subscription onNewDataConsumer(java.util.function.Consumer<? super DataConsumer> listener) {
+        return newDataConsumerListeners.add(listener);
+    }
+
     void emitClose() {
         closeListeners.emit();
     }
@@ -66,9 +90,19 @@ public final class TransportObserver {
         newConsumerListeners.emit(consumer);
     }
 
+    void emitNewDataProducer(DataProducer dataProducer) {
+        newDataProducerListeners.emit(dataProducer);
+    }
+
+    void emitNewDataConsumer(DataConsumer dataConsumer) {
+        newDataConsumerListeners.emit(dataConsumer);
+    }
+
     void clear() {
         closeListeners.clear();
         newProducerListeners.clear();
         newConsumerListeners.clear();
+        newDataProducerListeners.clear();
+        newDataConsumerListeners.clear();
     }
 }

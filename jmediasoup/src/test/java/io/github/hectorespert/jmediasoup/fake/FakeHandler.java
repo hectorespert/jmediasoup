@@ -88,6 +88,7 @@ public final class FakeHandler implements Handler {
     private final List<Integer> stopReceivingBatches = new CopyOnWriteArrayList<>();
     private final List<String> pauseCalls = new CopyOnWriteArrayList<>();
     private final List<String> iceCalls = new CopyOnWriteArrayList<>();
+    private final List<FakeDataChannel> dataChannels = new CopyOnWriteArrayList<>();
     private volatile boolean closed;
     // Got transport local and remote parameters.
     private volatile boolean transportReady;
@@ -220,6 +221,15 @@ public final class FakeHandler implements Handler {
      */
     public List<String> iceCalls() {
         return List.copyOf(iceCalls);
+    }
+
+    /**
+     * Returns the data channels opened for sending and receiving, so that tests can drive them.
+     *
+     * @return the channels, in the order they were opened
+     */
+    public List<FakeDataChannel> dataChannels() {
+        return List.copyOf(dataChannels);
     }
 
     /**
@@ -362,6 +372,7 @@ public final class FakeHandler implements Handler {
             // ⚠️ The original gives the channel one id and returns the next one; both are the same here.
             int streamId = nextSctpStreamId.getAndIncrement();
             var dataChannel = new FakeDataChannel(text(requested.label()), text(requested.protocol()));
+            dataChannels.add(dataChannel);
             var sctpStreamParameters = new SctpStreamParameters(
                     streamId,
                     requested.ordered(),
@@ -431,9 +442,11 @@ public final class FakeHandler implements Handler {
     @Override
     public CompletableFuture<HandlerReceiveDataChannelResult> receiveDataChannel(
             HandlerReceiveDataChannelOptions channelOptions) {
-        return start().thenCompose(ignored -> setupTransport(DtlsRole.CLIENT))
-                .thenApply(ignored -> new HandlerReceiveDataChannelResult(
-                        new FakeDataChannel(text(channelOptions.label()), text(channelOptions.protocol()))));
+        return start().thenCompose(ignored -> setupTransport(DtlsRole.CLIENT)).thenApply(ignored -> {
+            var dataChannel = new FakeDataChannel(text(channelOptions.label()), text(channelOptions.protocol()));
+            dataChannels.add(dataChannel);
+            return new HandlerReceiveDataChannelResult(dataChannel);
+        });
     }
 
     @Override

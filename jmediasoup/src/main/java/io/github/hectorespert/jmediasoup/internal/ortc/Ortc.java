@@ -22,6 +22,7 @@ import io.github.hectorespert.jmediasoup.rtp.RtpHeaderExtension;
 import io.github.hectorespert.jmediasoup.rtp.RtpHeaderExtensionDirection;
 import io.github.hectorespert.jmediasoup.rtp.RtpHeaderExtensionParameters;
 import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
+import io.github.hectorespert.jmediasoup.sctp.SctpStreamParameters;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -390,6 +391,34 @@ public final class Ortc {
                 List.of(RtpEncodingParameters.builder().ssrc(RTP_PROBATOR_SSRC).build()),
                 new RtcpParameters("probator", null, null),
                 null);
+    }
+
+    /**
+     * Validates and normalizes the SCTP stream parameters of a data producer or consumer, as the
+     * {@code validateAndNormalizeSctpStreamParameters} of mediasoup-client: the stream id is required,
+     * and an absent {@code ordered} becomes {@code false} if there is a retransmission limit and {@code
+     * true} otherwise. ⚠️ The original checks whether the limits are truthy, so it ignores a limit of 0;
+     * here any limit counts.
+     *
+     * @param sctpStreamParameters the parameters, whose reliability their constructor already checked
+     * @return the parameters with {@code ordered} set
+     * @throws IllegalArgumentException if the stream id is missing
+     */
+    public static SctpStreamParameters normalizeSctpStreamParameters(SctpStreamParameters sctpStreamParameters) {
+        if (sctpStreamParameters.streamId() == null) {
+            throw new IllegalArgumentException("missing streamId");
+        }
+        Boolean ordered = sctpStreamParameters.ordered();
+        if (ordered == null) {
+            ordered = sctpStreamParameters.maxPacketLifeTime() == null && sctpStreamParameters.maxRetransmits() == null;
+        }
+        return new SctpStreamParameters(
+                sctpStreamParameters.streamId(),
+                ordered,
+                sctpStreamParameters.maxPacketLifeTime(),
+                sctpStreamParameters.maxRetransmits(),
+                sctpStreamParameters.label(),
+                sctpStreamParameters.protocol());
     }
 
     private static RtpParameters sendingRtpParameters(

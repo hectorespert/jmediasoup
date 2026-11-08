@@ -250,4 +250,56 @@ class RemoteSdpTest {
 
         assertEquals("active", media(remoteSdp.getSdp()).getFirst().get("setup"));
     }
+
+    private static RemoteSdp sctpRemoteSdp() {
+        return new RemoteSdp(
+                TRANSPORT.iceParameters(),
+                TRANSPORT.iceCandidates(),
+                TRANSPORT.dtlsParameters(),
+                TRANSPORT.sctpParameters());
+    }
+
+    @Test
+    void sendSctpAssociationAnswersTheApplicationSectionOfTheOffer() {
+        RemoteSdp remoteSdp = sctpRemoteSdp();
+
+        remoteSdp.sendSctpAssociation(offerSection("offer-datachannel.sdp", 0));
+        String sdp = remoteSdp.getSdp();
+
+        Map<String, Object> application = media(sdp).getFirst();
+        assertEquals("application", application.get("type"));
+        assertEquals("UDP/DTLS/SCTP", application.get("protocol"));
+        assertEquals("webrtc-datachannel", application.get("payloads"));
+        assertEquals(5000, application.get("sctpPort"));
+        assertEquals(2000000, application.get("maxMessageSize"));
+        assertEquals("0", String.valueOf(application.get("mid")));
+        assertEquals("a=group:BUNDLE 0", bundle(sdp));
+    }
+
+    @Test
+    void receiveSctpAssociationOffersTheApplicationSection() {
+        RemoteSdp remoteSdp = sctpRemoteSdp();
+
+        remoteSdp.receiveSctpAssociation(false);
+        String sdp = remoteSdp.getSdp();
+
+        Map<String, Object> application = media(sdp).getFirst();
+        assertEquals("application", application.get("type"));
+        assertEquals("UDP/DTLS/SCTP", application.get("protocol"));
+        assertEquals("webrtc-datachannel", application.get("payloads"));
+        assertEquals(5000, application.get("sctpPort"));
+        assertEquals("datachannel", application.get("mid"));
+        assertEquals("actpass", application.get("setup"));
+        assertEquals("a=group:BUNDLE datachannel", bundle(sdp));
+    }
+
+    @Test
+    void theSctpAssociationNeedsSctpParameters() {
+        RemoteSdp remoteSdp = remoteSdp();
+
+        assertThrows(NullPointerException.class, () -> remoteSdp.receiveSctpAssociation(false));
+        assertThrows(
+                NullPointerException.class,
+                () -> remoteSdp.sendSctpAssociation(offerSection("offer-datachannel.sdp", 0)));
+    }
 }

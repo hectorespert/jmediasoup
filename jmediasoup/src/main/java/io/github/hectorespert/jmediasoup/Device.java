@@ -225,10 +225,31 @@ public final class Device {
      *     local settings
      * @param connect connects the mediasoup transport, before the first produce
      * @param produce creates each producer on the server
-     * @return the transport
+     * @return the transport, which cannot produce data
      * @throws InvalidStateException if the device is not loaded
      */
     public SendTransport createSendTransport(TransportOptions options, ConnectHandler connect, ProduceHandler produce)
+            throws InvalidStateException {
+        return createSendTransport(options, connect, produce, null);
+    }
+
+    /**
+     * Creates a transport for sending media and data, which can produce data with the given handler.
+     *
+     * @param options the parameters of the mediasoup transport, as the server created it, and the
+     *     local settings
+     * @param connect connects the mediasoup transport, before the first produce
+     * @param produce creates each producer on the server
+     * @param produceData creates each data producer on the server, or {@code null} if the transport
+     *     does not produce data, so that {@link SendTransport#produceData} fails
+     * @return the transport
+     * @throws InvalidStateException if the device is not loaded
+     */
+    public SendTransport createSendTransport(
+            TransportOptions options,
+            ConnectHandler connect,
+            ProduceHandler produce,
+            @Nullable ProduceDataHandler produceData)
             throws InvalidStateException {
         logger.debug("createSendTransport()");
         requireNonNull(options, "options");
@@ -241,7 +262,8 @@ public final class Device {
                 current.getSendExtendedRtpCapabilities(),
                 current.canProduceByKind(),
                 connect,
-                produce));
+                produce,
+                produceData));
     }
 
     /**

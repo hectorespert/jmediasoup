@@ -10,13 +10,17 @@ import dev.onvoid.webrtc.RTCStatsReport;
 import dev.onvoid.webrtc.media.MediaStreamTrack;
 import dev.onvoid.webrtc.media.MediaStreamTrackState;
 import io.github.hectorespert.jmediasoup.handler.HandlerFactory;
+import io.github.hectorespert.jmediasoup.handler.HandlerSendDataChannelOptions;
+import io.github.hectorespert.jmediasoup.handler.HandlerSendDataChannelResult;
 import io.github.hectorespert.jmediasoup.handler.HandlerSendOptions;
 import io.github.hectorespert.jmediasoup.handler.HandlerSendResult;
 import io.github.hectorespert.jmediasoup.internal.event.AsyncHandlers;
+import io.github.hectorespert.jmediasoup.internal.ortc.Ortc;
 import io.github.hectorespert.jmediasoup.rtp.ExtendedRtpCapabilities;
 import io.github.hectorespert.jmediasoup.rtp.MediaKind;
 import io.github.hectorespert.jmediasoup.rtp.RtpCapabilities;
 import io.github.hectorespert.jmediasoup.rtp.RtpEncodingParameters;
+import io.github.hectorespert.jmediasoup.sctp.SctpStreamParameters;
 import io.github.hectorespert.jmediasoup.transport.TransportDirection;
 import io.github.hectorespert.jmediasoup.transport.TransportOptions;
 import java.util.List;
@@ -38,10 +42,14 @@ public final class SendTransport extends Transport {
 
     // The produce handler of the application.
     private final ProduceHandler produceHandler;
+    // The produceData handler of the application, if it produces data.
+    private final @Nullable ProduceDataHandler produceDataHandler;
     // Whether we can produce audio/video based on computed extended RTP capabilities.
     private final Map<MediaKind, Boolean> canProduceByKind;
     // Map of Producers indexed by id.
     private final Map<String, Producer> producers = new ConcurrentHashMap<>();
+    // Map of DataProducers indexed by id.
+    private final Map<String, DataProducer> dataProducers = new ConcurrentHashMap<>();
 
     SendTransport(
             TransportOptions options,
@@ -49,10 +57,12 @@ public final class SendTransport extends Transport {
             Function<RtpCapabilities, ExtendedRtpCapabilities> getSendExtendedRtpCapabilities,
             Map<MediaKind, Boolean> canProduceByKind,
             ConnectHandler connectHandler,
-            ProduceHandler produceHandler) {
+            ProduceHandler produceHandler,
+            @Nullable ProduceDataHandler produceDataHandler) {
         super(TransportDirection.SEND, options, handlerFactory, getSendExtendedRtpCapabilities, connectHandler);
         this.canProduceByKind = Map.copyOf(canProduceByKind);
         this.produceHandler = requireNonNull(produceHandler, "produce");
+        this.produceDataHandler = produceDataHandler;
     }
 
     /**
@@ -171,6 +181,103 @@ public final class SendTransport extends Transport {
                 });
     }
 
+    /**
+     * Sends data to mediasoup through a new data channel. The handler opens it, negotiating SCTP the
+     * first time and connecting the transport first if needed, and the {@link ProduceDataHandler}
+     * creates the data producer on the server.
+     *
+     * <p>Productions run one after another, after the other operations of the transport.
+     *
+     * @param options the reliability, label, protocol and application data of the data channel
+     * @return a future with the data producer; it fails with an {@link InvalidStateException} if the
+     *     transport is closed, before or while producing, or was created without a {@link
+     *     ProduceDataHandler}, with an {@link UnsupportedException} if the server transport has no
+     *     SCTP, with a {@link MediasoupClientException} if the {@link ProduceDataHandler} fails, or with
+     *     the failure of the handler
+     */
+    public CompletableFuture<DataProducer> produceData(DataProducerOptions options) {
+        requireNonNull(options, "options");
+        logger.debug("produceData()");
+
+        if (closed()) {
+            return CompletableFuture.failedFuture(new InvalidStateException("closed"));
+        } else if (sctpParameters() == null) {
+            return CompletableFuture.failedFuture(new UnsupportedException("SCTP not enabled by remote Transport"));
+        }
+        ProduceDataHandler produceData = produceDataHandler;
+        if (produceData == null) {
+            return CompletableFuture.failedFuture(
+                    new InvalidStateException("no produceData handler set into this transport"));
+        }
+
+        boolean ordered = options.ordered() != null
+                ? options.ordered()
+                : options.maxPacketLifeTime() == null && options.maxRetransmits() == null;
+        String label = options.label() != null ? options.label() : "";
+        String protocol = options.protocol() != null ? options.protocol() : "";
+        var channelOptions = new HandlerSendDataChannelOptions(new SctpStreamParameters(
+                null, ordered, options.maxPacketLifeTime(), options.maxRetransmits(), label, protocol));
+
+        return queue().push(
+                        "transport.produceData()",
+                        () -> handler()
+                                .sendDataChannel(channelOptions)
+                                .thenComposeAsync(
+                                        result -> createDataProducer(
+                                                produceData, label, protocol, options.appData(), result),
+                                        executor()));
+    }
+
+    // Asks the application to create the data producer on the server, and creates the local one.
+    private CompletableFuture<DataProducer> createDataProducer(
+            ProduceDataHandler produceData,
+            String label,
+            String protocol,
+            Map<String, @Nullable Object> appData,
+            HandlerSendDataChannelResult result) {
+        SctpStreamParameters sctpStreamParameters;
+        try {
+            // This will fill sctpStreamParameters's missing fields with default values.
+            sctpStreamParameters = Ortc.normalizeSctpStreamParameters(result.sctpStreamParameters());
+        } catch (IllegalArgumentException e) {
+            result.dataChannel().close();
+            return CompletableFuture.failedFuture(e);
+        }
+        return AsyncHandlers.<String>call(
+                        "produceData",
+                        () -> produceData.produceData(
+                                new ProduceDataRequest(sctpStreamParameters, label, protocol, appData)))
+                .thenApply(id -> {
+                    if (id.isEmpty()) {
+                        throw new CompletionException(
+                                new MediasoupClientException("produceData handler completed with an empty id"));
+                    }
+                    var dataProducer = new DataProducer(
+                            id,
+                            result.dataChannel(),
+                            sctpStreamParameters,
+                            appData,
+                            executor(),
+                            closed -> dataProducers.remove(closed.id()));
+                    dataProducers.put(id, dataProducer);
+                    // The transport may have closed while the application created the data producer.
+                    if (closed()) {
+                        dataProducers.remove(id);
+                        throw new CompletionException(new InvalidStateException("closed"));
+                    }
+
+                    // Emit observer event.
+                    executor().execute(() -> observer().emitNewDataProducer(dataProducer));
+
+                    return dataProducer;
+                })
+                .whenComplete((dataProducer, error) -> {
+                    if (error != null) {
+                        result.dataChannel().close();
+                    }
+                });
+    }
+
     // Keeps the fields that the browsers accept, with active true unless it is false.
     private static List<RtpEncodingParameters> normalizeEncodings(List<RtpEncodingParameters> encodings) {
         return encodings.stream()
@@ -242,5 +349,10 @@ public final class SendTransport extends Transport {
             producer.transportClosed();
         }
         producers.clear();
+
+        for (DataProducer dataProducer : dataProducers.values()) {
+            dataProducer.transportClosed();
+        }
+        dataProducers.clear();
     }
 }

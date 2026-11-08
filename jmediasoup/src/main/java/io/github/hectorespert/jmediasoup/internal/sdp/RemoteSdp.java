@@ -9,6 +9,7 @@ import static java.util.Objects.requireNonNull;
 import io.github.hectorespert.jmediasoup.MediasoupClientException;
 import io.github.hectorespert.jmediasoup.internal.sdptransform.Writer;
 import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
+import io.github.hectorespert.jmediasoup.sctp.SctpParameters;
 import io.github.hectorespert.jmediasoup.transport.DtlsFingerprint;
 import io.github.hectorespert.jmediasoup.transport.DtlsParameters;
 import io.github.hectorespert.jmediasoup.transport.DtlsRole;
@@ -45,6 +46,8 @@ public final class RemoteSdp {
     private final @Nullable List<IceCandidate> iceCandidates;
     // Remote DTLS parameters.
     private @Nullable DtlsParameters dtlsParameters;
+    // Remote SCTP parameters.
+    private final @Nullable SctpParameters sctpParameters;
     // RemoteMediaSection instances with same order as in the SDP.
     private final List<RemoteMediaSection> mediaSections = new ArrayList<>();
     // RemoteMediaSection indices indexed by MID.
@@ -75,9 +78,27 @@ public final class RemoteSdp {
             @Nullable IceParameters iceParameters,
             @Nullable List<IceCandidate> iceCandidates,
             @Nullable DtlsParameters dtlsParameters) {
+        this(iceParameters, iceCandidates, dtlsParameters, null);
+    }
+
+    /**
+     * Creates the SDP for a mediasoup transport, which may have SCTP.
+     *
+     * @param iceParameters the ICE parameters, or {@code null}
+     * @param iceCandidates the ICE candidates, or {@code null}
+     * @param dtlsParameters the DTLS parameters, or {@code null}; with them the SDP is for WebRTC and
+     *     BUNDLE
+     * @param sctpParameters the SCTP parameters, or {@code null} if the transport has no SCTP
+     */
+    public RemoteSdp(
+            @Nullable IceParameters iceParameters,
+            @Nullable List<IceCandidate> iceCandidates,
+            @Nullable DtlsParameters dtlsParameters,
+            @Nullable SctpParameters sctpParameters) {
         this.iceParameters = iceParameters;
         this.iceCandidates = iceCandidates;
         this.dtlsParameters = dtlsParameters;
+        this.sctpParameters = sctpParameters;
 
         origin.put("address", "0.0.0.0");
         origin.put("ipVer", 4);
@@ -256,6 +277,48 @@ public final class RemoteSdp {
         } else {
             addMediaSection(mediaSection);
         }
+    }
+
+    /**
+     * Adds the answer to the {@code m=application} section of the local offer, the SCTP association
+     * for sending data.
+     *
+     * @param offerMediaObject the parsed application section of the local offer
+     * @throws NullPointerException if the SDP has no SCTP parameters
+     */
+    public void sendSctpAssociation(Map<String, Object> offerMediaObject) {
+        var mediaSection = new RemoteAnswerMediaSection(
+                iceParameters,
+                iceCandidates,
+                dtlsParameters,
+                requireNonNull(sctpParameters, "sctpParameters"),
+                offerMediaObject,
+                null);
+
+        addMediaSection(mediaSection);
+    }
+
+    /**
+     * Adds the {@code m=application} section to the offer, the SCTP association for receiving data,
+     * with the MID {@code datachannel}.
+     *
+     * @param oldDataChannelSpec whether to write it with the old {@code a=sctpmap}
+     * @throws NullPointerException if the SDP has no SCTP parameters
+     */
+    public void receiveSctpAssociation(boolean oldDataChannelSpec) {
+        var mediaSection = new RemoteOfferMediaSection(
+                iceParameters,
+                iceCandidates,
+                dtlsParameters,
+                requireNonNull(sctpParameters, "sctpParameters"),
+                "datachannel",
+                "application",
+                null,
+                null,
+                null,
+                oldDataChannelSpec);
+
+        addMediaSection(mediaSection);
     }
 
     /**

@@ -9,6 +9,7 @@ import static java.util.Objects.requireNonNull;
 import dev.onvoid.webrtc.RTCStatsReport;
 import io.github.hectorespert.jmediasoup.handler.Handler;
 import io.github.hectorespert.jmediasoup.handler.HandlerFactory;
+import io.github.hectorespert.jmediasoup.handler.HandlerReceiveDataChannelOptions;
 import io.github.hectorespert.jmediasoup.handler.HandlerReceiveOptions;
 import io.github.hectorespert.jmediasoup.handler.HandlerReceiveResult;
 import io.github.hectorespert.jmediasoup.internal.ortc.Ortc;
@@ -16,6 +17,8 @@ import io.github.hectorespert.jmediasoup.rtp.ExtendedRtpCapabilities;
 import io.github.hectorespert.jmediasoup.rtp.MediaKind;
 import io.github.hectorespert.jmediasoup.rtp.RtpCapabilities;
 import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
+import io.github.hectorespert.jmediasoup.sctp.SctpParameters;
+import io.github.hectorespert.jmediasoup.sctp.SctpStreamParameters;
 import io.github.hectorespert.jmediasoup.transport.TransportDirection;
 import io.github.hectorespert.jmediasoup.transport.TransportOptions;
 import java.util.ArrayList;
@@ -47,6 +50,8 @@ public final class RecvTransport extends Transport {
     private final RtpCapabilities recvRtpCapabilities;
     // Map of Consumers indexed by id.
     private final Map<String, Consumer> consumers = new ConcurrentHashMap<>();
+    // Map of DataConsumers indexed by id.
+    private final Map<String, DataConsumer> dataConsumers = new ConcurrentHashMap<>();
     // Guards the pending consumer creations, closures, pauses and resumes.
     private final ReentrantLock lock = new ReentrantLock();
     // Consumer creation tasks awaiting to be processed.
@@ -124,6 +129,69 @@ public final class RecvTransport extends Transport {
         }
 
         return task.result();
+    }
+
+    /**
+     * Receives the messages of a mediasoup data producer through a new data channel, after the
+     * application created the data consumer on the server. The handler opens it, negotiating SCTP the
+     * first time and connecting the transport first if needed.
+     *
+     * <p>Data consumptions run one after another, after the other operations of the transport.
+     *
+     * @param options the parameters of the mediasoup data consumer
+     * @return a future with the data consumer; it fails with an {@link InvalidStateException} if the
+     *     transport is closed, before or while consuming, with an {@link UnsupportedException} if the
+     *     server transport has no SCTP, with an {@link IllegalArgumentException} if the SCTP stream
+     *     parameters have no stream id, or with the failure of the handler
+     */
+    public CompletableFuture<DataConsumer> consumeData(DataConsumerOptions options) {
+        requireNonNull(options, "options");
+        logger.debug("consumeData()");
+
+        SctpParameters sctpParameters = sctpParameters();
+        if (closed()) {
+            return CompletableFuture.failedFuture(new InvalidStateException("closed"));
+        } else if (sctpParameters == null) {
+            return CompletableFuture.failedFuture(new UnsupportedException("SCTP not enabled by remote Transport"));
+        }
+
+        SctpStreamParameters sctpStreamParameters;
+        try {
+            // This may throw.
+            sctpStreamParameters = Ortc.normalizeSctpStreamParameters(options.sctpStreamParameters());
+        } catch (IllegalArgumentException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+        String label = options.label() != null ? options.label() : "";
+        String protocol = options.protocol() != null ? options.protocol() : "";
+
+        return queue().push(
+                        "transport.consumeData()",
+                        () -> handler()
+                                .receiveDataChannel(new HandlerReceiveDataChannelOptions(
+                                        sctpParameters.maxSendMessageSize(), sctpStreamParameters, label, protocol)))
+                .thenApply(result -> {
+                    var dataConsumer = new DataConsumer(
+                            options.id(),
+                            options.dataProducerId(),
+                            result.dataChannel(),
+                            sctpStreamParameters,
+                            options.appData(),
+                            executor(),
+                            closed -> dataConsumers.remove(closed.id()));
+                    dataConsumers.put(dataConsumer.id(), dataConsumer);
+                    // The transport may have closed while the handler received.
+                    if (closed()) {
+                        dataConsumers.remove(dataConsumer.id());
+                        result.dataChannel().close();
+                        throw new CompletionException(new InvalidStateException("closed"));
+                    }
+
+                    // Emit observer event.
+                    executor().execute(() -> observer().emitNewDataConsumer(dataConsumer));
+
+                    return dataConsumer;
+                });
     }
 
     private void createPendingConsumers() {
@@ -461,6 +529,11 @@ public final class RecvTransport extends Transport {
             consumer.transportClosed();
         }
         consumers.clear();
+
+        for (DataConsumer dataConsumer : dataConsumers.values()) {
+            dataConsumer.transportClosed();
+        }
+        dataConsumers.clear();
     }
 
     private static void fail(List<ConsumerCreationTask> tasks, Throwable error) {

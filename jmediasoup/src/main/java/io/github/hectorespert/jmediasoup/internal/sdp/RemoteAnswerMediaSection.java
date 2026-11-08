@@ -10,6 +10,7 @@ import io.github.hectorespert.jmediasoup.internal.sdptransform.JavaScript;
 import io.github.hectorespert.jmediasoup.rtp.RtpCodecParameters;
 import io.github.hectorespert.jmediasoup.rtp.RtpHeaderExtensionParameters;
 import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
+import io.github.hectorespert.jmediasoup.sctp.SctpParameters;
 import io.github.hectorespert.jmediasoup.transport.DtlsParameters;
 import io.github.hectorespert.jmediasoup.transport.DtlsRole;
 import io.github.hectorespert.jmediasoup.transport.IceCandidate;
@@ -24,7 +25,7 @@ import org.jspecify.annotations.Nullable;
  * A media section of the remote answer to a local offer, for sending: mediasoup receives what the
  * local endpoint offers to send.
  *
- * <p>Codec options, simulcast and data channel sections arrive with the phases that use them.
+ * <p>Codec options and simulcast arrive with the phase that uses them.
  */
 public final class RemoteAnswerMediaSection extends RemoteMediaSection {
 
@@ -38,11 +39,33 @@ public final class RemoteAnswerMediaSection extends RemoteMediaSection {
      * @param answerRtpParameters the RTP parameters that mediasoup receives, required for audio and
      *     video sections
      */
+    public RemoteAnswerMediaSection(
+            @Nullable IceParameters iceParameters,
+            @Nullable List<IceCandidate> iceCandidates,
+            @Nullable DtlsParameters dtlsParameters,
+            Map<String, Object> offerMediaObject,
+            @Nullable RtpParameters answerRtpParameters) {
+        this(iceParameters, iceCandidates, dtlsParameters, null, offerMediaObject, answerRtpParameters);
+    }
+
+    /**
+     * Creates the answer to a media section of the local offer, which may be the SCTP association.
+     *
+     * @param iceParameters the ICE parameters of the mediasoup transport, or {@code null}
+     * @param iceCandidates the ICE candidates of the mediasoup transport, or {@code null}
+     * @param dtlsParameters the DTLS parameters of the mediasoup transport, or {@code null}
+     * @param sctpParameters the SCTP parameters of the mediasoup transport, required for application
+     *     sections
+     * @param offerMediaObject the parsed media section of the local offer
+     * @param answerRtpParameters the RTP parameters that mediasoup receives, required for audio and
+     *     video sections
+     */
     @SuppressWarnings("unchecked")
     public RemoteAnswerMediaSection(
             @Nullable IceParameters iceParameters,
             @Nullable List<IceCandidate> iceCandidates,
             @Nullable DtlsParameters dtlsParameters,
+            @Nullable SctpParameters sctpParameters,
             Map<String, Object> offerMediaObject,
             @Nullable RtpParameters answerRtpParameters) {
         super(iceParameters, iceCandidates, dtlsParameters);
@@ -91,6 +114,19 @@ public final class RemoteAnswerMediaSection extends RemoteMediaSection {
 
             mediaObject.put("rtcpMux", "rtcp-mux");
             mediaObject.put("rtcpRsize", "rtcp-rsize");
+        } else if ("application".equals(type)) {
+            requireNonNull(sctpParameters, "sctpParameters");
+            // New spec.
+            if (offerMediaObject.get("sctpPort") instanceof Number) {
+                mediaObject.put("payloads", "webrtc-datachannel");
+                mediaObject.put("sctpPort", sctpParameters.port());
+                putIfPresent("maxMessageSize", sctpParameters.maxMessageSize());
+            }
+            // Old spec.
+            else if (offerMediaObject.get("sctpmap") != null) {
+                mediaObject.put("payloads", String.valueOf(sctpParameters.port()));
+                mediaObject.put("sctpmap", sctpmap(sctpParameters));
+            }
         }
     }
 

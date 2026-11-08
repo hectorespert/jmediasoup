@@ -96,6 +96,35 @@ if (consumer.track() instanceof VideoTrack track) {
 
 Audio tracks take an `AudioTrackSink` in the same way.
 
+### Send and receive data
+
+Data channels need a server transport with SCTP, which mediasoup enables when the client passes `device.sctpCapabilities()` to create it. To produce data, give the send transport a fourth handler, which creates the data producer on the server and returns its id:
+
+```java
+SendTransport sendTransport = device.createSendTransport(
+        sendOptions,
+        dtlsParameters -> signaling.request("connectWebRtcTransport", sendOptions.id(), dtlsParameters),
+        request -> signaling.request("produce", sendOptions.id(), request.kind(), request.rtpParameters()),
+        request -> signaling.request("produceData", sendOptions.id(), request.sctpStreamParameters(), request.label()));
+
+DataProducer dataProducer = sendTransport.produceData(DataProducerOptions.builder().label("chat").build()).join();
+dataProducer.onOpen(() -> {
+    try {
+        dataProducer.send("hello");
+    } catch (MediasoupClientException e) {
+        // The channel closed meanwhile.
+    }
+});
+```
+
+`DataProducerOptions` makes the channel unordered with `ordered(false)`, `maxPacketLifeTime` or `maxRetransmits`. To receive, consume the data consumer that the server created:
+
+```java
+DataConsumerOptions dataConsumerOptions = signaling.request("consumeData", recvOptions.id(), dataProducerId).join();
+DataConsumer dataConsumer = recvTransport.consumeData(dataConsumerOptions).join();
+dataConsumer.onMessage(message -> System.out.println(message.isBinary() ? message.size() + " bytes" : message.asText()));
+```
+
 ### Events and closing
 
 Transports report their connection state, and producers and consumers report when their transport closes. Listeners run one at a time on an executor of each transport, never on the threads of webrtc-java:
@@ -105,7 +134,7 @@ sendTransport.onConnectionStateChange(state -> System.out.println("send transpor
 consumer.onTransportClose(() -> System.out.println("consumer closed with its transport"));
 ```
 
-`pause()` and `resume()` on a producer or a consumer stop and restart the media: they disable and enable the track, and with `zeroRtpOnPause` a producer sends no RTP at all while paused. Closing a producer or a consumer stops sending or receiving it. Tell the server too, so that it pauses, resumes or closes its side. Closing a transport closes its producers and consumers. jmediasoup never releases the tracks that the application created, whatever `stopTracks` says, since webrtc-java tracks cannot be stopped: call `dispose()` on them once no producer sends them. Close the factory last: it disposes the `PeerConnectionFactory` if it created it:
+`pause()` and `resume()` on a producer or a consumer stop and restart the media: they disable and enable the track, and with `zeroRtpOnPause` a producer sends no RTP at all while paused. Closing a producer or a consumer stops sending or receiving it. Tell the server too, so that it pauses, resumes or closes its side. Closing a transport closes its producers and consumers, and its data producers and consumers. jmediasoup never releases the tracks that the application created, whatever `stopTracks` says, since webrtc-java tracks cannot be stopped: call `dispose()` on them once no producer sends them. Close the factory last: it disposes the `PeerConnectionFactory` if it created it:
 
 ```java
 producer.close();
@@ -130,11 +159,10 @@ webrtc-java publishes natives for these platforms, as classifiers of `dev.onvoid
 
 ## Limitations
 
-`0.1.0` covers the basic flow: load the device, send and receive audio and video, pause and resume, replace the track being sent, get stats, restart ICE, and close. These are not supported yet:
+`0.1.0` covers the basic flow: load the device, send and receive audio and video, pause and resume, replace the track being sent, get stats, restart ICE, and close. The next version adds data channels (`produceData` and `consumeData`). These are not supported yet:
 
 - Simulcast and SVC: `produce` with more than one encoding fails with `UnsupportedException`.
 - Codec options (`ProducerCodecOptions`, such as `opusStereo` or `videoGoogleStartBitrate`): they are ignored, with a warning.
-- Data channels (`produceData` and `consumeData`).
 
 [TODO.md](TODO.md) holds the plan up to parity with pymediasoup and mediasoup-client.
 

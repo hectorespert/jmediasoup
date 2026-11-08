@@ -79,7 +79,7 @@ Goal: a Java client for [mediasoup](https://mediasoup.org) with the same feature
 - `module-info.java` from the start, exporting only the public packages. Internal packages go under `io.github.hectorespert.jmediasoup.internal` (`.internal.sdp`, `.internal.sdptransform`, `.internal.h264`...) and are not exported.
 - Tests run inside the library module (whitebox, with `--patch-module`) through the `org.gradlex.java-module-testing` plugin. So they see the internal packages and check the `requires` and `exports` at the same time.
 - Our own ports of `sdp-transform` and `h264-profile-level-id` as internal packages (`internal.sdptransform` and `internal.h264`). The SDP code of mediasoup-client (`handlers/sdp`) goes in `internal.sdp`. There is no usable Java alternative (see `0.5.13`). The parsed SDP is represented with `Map<String, Object>`, like the sdp-transform object and the `dict` of pymediasoup.
-- Versions: SemVer. `0.1.0` with the MVP (`7.4`), a minor version when each parity phase is closed (`0.2.0` Phase 8, `0.3.0` Phase 9, `0.4.0` Phase 10, `0.5.0` Phase 11 and `0.6.0` Phase 12) and `1.0.0` with Phase 13. Fixes between phases come out as patches. In `0.x` a minor version can break the API; from `1.0.0` on, strict SemVer. Releases are only published from CI, when a GitHub release is published; its tag is the version, `X.Y.Z` without prefix, as in the other Java libraries of the author.
+- Versions: SemVer. `0.1.0` with the MVP (`7.4`), which also brought Phases 8 and 10, done before it was published; then a minor version when each parity phase is closed (`0.2.0` Phase 9, `0.3.0` Phase 11 and `0.4.0` Phase 12) and `1.0.0` with Phase 13. Fixes between phases come out as patches. In `0.x` a minor version can break the API; from `1.0.0` on, strict SemVer. Releases are only published from CI, when a GitHub release is published; its tag is the version, `X.Y.Z` without prefix, as in the other Java libraries of the author.
 - The version is computed from git by the axion-release plugin (Apache-2.0), applied in the root project. `gradle-git-versioning` (qoomon) was planned first, because its version 7.0 supports the configuration cache, but it fails the build in shallow clones, which is how GitHub Actions checks out, even when there are no tags. axion-release fetches the full history by itself on CI (`CI=true`), and in `7.4.4` it reused the configuration cache and recomputed the version on each new tag or commit, despite its open issues about the cache.
 - Server: mediasoup v3. The CI validates the version of the image (3.19.14), and a recent one is added in Phase 13.
 
@@ -819,7 +819,7 @@ Origin: `producer.py`, `consumer.py`
 - [x] `8.3.4` E2E test of section recycling: create and close consumers repeatedly (`RecyclingTest`, with two jmediasoup peers, one producing and closing tracks).
 - [x] `8.3.5` E2E test of recycling an audio section with a video one.
 - [x] `8.3.6` E2E test: close the consumer of the first section (it is disabled, not closed).
-- [ ] `8.3.7` Publish version `0.2.0`.
+- [x] `8.3.7` ~~Publish version `0.2.0`.~~ Published in `0.1.0`, as Phase 8 was done before it.
 
 **Phase 8 acceptance**
 
@@ -832,67 +832,67 @@ Origin: `producer.py`, `consumer.py`
 
 Origin: `pymediasoup/data_producer.py`
 
-- [ ] `9.1.1` Properties `id`, `closed`, `sctpStreamParameters`, `readyState`, `label`, `protocol` and `appData`.
-- [ ] `9.1.2` `bufferedAmount` and `bufferedAmountLowThreshold` (read and write).
-- [ ] `9.1.3` Text `send`.
-- [ ] `9.1.4` Binary `send`.
-- [ ] `9.1.5` `close` and `transportClosed`.
-- [ ] `9.1.6` `open`, `error`, `bufferedamountlow` and `transportclose` events.
-- [ ] `9.1.7` Close started by the channel: mark it as closed and notify.
-- [ ] `9.1.8` Discard and log incoming messages.
-- [ ] `9.1.9` `observer` with `close`.
+- [x] `9.1.1` Properties `id`, `closed`, `sctpStreamParameters`, `readyState`, `label`, `protocol` and `appData`. `DataProducer`, with `label`, `protocol` and `readyState` from its `handler.DataChannel`.
+- [x] `9.1.2` `bufferedAmount` and `bufferedAmountLowThreshold` (read and write). The threshold is kept by the `DataChannel`; `WebRtcJavaDataChannel` computes the event, which webrtc-java does not have (`9.4.12`).
+- [x] `9.1.3` Text `send`. `send(String)`, and `send(DataChannelMessage)` for a message already built.
+- [x] `9.1.4` Binary `send`. `send(byte[])`. The three throw `InvalidStateException` if the data producer is closed, and `MediasoupClientException` if the channel cannot send.
+- [x] `9.1.5` `close` and `transportClosed`. `close()` closes the channel and tells the transport; `transportClosed()` emits `transportclose`.
+- [x] `9.1.6` `open`, `error`, `bufferedamountlow` and `transportclose` events. `onOpen`, `onError`, `onBufferedAmountLow`, `onTransportClose`, and `onClose` for the close started by the channel (`9.1.7`), as the `close` event of mediasoup-client 3.26: `close()` and the transport closing do not emit it. `onOpen` also runs, once, if the channel is already open when it is added: a channel on an SCTP association that is up opens at once, often before the application can add the listener.
+- [x] `9.1.7` Close started by the channel: mark it as closed and notify. The channel closing, by the remote side or the stack, closes the data producer, removes it from the transport and emits `close` and the observer `close`.
+- [x] `9.1.8` Discard and log incoming messages. Logged at `warn`, as mediasoup-client.
+- [x] `9.1.9` `observer` with `close`. `DataProducerObserver`.
 
 ### 9.2 DataConsumer
 
 Origin: `pymediasoup/data_consumer.py`
 
-- [ ] `9.2.1` Properties `id`, `dataProducerId`, `closed`, `sctpStreamParameters`, `readyState`, `label`, `protocol` and `appData`.
-- [ ] `9.2.2` `binaryType` (read and write), or an idiomatic Java alternative. `DataChannelMessage` already offers bytes and text, so documenting that it is not needed is probably enough.
-- [ ] `9.2.3` `close` and `transportClosed`.
-- [ ] `9.2.4` `open`, `error`, `message` and `transportclose` events.
-- [ ] `9.2.5` Close started by the channel.
-- [ ] `9.2.6` `observer` with `close`.
+- [x] `9.2.1` Properties `id`, `dataProducerId`, `closed`, `sctpStreamParameters`, `readyState`, `label`, `protocol` and `appData`. `DataConsumer`.
+- [x] `9.2.2` ~~`binaryType` (read and write), or an idiomatic Java alternative.~~ Dropped: `DataChannelMessage` already gives bytes, a buffer or text, and says whether it is binary; the Javadoc of `DataConsumer` says so.
+- [x] `9.2.3` `close` and `transportClosed`. As in `DataProducer`.
+- [x] `9.2.4` `open`, `error`, `message` and `transportclose` events. `onOpen`, `onError`, `onMessage` with each `DataChannelMessage`, `onTransportClose`, and `onClose` as in `9.1.6`.
+- [x] `9.2.5` Close started by the channel. As in `9.1.7`.
+- [x] `9.2.6` `observer` with `close`. `DataConsumerObserver`.
 
 ### 9.3 Transport
 
 Origin: `pymediasoup/transport.py`
 
-- [ ] `9.3.1` `producedata` listener, optional when creating the send transport because not everyone uses data channels: the overload `createSendTransport(options, connect, produce, produceData)`; without it, `produceData` fails with `InvalidStateException`.
-- [ ] `9.3.2` `produceData`: checks (direction, SCTP enabled, `producedata` listener present).
-- [ ] `9.3.3` `produceData`: `ordered = false` if there is a `maxPacketLifeTime` or `maxRetransmits`, and `true` if there is neither (`validateAndNormalizeSctpStreamParameters` of mediasoup-client). ⚠️ do not copy: the original checks whether they are truthy, so a value of 0 is ignored.
-- [ ] `9.3.4` `produceData`: flow with the handler and registration.
-- [ ] `9.3.5` `consumeData`: checks.
-- [ ] `9.3.6` `consumeData`: flow with the handler and registration.
-- [ ] `9.3.7` Connect the `@close` of both types to the transport.
-- [ ] `9.3.8` Notify `DataProducer` and `DataConsumer` when the transport closes.
-- [ ] `9.3.9` `observer` with `newdataproducer` and `newdataconsumer`.
+- [x] `9.3.1` `producedata` listener, optional when creating the send transport because not everyone uses data channels: the overload `createSendTransport(options, connect, produce, produceData)`; without it, `produceData` fails with `InvalidStateException`. `ProduceDataHandler`, which returns the id, with `ProduceDataRequest` (`sctpStreamParameters`, `label`, `protocol`, `appData`), as `ProduceHandler`.
+- [x] `9.3.2` `produceData`: checks (direction, SCTP enabled, `producedata` listener present). Closed: `InvalidStateException`; no SCTP on the server transport: `UnsupportedException`; no `ProduceDataHandler`: `InvalidStateException`. The direction is in the type.
+- [x] `9.3.3` `produceData`: `ordered = false` if there is a `maxPacketLifeTime` or `maxRetransmits`, and `true` if there is neither (`validateAndNormalizeSctpStreamParameters` of mediasoup-client). ⚠️ do not copy: the original checks whether they are truthy, so a value of 0 is ignored. Before the handler, and again on the parameters it returns with `Ortc.normalizeSctpStreamParameters`, which also requires the stream id. The label and protocol default to empty.
+- [x] `9.3.4` `produceData`: flow with the handler and registration. In the queue: the handler opens the channel, the `ProduceDataHandler` creates the data producer, and the observer emits `newdataproducer`. ⚠️ do not copy: mediasoup-client leaves the channel open if the handler fails; here it is closed.
+- [x] `9.3.5` `consumeData`: checks. Closed, no SCTP, and a missing stream id (`IllegalArgumentException`).
+- [x] `9.3.6` `consumeData`: flow with the handler and registration. In the queue, with the normalized parameters.
+- [x] `9.3.7` Connect the `@close` of both types to the transport. The `TransportListener` of each type removes it from the map of the transport.
+- [x] `9.3.8` Notify `DataProducer` and `DataConsumer` when the transport closes. `closeChildren()` calls `transportClosed()` on each.
+- [x] `9.3.9` `observer` with `newdataproducer` and `newdataconsumer`. `onNewDataProducer` and `onNewDataConsumer`.
 
 ### 9.4 Handler and SDP
 
 Origin: `aiortc_handler.py`, `media_section.py`, `remote_sdp.py`
 
-- [ ] `9.4.1` `sendDataChannel`: assign the `streamId` with a counter modulo `MIS`. ⚠️ do not copy: the original ignores the `streamId` it receives.
-- [ ] `9.4.2` `sendDataChannel`: create the `negotiated` channel. ⚠️ do not copy: the original does not pass `maxRetransmits`.
-- [ ] `9.4.3` `sendDataChannel`: negotiate `m=application` the first time.
-- [ ] `9.4.4` `receiveDataChannel`: create the `negotiated` channel.
-- [ ] `9.4.5` `receiveDataChannel`: negotiate `m=application` the first time.
-- [ ] `9.4.6` `AnswerMediaSection`: `application` section with `sctp-port`.
-- [ ] `9.4.7` `AnswerMediaSection`: old `sctpmap`.
-- [ ] `9.4.8` `OfferMediaSection`: `application` section with `sctp-port`.
-- [ ] `9.4.9` `OfferMediaSection`: old `sctpmap` (`oldDataChannelSpec`).
-- [ ] `9.4.10` `RemoteSdp.sendSctpAssociation`.
-- [ ] `9.4.11` `RemoteSdp.receiveSctpAssociation`.
-- [ ] `9.4.12` Implementation of `handler.DataChannel` on `RTCDataChannel`: copy each `RTCDataChannelBuffer` into a `DataChannelMessage`, translate `onStateChange` into `onOpen` and `onClose`, and compute `onBufferedAmountLow` with the threshold, which webrtc-java does not have.
+- [x] `9.4.1` `sendDataChannel`: assign the `streamId` with a counter modulo `MIS`. ⚠️ do not copy: the original ignores the `streamId` it receives. The given stream id, or the next of the counter modulo the 1024 streams.
+- [x] `9.4.2` `sendDataChannel`: create the `negotiated` channel. ⚠️ do not copy: the original does not pass `maxRetransmits`. With `ordered`, `maxPacketLifeTime`, `maxRetransmits` and `protocol` in `RTCDataChannelInit`, where webrtc-java takes -1 as absent.
+- [x] `9.4.3` `sendDataChannel`: negotiate `m=application` the first time. Offer, `setupTransport` if needed, local offer, `RemoteSdp.sendSctpAssociation`, remote answer. The next channels need no negotiation.
+- [x] `9.4.4` `receiveDataChannel`: create the `negotiated` channel. With the stream id and reliability that mediasoup gives.
+- [x] `9.4.5` `receiveDataChannel`: negotiate `m=application` the first time. `RemoteSdp.receiveSctpAssociation`, remote offer, answer, `setupTransport` if needed, local answer.
+- [x] `9.4.6` `AnswerMediaSection`: `application` section with `sctp-port`. With the port and `maxMessageSize` of the server.
+- [x] `9.4.7` `AnswerMediaSection`: old `sctpmap`. When the offer has `a=sctpmap`.
+- [x] `9.4.8` `OfferMediaSection`: `application` section with `sctp-port`. `UDP/DTLS/SCTP`, with the MID `datachannel`.
+- [x] `9.4.9` `OfferMediaSection`: old `sctpmap` (`oldDataChannelSpec`). With `oldDataChannelSpec`; the handler always uses the new spec, as mediasoup-client 3.26.
+- [x] `9.4.10` `RemoteSdp.sendSctpAssociation`. The constructor of `RemoteSdp` takes the SCTP parameters.
+- [x] `9.4.11` `RemoteSdp.receiveSctpAssociation`.
+- [x] `9.4.12` Implementation of `handler.DataChannel` on `RTCDataChannel`: copy each `RTCDataChannelBuffer` into a `DataChannelMessage`, translate `onStateChange` into `onOpen` and `onClose`, and compute `onBufferedAmountLow` with the threshold, which webrtc-java does not have. `WebRtcJavaDataChannel`. Its observer does not take its lock, so that releasing the native channel never waits for the signalling thread. The handler releases the channels when it closes, before the peer connection, so that their closing does not reach the data producers and consumers, which get `transportclose`. Until then a closed channel is kept, and the getters of a released one return its last values. Tested with two peer connections in `WebRtcJavaDataChannelTest`.
 
 ### 9.5 Tests
 
-- [ ] `9.5.1` The data channel part of `test_produce` and `test_consume`, with `FakeHandler`.
-- [ ] `9.5.2` E2E test: send and receive text through the server.
-- [ ] `9.5.3` E2E test: send and receive binary.
-- [ ] `9.5.4` E2E test: unordered channel with `maxRetransmits`.
-- [ ] `9.5.5` Test: `bufferedamountlow` fires.
-- [ ] `9.5.6` Test: closing the transport closes the channels.
-- [ ] `9.5.7` Publish version `0.3.0`.
+- [x] `9.5.1` The data channel part of `test_produce` and `test_consume`, with `FakeHandler`. `DataProducerTest` and `DataConsumerTest`, with `FakeHandler.dataChannels()` to drive the `FakeDataChannel`s; and `WebRtcJavaSendTest` and `WebRtcJavaReceiveTest` with the natives.
+- [x] `9.5.2` E2E test: send and receive text through the server. `DataChannelTest`, between two jmediasoup peers through the `chat` channel of the demo, whose `DemoPeer` gets `produceData`, `newDataConsumer` and the SCTP of `join` and `createWebRtcTransport`.
+- [x] `9.5.3` E2E test: send and receive binary.
+- [x] `9.5.4` E2E test: unordered channel with `maxRetransmits`. The data consumer gets `ordered: false` and the `maxRetransmits` of the data producer from mediasoup.
+- [x] `9.5.5` Test: `bufferedamountlow` fires. `WebRtcJavaDataChannelTest`, over a real channel, and `DataProducerTest` with `FakeDataChannel`.
+- [x] `9.5.6` Test: closing the transport closes the channels. With `FakeHandler`, with the natives, and end to end.
+- [ ] `9.5.7` Publish version `0.2.0`.
 
 **Phase 9 acceptance**
 
@@ -929,7 +929,7 @@ Origin: `transport.py`, `aiortc_handler.py`, `remote_sdp.py`
 - [x] `10.2.9` `RemoteSdp.updateIceParameters`: remove `icelite` if it no longer applies. Already done by the port of `RemoteSdp` (`3.5`): it adds or removes `a=ice-lite` with the new parameters.
 - [x] `10.2.10` E2E test: restart ICE and keep receiving media (the server keeps receiving the RTP of a producer after the `restartIce` of the demo).
 - [x] `10.2.11` E2E test: connection through a TURN server, if the image or the environment allow it. `TurnTest` starts coturn 4.18.0 (pinned by digest) on the host network, on `127.0.0.1:3478` with relay ports `21000`–`21099` and `--allow-loopback-peers`, as mediasoup listens on `127.0.0.1`; a send transport with the `relay` policy reaches the server, and its candidate pair in use has a `relay` local candidate.
-- [ ] `10.2.12` Publish version `0.4.0`.
+- [x] `10.2.12` ~~Publish version `0.4.0`.~~ Published in `0.1.0`, as Phase 10 was done before it.
 
 **Phase 10 acceptance**
 
@@ -997,7 +997,7 @@ Origin: `producer.py`, `aiortc_handler.py`
 - [ ] `11.5.4` `handler.setRtpEncodingParameters`. ⚠️ do not copy: in the original it only logs a warning.
 - [ ] `11.5.5` Connect `@setmaxspatiallayer` and `@setrtpencodingparameters` to the handler.
 - [ ] `11.5.6` E2E test: when the layer is limited, the server stops receiving the higher ones.
-- [ ] `11.5.7` Publish version `0.5.0`.
+- [ ] `11.5.7` Publish version `0.3.0`.
 
 **Phase 11 acceptance**
 
@@ -1016,7 +1016,7 @@ Origin: `aiortc.contrib.media`, used in `examples/mediasoup.py`
 - [ ] `12.1.4` `MediaPlayer`: play audio from a file.
 - [ ] `12.1.5` `MediaPlayer`: play video from a file. Decide the dependency.
 - [ ] `12.1.6` Decide whether they go in a separate artifact so as not to add dependencies to the library.
-- [ ] `12.1.7` Publish version `0.6.0`.
+- [ ] `12.1.7` Publish version `0.4.0`.
 
 ### 12.2 Port of the example
 

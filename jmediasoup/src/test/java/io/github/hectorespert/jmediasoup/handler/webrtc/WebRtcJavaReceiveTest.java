@@ -24,6 +24,7 @@ import dev.onvoid.webrtc.media.audio.HeadlessAudioDeviceModule;
 import dev.onvoid.webrtc.media.video.VideoTrack;
 import io.github.hectorespert.jmediasoup.Consumer;
 import io.github.hectorespert.jmediasoup.ConsumerOptions;
+import io.github.hectorespert.jmediasoup.DataConsumer;
 import io.github.hectorespert.jmediasoup.Device;
 import io.github.hectorespert.jmediasoup.InvalidStateException;
 import io.github.hectorespert.jmediasoup.MediasoupClientException;
@@ -137,6 +138,67 @@ class WebRtcJavaReceiveTest {
                         rtpParameters.rtcp(),
                         rtpParameters.msid()),
                 options.streamId(),
+                options.appData());
+    }
+
+    @Test
+    void consumeDataNegotiatesTheSctpAssociationOnce() {
+        DataConsumer first = await(transport.consumeData(FakeParameters.dataConsumerRemoteParameters()));
+        String remoteSdp = handler().peerConnection().getRemoteDescription().sdp;
+        DataConsumer second =
+                await(transport.consumeData(withStreamId(FakeParameters.dataConsumerRemoteParameters(), 667)));
+
+        // The first data channel connects the transport, as DTLS client.
+        assertEquals(1, connects.size());
+        assertEquals(DtlsRole.CLIENT, connects.getFirst().role());
+
+        assertTrue(remoteSdp.contains("UDP/DTLS/SCTP webrtc-datachannel"), remoteSdp);
+        assertTrue(remoteSdp.contains("a=mid:datachannel"), remoteSdp);
+        assertTrue(handler().peerConnection().getLocalDescription().sdp.contains("m=application"));
+        // The second one needs no negotiation.
+        assertEquals(remoteSdp, handler().peerConnection().getRemoteDescription().sdp);
+        assertEquals(RTCSignalingState.STABLE, handler().peerConnection().getSignalingState());
+
+        assertEquals(666, first.sctpStreamParameters().streamId());
+        assertEquals(667, second.sctpStreamParameters().streamId());
+    }
+
+    @Test
+    void dataChannelsAndTracksShareTheTransport() throws InterruptedException {
+        await(transport.consumeData(FakeParameters.dataConsumerRemoteParameters()));
+        Consumer video = await(transport.consume(withSsrc(FakeParameters.consumerRemoteParameters("video/VP8"), 4321)));
+        awaitProbator();
+
+        String remoteSdp = handler().peerConnection().getRemoteDescription().sdp;
+        assertTrue(remoteSdp.contains("a=group:BUNDLE datachannel " + video.localId()), remoteSdp);
+        assertEquals(1, connects.size());
+    }
+
+    @Test
+    void closingTheTransportClosesTheDataConsumers() {
+        DataConsumer dataConsumer = await(transport.consumeData(FakeParameters.dataConsumerRemoteParameters()));
+
+        transport.close();
+
+        assertTrue(dataConsumer.closed());
+        assertEquals(dev.onvoid.webrtc.RTCDataChannelState.CLOSED, dataConsumer.readyState());
+    }
+
+    private static io.github.hectorespert.jmediasoup.DataConsumerOptions withStreamId(
+            io.github.hectorespert.jmediasoup.DataConsumerOptions options, int streamId) {
+        var sctp = options.sctpStreamParameters();
+        return new io.github.hectorespert.jmediasoup.DataConsumerOptions(
+                options.id(),
+                options.dataProducerId(),
+                new io.github.hectorespert.jmediasoup.sctp.SctpStreamParameters(
+                        streamId,
+                        sctp.ordered(),
+                        sctp.maxPacketLifeTime(),
+                        sctp.maxRetransmits(),
+                        sctp.label(),
+                        sctp.protocol()),
+                options.label(),
+                options.protocol(),
                 options.appData());
     }
 

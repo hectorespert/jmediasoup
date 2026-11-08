@@ -26,6 +26,8 @@ import dev.onvoid.webrtc.RTCStatsReport;
 import dev.onvoid.webrtc.RTCStatsType;
 import dev.onvoid.webrtc.media.MediaStreamTrack;
 import dev.onvoid.webrtc.media.audio.HeadlessAudioDeviceModule;
+import io.github.hectorespert.jmediasoup.DataProducer;
+import io.github.hectorespert.jmediasoup.DataProducerOptions;
 import io.github.hectorespert.jmediasoup.Device;
 import io.github.hectorespert.jmediasoup.InvalidStateException;
 import io.github.hectorespert.jmediasoup.MediasoupClientException;
@@ -101,6 +103,7 @@ class WebRtcJavaSendTest {
                     connects.add(dtls);
                     return CompletableFuture.completedFuture(null);
                 },
+                request -> CompletableFuture.completedFuture(UUID.randomUUID().toString()),
                 request -> CompletableFuture.completedFuture(UUID.randomUUID().toString()));
     }
 
@@ -134,6 +137,72 @@ class WebRtcJavaSendTest {
         return Arrays.stream(handler().peerConnection().getTransceivers())
                 .map(RTCRtpTransceiver::getMid)
                 .toList();
+    }
+
+    private DataProducer produceData(DataProducerOptions options) {
+        return await(transport.produceData(options));
+    }
+
+    @Test
+    void produceDataNegotiatesTheSctpAssociationOnce() {
+        DataProducer first =
+                produceData(DataProducerOptions.builder().label("chat").build());
+        String remoteSdp = handler().peerConnection().getRemoteDescription().sdp;
+        DataProducer second =
+                produceData(DataProducerOptions.builder().maxRetransmits(2).build());
+
+        // The first data channel connects the transport, as DTLS client.
+        assertEquals(1, connects.size());
+        assertEquals(DtlsRole.CLIENT, connects.getFirst().role());
+
+        assertTrue(handler().peerConnection().getLocalDescription().sdp.contains("m=application"));
+        assertTrue(remoteSdp.contains("UDP/DTLS/SCTP webrtc-datachannel"), remoteSdp);
+        assertTrue(remoteSdp.contains("a=sctp-port:5000"), remoteSdp);
+        // The second one needs no negotiation.
+        assertEquals(remoteSdp, handler().peerConnection().getRemoteDescription().sdp);
+        assertEquals(RTCSignalingState.STABLE, handler().peerConnection().getSignalingState());
+
+        // Each one has the next stream, and its reliability reaches the native channel.
+        assertEquals(0, first.sctpStreamParameters().streamId());
+        assertEquals(true, first.sctpStreamParameters().ordered());
+        assertEquals("chat", first.label());
+        assertEquals(1, second.sctpStreamParameters().streamId());
+        assertEquals(false, second.sctpStreamParameters().ordered());
+        assertEquals(2, second.sctpStreamParameters().maxRetransmits());
+    }
+
+    @Test
+    void dataChannelsAndTracksShareTheTransport() {
+        produceData(DataProducerOptions.builder().build());
+        Producer audio = produce(audioTrack());
+
+        String remoteSdp = handler().peerConnection().getRemoteDescription().sdp;
+        assertEquals("1", audio.localId());
+        assertTrue(remoteSdp.contains("a=group:BUNDLE 0 1"), remoteSdp);
+        assertTrue(remoteSdp.contains("m=application"), remoteSdp);
+        assertEquals(1, connects.size());
+    }
+
+    @Test
+    void closingTheTransportClosesTheDataProducers() {
+        DataProducer dataProducer = produceData(DataProducerOptions.builder().build());
+
+        transport.close();
+
+        assertTrue(dataProducer.closed());
+        assertEquals(dev.onvoid.webrtc.RTCDataChannelState.CLOSED, dataProducer.readyState());
+    }
+
+    @Test
+    void sendDataChannelFailsOnAClosedHandler() {
+        handler().close();
+
+        Throwable error = assertThrows(
+                        CompletionException.class,
+                        () -> await(transport.produceData(
+                                DataProducerOptions.builder().build())))
+                .getCause();
+        assertInstanceOf(InvalidStateException.class, error);
     }
 
     @Test

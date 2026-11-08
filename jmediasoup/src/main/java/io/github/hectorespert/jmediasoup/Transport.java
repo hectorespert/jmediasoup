@@ -79,6 +79,8 @@ public abstract sealed class Transport permits SendTransport, RecvTransport {
             new Listeners<>("icecandidateerror", logger);
     // Observer instance.
     private final TransportObserver observer = new TransportObserver(logger);
+    // SCTP parameters of the server, with the message sizes filled, if SCTP is enabled.
+    private final @Nullable SctpParameters sctpParameters;
     // RTC handler instance.
     private final Handler handler;
 
@@ -94,13 +96,14 @@ public abstract sealed class Transport permits SendTransport, RecvTransport {
         this.direction = direction;
         this.appData = options.appData();
         this.connectHandler = requireNonNull(connectHandler, "connect");
+        this.sctpParameters = adaptSctpParameters(options.sctpParameters());
         this.handler = requireNonNull(
                 handlerFactory.create(new HandlerOptions(
                         direction,
                         options.iceParameters(),
                         options.iceCandidates(),
                         options.dtlsParameters(),
-                        adaptSctpParameters(options.sctpParameters()),
+                        sctpParameters,
                         options.iceServers(),
                         options.iceTransportPolicy(),
                         getSendExtendedRtpCapabilities,
@@ -279,7 +282,7 @@ public abstract sealed class Transport permits SendTransport, RecvTransport {
         // Change connection state to 'closed' since the handler may not report it.
         connectionState.set(ConnectionState.CLOSED);
 
-        // Close all Producers and Consumers.
+        // Close all Producers, Consumers, DataProducers and DataConsumers.
         closeChildren();
 
         executor.execute(() -> {
@@ -323,8 +326,13 @@ public abstract sealed class Transport permits SendTransport, RecvTransport {
         return iceCandidateErrorListeners.add(listener);
     }
 
-    /** Tells the producers or consumers of the transport that it closed. */
+    /** Tells the producers and data producers, or consumers and data consumers, that it closed. */
     abstract void closeChildren();
+
+    /** Returns the SCTP parameters of the server, or {@code null} if SCTP is not enabled. */
+    final @Nullable SctpParameters sctpParameters() {
+        return sctpParameters;
+    }
 
     /** Returns the executor where the listeners and handlers of the application run. */
     final Executor executor() {

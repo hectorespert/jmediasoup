@@ -57,6 +57,21 @@ public final class Listeners<T> {
         }
     }
 
+    /**
+     * Delivers a value to one listener only, if its subscription is still open.
+     *
+     * @param subscription the subscription that {@link #add} returned
+     * @param value the value
+     */
+    public void emitTo(Subscription subscription, T value) {
+        for (Registration registration : registrations) {
+            if (registration == subscription) {
+                registration.deliver(value);
+                return;
+            }
+        }
+    }
+
     /** Removes every listener, like closing all their subscriptions. */
     public void clear() {
         registrations.forEach(Registration::close);

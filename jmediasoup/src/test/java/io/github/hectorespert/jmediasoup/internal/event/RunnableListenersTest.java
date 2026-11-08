@@ -42,4 +42,38 @@ class RunnableListenersTest {
 
         assertEquals(List.of(), calls);
     }
+
+    @Test
+    void aOnceListenerOfAnEventThatHappenedRunsOnTheExecutor() {
+        var executor = new ArrayList<Runnable>();
+
+        listeners.addOnce(() -> calls.add("late"), () -> true, executor::add);
+        listeners.emit();
+        executor.forEach(Runnable::run);
+
+        // It ran when the event was emitted meanwhile, and not again on the executor.
+        assertEquals(List.of("late"), calls);
+    }
+
+    @Test
+    void aOnceListenerOfAnEventThatDidNotHappenWaitsForIt() {
+        var executor = new ArrayList<Runnable>();
+
+        listeners.addOnce(() -> calls.add("early"), () -> false, executor::add);
+        listeners.emit();
+        listeners.emit();
+
+        assertEquals(List.of(), executor);
+        assertEquals(List.of("early"), calls);
+    }
+
+    @Test
+    void aClosedOnceListenerDoesNotRunOnTheExecutor() {
+        var executor = new ArrayList<Runnable>();
+
+        listeners.addOnce(() -> calls.add("closed"), () -> true, executor::add).close();
+        executor.forEach(Runnable::run);
+
+        assertEquals(List.of(), calls);
+    }
 }
