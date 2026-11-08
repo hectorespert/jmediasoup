@@ -17,6 +17,7 @@ import dev.onvoid.webrtc.PeerConnectionFactory;
 import dev.onvoid.webrtc.RTCIceServer;
 import dev.onvoid.webrtc.RTCIceTransportPolicy;
 import dev.onvoid.webrtc.RTCPeerConnection;
+import dev.onvoid.webrtc.RTCRtpEncodingParameters;
 import dev.onvoid.webrtc.RTCRtpTransceiver;
 import dev.onvoid.webrtc.RTCRtpTransceiverDirection;
 import dev.onvoid.webrtc.RTCSessionDescription;
@@ -315,6 +316,88 @@ class WebRtcJavaSendTest {
         assertEquals("recv", ((Map<?, ?>) answer.get("simulcast")).get("dir1"));
         assertEquals("r0;r1;r2", ((Map<?, ?>) answer.get("simulcast")).get("list1"));
         assertEquals(RTCSignalingState.STABLE, handler().peerConnection().getSignalingState());
+    }
+
+    private Producer produceSimulcast() {
+        return await(transport.produce(ProducerOptions.builder(videoTrack())
+                .encodings(List.of(
+                        RtpEncodingParameters.builder()
+                                .scaleResolutionDownBy(4.0)
+                                .build(),
+                        RtpEncodingParameters.builder()
+                                .scaleResolutionDownBy(2.0)
+                                .build(),
+                        RtpEncodingParameters.builder().build()))
+                .build()));
+    }
+
+    private static List<Boolean> active(Producer producer) {
+        return producer.rtpSender().getParameters().encodings.stream()
+                .map(e -> e.active)
+                .toList();
+    }
+
+    @SuppressWarnings("unchecked")
+    private String answerSimulcast(Producer producer) {
+        return (String) ((Map<String, Object>) answerSection(producer.localId()).get("simulcast")).get("list1");
+    }
+
+    @Test
+    void setMaxSpatialLayerDeactivatesTheEncodingsAboveIt() {
+        Producer video = produceSimulcast();
+
+        await(video.setMaxSpatialLayer(1));
+
+        assertEquals(List.of(true, true, false), active(video));
+        assertEquals("r0;r1;~r2", answerSimulcast(video));
+
+        await(video.setMaxSpatialLayer(2));
+
+        assertEquals(List.of(true, true, true), active(video));
+        assertEquals("r0;r1;r2", answerSimulcast(video));
+        assertEquals(RTCSignalingState.STABLE, handler().peerConnection().getSignalingState());
+    }
+
+    @Test
+    void setRtpEncodingParametersChangesEveryEncoding() {
+        Producer video = produceSimulcast();
+        var params = new RTCRtpEncodingParameters();
+        params.maxBitrate = 200_000;
+        params.maxFramerate = 15.0;
+
+        await(video.setRtpEncodingParameters(params));
+
+        var encodings = video.rtpSender().getParameters().encodings;
+        assertEquals(
+                List.of(200_000, 200_000, 200_000),
+                encodings.stream().map(e -> e.maxBitrate).toList());
+        assertEquals(
+                List.of(15.0, 15.0, 15.0),
+                encodings.stream().map(e -> e.maxFramerate).toList());
+        // What is not given stays.
+        assertEquals(4.0, encodings.getFirst().scaleResolutionDownBy);
+
+        // Deactivating them all pauses every stream of the answer.
+        var inactive = new RTCRtpEncodingParameters();
+        inactive.active = false;
+        await(video.setRtpEncodingParameters(inactive));
+
+        assertEquals(List.of(false, false, false), active(video));
+        assertEquals("~r0;~r1;~r2", answerSimulcast(video));
+    }
+
+    @Test
+    void changingTheEncodingsOfAnUnknownLocalIdFails() {
+        produce(videoTrack());
+
+        CompletionException maxSpatialLayer =
+                assertThrows(CompletionException.class, () -> await(handler().setMaxSpatialLayer("9", 0)));
+        CompletionException encodingParameters = assertThrows(
+                CompletionException.class,
+                () -> await(handler().setRtpEncodingParameters("9", new RTCRtpEncodingParameters())));
+
+        assertInstanceOf(MediasoupClientException.class, maxSpatialLayer.getCause());
+        assertInstanceOf(MediasoupClientException.class, encodingParameters.getCause());
     }
 
     @Test

@@ -94,6 +94,8 @@ Producer videoProducer = sendTransport.produce(ProducerOptions.builder(videoTrac
         .join();
 ```
 
+While it sends, `videoProducer.setMaxSpatialLayer(1)` stops the streams above the second one, and `setRtpEncodingParameters` changes every encoding, with the fields of a webrtc-java `RTCRtpEncodingParameters` that are not `null`.
+
 ### Receive
 
 Create a receive transport, and consume each producer that the server announces with the parameters of the consumer it created:
@@ -180,7 +182,7 @@ webrtc-java publishes natives for these platforms, as classifiers of `dev.onvoid
 
 `0.2.0` covers the basic flow: load the device, send and receive audio and video, pause and resume, replace the track being sent, send and receive data, get stats, restart ICE, and close. This is not supported yet:
 
-- SVC, and changing the layers or the encodings of a producer while it sends (`setMaxSpatialLayer`, `setRtpEncodingParameters`).
+- SVC: a single VP9 encoding with several spatial layers.
 
 [TODO.md](TODO.md) holds the plan up to parity with pymediasoup and mediasoup-client.
 

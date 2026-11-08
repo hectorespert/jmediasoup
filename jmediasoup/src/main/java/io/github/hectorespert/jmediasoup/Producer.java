@@ -4,6 +4,9 @@
  */
 package io.github.hectorespert.jmediasoup;
 
+import static java.util.Objects.requireNonNull;
+
+import dev.onvoid.webrtc.RTCRtpEncodingParameters;
 import dev.onvoid.webrtc.RTCRtpSender;
 import dev.onvoid.webrtc.RTCStatsReport;
 import dev.onvoid.webrtc.media.MediaStreamTrack;
@@ -47,6 +50,8 @@ public final class Producer {
     private final RtpParameters rtpParameters;
     // Paused flag.
     private volatile boolean paused;
+    // The highest spatial layer being sent, or null if never limited.
+    private volatile @Nullable Integer maxSpatialLayer;
     // Whether the Producer should disable the track when paused.
     private final boolean disableTrackOnPause;
     // Whether we should mark the transceiver as inactive when paused.
@@ -175,8 +180,7 @@ public final class Producer {
      * @return the layer, or {@code null} if it was never limited
      */
     public @Nullable Integer maxSpatialLayer() {
-        // Nothing limits it until setMaxSpatialLayer exists.
-        return null;
+        return maxSpatialLayer;
     }
 
     /**
@@ -310,6 +314,58 @@ public final class Producer {
     }
 
     /**
+     * Limits the spatial layers that the producer sends, after the pending operations of the
+     * transport: with simulcast, the streams above the layer stop being sent. mediasoup keeps
+     * sending the consumers the highest layer that it receives.
+     *
+     * @param spatialLayer the highest spatial layer to send, from 0
+     * @return a future that completes once the handler sends only those layers; it fails with an
+     *     {@link InvalidStateException} if the producer is closed, with an {@link
+     *     UnsupportedException} if it is not a video producer, or with the failure of the handler
+     * @throws IllegalArgumentException if the layer is negative
+     */
+    public CompletableFuture<Void> setMaxSpatialLayer(int spatialLayer) {
+        if (spatialLayer < 0) {
+            throw new IllegalArgumentException("invalid spatialLayer " + spatialLayer);
+        }
+
+        logger.debug("setMaxSpatialLayer() [spatialLayer:{}]", spatialLayer);
+
+        if (closed.get()) {
+            return CompletableFuture.failedFuture(new InvalidStateException("closed"));
+        } else if (kind != MediaKind.VIDEO) {
+            return CompletableFuture.failedFuture(new UnsupportedException("not a video Producer"));
+        }
+
+        Integer current = maxSpatialLayer;
+        if (current != null && spatialLayer == current) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        return transportListener.setMaxSpatialLayer(this, spatialLayer).thenRun(() -> maxSpatialLayer = spatialLayer);
+    }
+
+    /**
+     * Changes the parameters of every encoding that the producer sends, after the pending operations
+     * of the transport, such as the maximum bitrate or frame rate.
+     *
+     * @param params the parameters to change in each encoding; those that are {@code null} are left
+     *     as they are
+     * @return a future that completes once the handler sends with them; it fails with an {@link
+     *     InvalidStateException} if the producer is closed, or with the failure of the handler
+     */
+    public CompletableFuture<Void> setRtpEncodingParameters(RTCRtpEncodingParameters params) {
+        requireNonNull(params, "params");
+        logger.debug("setRtpEncodingParameters() [params:{}]", params);
+
+        if (closed.get()) {
+            return CompletableFuture.failedFuture(new InvalidStateException("closed"));
+        }
+
+        return transportListener.setRtpEncodingParameters(this, params);
+    }
+
+    /**
      * Returns the statistics of the RTP sender of the producer.
      *
      * @return a future with the report; it fails with an {@link InvalidStateException} if the producer or
@@ -424,8 +480,8 @@ public final class Producer {
     }
 
     /**
-     * What the transport does when the application closes, pauses or resumes a producer, or replaces
-     * its track.
+     * What the transport does when the application closes, pauses or resumes a producer, replaces its
+     * track or changes its encodings.
      */
     interface TransportListener {
 
@@ -458,6 +514,24 @@ public final class Producer {
          * @return a future that completes once the handler sends the new track
          */
         CompletableFuture<Void> replaceTrack(Producer producer, @Nullable MediaStreamTrack track);
+
+        /**
+         * The application limits the spatial layers of the producer.
+         *
+         * @param producer the producer
+         * @param spatialLayer the highest spatial layer to send
+         * @return a future that completes once the handler sends only those layers
+         */
+        CompletableFuture<Void> setMaxSpatialLayer(Producer producer, int spatialLayer);
+
+        /**
+         * The application changes the encoding parameters of the producer.
+         *
+         * @param producer the producer
+         * @param params the parameters to change
+         * @return a future that completes once the handler sends with them
+         */
+        CompletableFuture<Void> setRtpEncodingParameters(Producer producer, RTCRtpEncodingParameters params);
 
         /**
          * The application asks for the statistics of the producer.

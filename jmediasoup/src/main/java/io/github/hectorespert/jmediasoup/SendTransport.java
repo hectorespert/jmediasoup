@@ -6,6 +6,7 @@ package io.github.hectorespert.jmediasoup;
 
 import static java.util.Objects.requireNonNull;
 
+import dev.onvoid.webrtc.RTCRtpEncodingParameters;
 import dev.onvoid.webrtc.RTCStatsReport;
 import dev.onvoid.webrtc.media.MediaStreamTrack;
 import dev.onvoid.webrtc.media.MediaStreamTrackState;
@@ -155,6 +156,23 @@ public final class SendTransport extends Transport {
                                     return queue().push(
                                                     "producer @replacetrack event",
                                                     () -> handler().replaceTrack(producer.localId(), track));
+                                }
+
+                                @Override
+                                public CompletableFuture<Void> setMaxSpatialLayer(Producer producer, int spatialLayer) {
+                                    return queue().push(
+                                                    "producer @setMaxSpatialLayer event",
+                                                    () -> handler()
+                                                            .setMaxSpatialLayer(producer.localId(), spatialLayer));
+                                }
+
+                                @Override
+                                public CompletableFuture<Void> setRtpEncodingParameters(
+                                        Producer producer, RTCRtpEncodingParameters params) {
+                                    return queue().push(
+                                                    "producer @setRtpEncodingParameters event",
+                                                    () -> handler()
+                                                            .setRtpEncodingParameters(producer.localId(), params));
                                 }
 
                                 @Override

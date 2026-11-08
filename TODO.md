@@ -991,12 +991,12 @@ Origin: `aiortc_handler.py`, `media_section.py`. aiortc does not support simulca
 
 Origin: `producer.py`, `aiortc_handler.py`
 
-- [ ] `11.5.1` `Producer.setMaxSpatialLayer`. ⚠️ do not copy: it uses `self._kind`, which does not exist.
-- [ ] `11.5.2` `handler.setMaxSpatialLayer` with `getParameters` and `setParameters`. ⚠️ do not copy: in the original it only logs a warning.
-- [ ] `11.5.3` `Producer.setRtpEncodingParameters`.
-- [ ] `11.5.4` `handler.setRtpEncodingParameters`. ⚠️ do not copy: in the original it only logs a warning.
-- [ ] `11.5.5` Connect `@setmaxspatiallayer` and `@setrtpencodingparameters` to the handler.
-- [ ] `11.5.6` E2E test: when the layer is limited, the server stops receiving the higher ones.
+- [x] `11.5.1` `Producer.setMaxSpatialLayer`. ⚠️ do not copy: it uses `self._kind`, which does not exist. As mediasoup-client: an audio producer fails with `UnsupportedException`, the same layer does nothing, and `maxSpatialLayer()` takes the layer once the handler has set it. A negative layer throws `IllegalArgumentException`.
+- [x] `11.5.2` `handler.setMaxSpatialLayer` with `getParameters` and `setParameters`. ⚠️ do not copy: in the original it only logs a warning. As `Chrome111`: the encodings above the layer become inactive, `RemoteSdp.muxMediaSectionSimulcast` marks their streams as paused in the answer, and the handler renegotiates.
+- [x] `11.5.3` `Producer.setRtpEncodingParameters`, with the `RTCRtpEncodingParameters` of webrtc-java, as the handler (`4.1.1`).
+- [x] `11.5.4` `handler.setRtpEncodingParameters`. ⚠️ do not copy: in the original it only logs a warning. The fields that are not `null` replace those of every encoding, as the spread of `Chrome111`, which then muxes the simulcast streams and renegotiates as `11.5.2`.
+- [x] `11.5.5` Connect `@setmaxspatiallayer` and `@setrtpencodingparameters` to the handler, through the queue of the transport.
+- [x] `11.5.6` E2E test: when the layer is limited, the server stops receiving the higher ones. In `SimulcastTest`, which also checks that they come back when the limit rises.
 - [ ] `11.5.7` Publish version `0.3.0`.
 
 **Phase 11 acceptance**

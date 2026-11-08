@@ -9,6 +9,7 @@ import static java.util.Objects.requireNonNull;
 import io.github.hectorespert.jmediasoup.MediasoupClientException;
 import io.github.hectorespert.jmediasoup.ProducerCodecOptions;
 import io.github.hectorespert.jmediasoup.internal.sdptransform.Writer;
+import io.github.hectorespert.jmediasoup.rtp.RtpEncodingParameters;
 import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
 import io.github.hectorespert.jmediasoup.sctp.SctpParameters;
 import io.github.hectorespert.jmediasoup.transport.DtlsFingerprint;
@@ -408,6 +409,25 @@ public final class RemoteSdp {
      */
     public void disableMediaSection(String mid) throws MediasoupClientException {
         findMediaSection(mid).disable();
+    }
+
+    /**
+     * Marks the simulcast streams of a section for sending as paused or not, by whether their encoding
+     * is active.
+     *
+     * @param mid the MID of the section
+     * @param encodings the encodings that are sent, with their rid and whether they are active
+     * @throws MediasoupClientException if there is no section with that MID, or it is not for sending
+     */
+    public void muxMediaSectionSimulcast(String mid, List<RtpEncodingParameters> encodings)
+            throws MediasoupClientException {
+        if (!(findMediaSection(mid) instanceof RemoteAnswerMediaSection mediaSection)) {
+            throw new MediasoupClientException("media section with mid '" + mid + "' is not for sending");
+        }
+
+        mediaSection.muxSimulcastStreams(encodings);
+
+        replaceMediaSection(mediaSection, null);
     }
 
     /**

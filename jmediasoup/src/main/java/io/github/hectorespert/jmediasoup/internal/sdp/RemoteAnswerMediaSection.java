@@ -8,8 +8,10 @@ import static java.util.Objects.requireNonNull;
 
 import io.github.hectorespert.jmediasoup.ProducerCodecOptions;
 import io.github.hectorespert.jmediasoup.internal.sdptransform.JavaScript;
+import io.github.hectorespert.jmediasoup.internal.sdptransform.Parser;
 import io.github.hectorespert.jmediasoup.rtp.RtcpFeedback;
 import io.github.hectorespert.jmediasoup.rtp.RtpCodecParameters;
+import io.github.hectorespert.jmediasoup.rtp.RtpEncodingParameters;
 import io.github.hectorespert.jmediasoup.rtp.RtpHeaderExtensionParameters;
 import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
 import io.github.hectorespert.jmediasoup.sctp.SctpParameters;
@@ -18,10 +20,12 @@ import io.github.hectorespert.jmediasoup.transport.DtlsRole;
 import io.github.hectorespert.jmediasoup.transport.IceCandidate;
 import io.github.hectorespert.jmediasoup.transport.IceParameters;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -291,6 +295,49 @@ public final class RemoteAnswerMediaSection extends RemoteMediaSection {
         } else {
             this.offerRtpParameters = offerRtpParameters;
         }
+    }
+
+    /**
+     * Marks as paused, with {@code ~}, the simulcast streams of the section whose encoding is not
+     * active, and as not paused the others. A section without simulcast is left as it is.
+     *
+     * @param encodings the encodings that are sent, with their rid and whether they are active
+     */
+    @SuppressWarnings("unchecked")
+    public void muxSimulcastStreams(List<RtpEncodingParameters> encodings) {
+        if (!(mediaObject.get("simulcast") instanceof Map<?, ?> simulcast)
+                || !JavaScript.truthy(simulcast.get("list1"))) {
+            return;
+        }
+
+        var layers = new HashMap<String, RtpEncodingParameters>();
+
+        for (RtpEncodingParameters encoding : encodings) {
+            if (encoding.rid() != null && !encoding.rid().isEmpty()) {
+                layers.put(encoding.rid(), encoding);
+            }
+        }
+
+        String raw = JavaScript.string(simulcast.get("list1"));
+
+        List<List<Map<String, Object>>> simulcastStreams = Parser.parseSimulcastStreamList(raw);
+
+        for (List<Map<String, Object>> simulcastStream : simulcastStreams) {
+            for (Map<String, Object> simulcastFormat : simulcastStream) {
+                RtpEncodingParameters layer = layers.get(JavaScript.string(simulcastFormat.get("scid")));
+                simulcastFormat.put("paused", layer == null || !Boolean.TRUE.equals(layer.active()));
+            }
+        }
+
+        ((Map<String, Object>) simulcast)
+                .put(
+                        "list1",
+                        simulcastStreams.stream()
+                                .map(simulcastFormats -> simulcastFormats.stream()
+                                        .map(f -> (Boolean.TRUE.equals(f.get("paused")) ? "~" : "")
+                                                + JavaScript.string(f.get("scid")))
+                                        .collect(Collectors.joining(",")))
+                                .collect(Collectors.joining(";")));
     }
 
     /**

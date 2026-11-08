@@ -87,6 +87,7 @@ public final class FakeHandler implements Handler {
     private final List<Integer> receiveBatches = new CopyOnWriteArrayList<>();
     private final List<Integer> stopReceivingBatches = new CopyOnWriteArrayList<>();
     private final List<String> pauseCalls = new CopyOnWriteArrayList<>();
+    private final List<String> encodingCalls = new CopyOnWriteArrayList<>();
     private final List<String> iceCalls = new CopyOnWriteArrayList<>();
     private final List<FakeDataChannel> dataChannels = new CopyOnWriteArrayList<>();
     private volatile boolean closed;
@@ -211,6 +212,16 @@ public final class FakeHandler implements Handler {
      */
     public List<String> pauseCalls() {
         return List.copyOf(pauseCalls);
+    }
+
+    /**
+     * Returns the calls that changed the encodings of a sending, such as {@code setMaxSpatialLayer 1 2}
+     * or {@code setRtpEncodingParameters 1 maxBitrate=100000}.
+     *
+     * @return the method, its local id and what it set, in the order of the calls
+     */
+    public List<String> encodingCalls() {
+        return List.copyOf(encodingCalls);
     }
 
     /**
@@ -351,12 +362,18 @@ public final class FakeHandler implements Handler {
 
     @Override
     public CompletableFuture<Void> setMaxSpatialLayer(String localId, int spatialLayer) {
-        return run(() -> null);
+        return run(() -> {
+            encodingCalls.add("setMaxSpatialLayer " + localId + " " + spatialLayer);
+            return null;
+        });
     }
 
     @Override
     public CompletableFuture<Void> setRtpEncodingParameters(String localId, RTCRtpEncodingParameters params) {
-        return run(() -> null);
+        return run(() -> {
+            encodingCalls.add("setRtpEncodingParameters " + localId + " maxBitrate=" + params.maxBitrate);
+            return null;
+        });
     }
 
     @Override

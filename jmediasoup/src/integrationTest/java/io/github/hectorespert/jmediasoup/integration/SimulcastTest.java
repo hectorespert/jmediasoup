@@ -5,6 +5,7 @@
 package io.github.hectorespert.jmediasoup.integration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.onvoid.webrtc.media.video.VideoFrame;
 import dev.onvoid.webrtc.media.video.VideoTrack;
@@ -23,11 +24,14 @@ import io.github.hectorespert.jmediasoup.testfixtures.ColorVideoSource;
 import io.github.hectorespert.jmediasoup.transport.TransportOptions;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,7 +40,7 @@ import tools.jackson.databind.JsonNode;
 
 /**
  * Simulcast end to end: one jmediasoup peer sends three VP8 streams of the same track, and another
- * one receives the one that the server picks.
+ * one receives the one that the server picks. The sender can also stop the streams above a layer.
  */
 @ExtendWith(MediasoupServer.class)
 class SimulcastTest {
@@ -111,26 +115,71 @@ class SimulcastTest {
                 .build()));
     }
 
+    // The packets that the server received from each stream of a producer, by rid.
+    private Map<String, Long> packetCounts(Producer producer) {
+        var counts = new TreeMap<String, Long>();
+        for (JsonNode stat : await(alice.producerStats(producer.id()))) {
+            if (stat.path("type").asString().equals("inbound-rtp")) {
+                counts.put(stat.path("rid").asString(), stat.path("packetCount").asLong());
+            }
+        }
+        return counts;
+    }
+
+    // Waits for the server to receive packets from the streams of a producer.
+    private void awaitReceived(Producer producer, Set<String> rids) throws InterruptedException {
+        long deadline = System.nanoTime() + TIMEOUT.toNanos();
+        Map<String, Long> counts;
+        do {
+            Thread.sleep(500);
+            counts = packetCounts(producer);
+        } while (!counts.entrySet().stream()
+                        .filter(count -> count.getValue() > 0)
+                        .map(Map.Entry::getKey)
+                        .collect(Collectors.toSet())
+                        .containsAll(rids)
+                && System.nanoTime() < deadline);
+
+        Map<String, Long> received = counts;
+        assertTrue(
+                rids.stream().allMatch(rid -> received.getOrDefault(rid, 0L) > 0),
+                "received " + received + " instead of " + rids);
+    }
+
+    // The streams of a producer from which the server receives packets during a second.
+    private Set<String> receiving(Producer producer) throws InterruptedException {
+        Map<String, Long> before = packetCounts(producer);
+        Thread.sleep(1000);
+        Map<String, Long> after = packetCounts(producer);
+        return after.keySet().stream()
+                .filter(rid -> after.get(rid) > before.getOrDefault(rid, 0L))
+                .collect(Collectors.toCollection(TreeSet::new));
+    }
+
     @Test
     void theServerReceivesEveryStream() throws InterruptedException {
         Producer producer = produceSimulcast();
 
-        long deadline = System.nanoTime() + TIMEOUT.toNanos();
-        Set<String> rids;
-        JsonNode stats;
-        do {
-            Thread.sleep(500);
-            stats = await(alice.producerStats(producer.id()));
-            rids = new TreeSet<>();
-            for (JsonNode stat : stats) {
-                if (stat.path("type").asString().equals("inbound-rtp")
-                        && stat.path("packetCount").asLong() > 0) {
-                    rids.add(stat.path("rid").asString());
-                }
-            }
-        } while (rids.size() < 3 && System.nanoTime() < deadline);
+        awaitReceived(producer, Set.of("r0", "r1", "r2"));
+    }
 
-        assertEquals(Set.of("r0", "r1", "r2"), rids, stats.toString());
+    @Test
+    void limitingTheSpatialLayerStopsTheStreamsAboveIt() throws InterruptedException {
+        Producer producer = produceSimulcast();
+        awaitReceived(producer, Set.of("r0", "r1", "r2"));
+
+        await(producer.setMaxSpatialLayer(1));
+        // What was sent before the limit may still arrive.
+        Thread.sleep(500);
+        assertEquals(Set.of("r0", "r1"), receiving(producer));
+
+        await(producer.setMaxSpatialLayer(2));
+        long deadline = System.nanoTime() + TIMEOUT.toNanos();
+        Set<String> receiving;
+        do {
+            receiving = receiving(producer);
+        } while (receiving.size() < 3 && System.nanoTime() < deadline);
+        assertEquals(Set.of("r0", "r1", "r2"), receiving);
     }
 
     @Test

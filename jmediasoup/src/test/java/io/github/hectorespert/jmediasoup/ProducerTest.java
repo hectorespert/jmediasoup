@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.onvoid.webrtc.RTCRtpEncodingParameters;
 import dev.onvoid.webrtc.media.MediaStreamTrackState;
 import io.github.hectorespert.jmediasoup.fake.FakeHandler;
 import io.github.hectorespert.jmediasoup.fake.FakeMediaStreamTrack;
@@ -714,6 +715,56 @@ class ProducerTest {
         producer.close();
 
         assertEquals(0, track.endedListeners());
+    }
+
+    @Test
+    void setMaxSpatialLayerLimitsTheLayersOfAVideoProducer() {
+        Producer producer = produce(FakeMediaStreamTrack.video());
+        assertNull(producer.maxSpatialLayer());
+
+        await(producer.setMaxSpatialLayer(1));
+        assertEquals(1, producer.maxSpatialLayer());
+
+        // The same layer does not reach the handler.
+        await(producer.setMaxSpatialLayer(1));
+        await(producer.setMaxSpatialLayer(0));
+        assertEquals(0, producer.maxSpatialLayer());
+
+        assertEquals(
+                List.of(
+                        "setMaxSpatialLayer " + producer.localId() + " 1",
+                        "setMaxSpatialLayer " + producer.localId() + " 0"),
+                handler(transport).encodingCalls());
+    }
+
+    @Test
+    void setMaxSpatialLayerFailsOnAudioClosedProducersAndNegativeLayers() {
+        Producer audio = produce(FakeMediaStreamTrack.audio());
+        Producer video = produce(FakeMediaStreamTrack.video());
+
+        assertInstanceOf(UnsupportedException.class, cause(audio.setMaxSpatialLayer(0)));
+        assertThrows(IllegalArgumentException.class, () -> video.setMaxSpatialLayer(-1));
+
+        video.close();
+        assertInstanceOf(InvalidStateException.class, cause(video.setMaxSpatialLayer(0)));
+        assertNull(video.maxSpatialLayer());
+        assertEquals(List.of(), handler(transport).encodingCalls());
+    }
+
+    @Test
+    void setRtpEncodingParametersReachesTheHandler() {
+        Producer producer = produce(FakeMediaStreamTrack.video());
+        var params = new RTCRtpEncodingParameters();
+        params.maxBitrate = 100_000;
+
+        await(producer.setRtpEncodingParameters(params));
+
+        assertEquals(
+                List.of("setRtpEncodingParameters " + producer.localId() + " maxBitrate=100000"),
+                handler(transport).encodingCalls());
+
+        producer.close();
+        assertInstanceOf(InvalidStateException.class, cause(producer.setRtpEncodingParameters(params)));
     }
 
     @Test

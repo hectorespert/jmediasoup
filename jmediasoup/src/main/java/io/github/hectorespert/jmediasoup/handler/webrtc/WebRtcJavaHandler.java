@@ -24,6 +24,8 @@ import dev.onvoid.webrtc.RTCPriorityType;
 import dev.onvoid.webrtc.RTCRtcpMuxPolicy;
 import dev.onvoid.webrtc.RTCRtpEncodingParameters;
 import dev.onvoid.webrtc.RTCRtpReceiver;
+import dev.onvoid.webrtc.RTCRtpSendParameters;
+import dev.onvoid.webrtc.RTCRtpSender;
 import dev.onvoid.webrtc.RTCRtpTransceiver;
 import dev.onvoid.webrtc.RTCRtpTransceiverDirection;
 import dev.onvoid.webrtc.RTCRtpTransceiverInit;
@@ -872,14 +874,137 @@ public final class WebRtcJavaHandler implements Handler {
         return CompletableFuture.completedFuture(null);
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>As in mediasoup-client, the encodings up to the layer are active and those above it are not,
+     * and the answer marks the simulcast streams of the inactive ones as paused.
+     */
     @Override
     public CompletableFuture<Void> setMaxSpatialLayer(String localId, int spatialLayer) {
-        return notImplemented("setMaxSpatialLayer");
+        requireNonNull(localId, "localId");
+        try {
+            assertNotClosed();
+            assertSendDirection();
+
+            logger.debug("setMaxSpatialLayer() [localId:{}, spatialLayer:{}]", localId, spatialLayer);
+
+            RTCRtpSender sender = sender(localId);
+            RTCRtpSendParameters parameters = sender.getParameters();
+
+            for (int idx = 0; idx < parameters.encodings.size(); idx++) {
+                parameters.encodings.get(idx).active = idx <= spatialLayer;
+            }
+
+            sender.setParameters(parameters);
+
+            remoteSdp.muxMediaSectionSimulcast(localId, simulcastStreams(parameters.encodings));
+        } catch (MediasoupClientException | RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        return renegotiateSending("setMaxSpatialLayer");
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>As in mediasoup-client, the fields of the given parameters that are not {@code null} replace
+     * those of every encoding, and the answer marks the simulcast streams of the inactive ones as
+     * paused.
+     */
     @Override
     public CompletableFuture<Void> setRtpEncodingParameters(String localId, RTCRtpEncodingParameters params) {
-        return notImplemented("setRtpEncodingParameters");
+        requireNonNull(localId, "localId");
+        requireNonNull(params, "params");
+        try {
+            assertNotClosed();
+            assertSendDirection();
+
+            logger.debug("setRtpEncodingParameters() [localId:{}, params:{}]", localId, params);
+
+            RTCRtpSender sender = sender(localId);
+            RTCRtpSendParameters parameters = sender.getParameters();
+
+            for (RTCRtpEncodingParameters encoding : parameters.encodings) {
+                assign(encoding, params);
+            }
+
+            sender.setParameters(parameters);
+
+            remoteSdp.muxMediaSectionSimulcast(localId, simulcastStreams(parameters.encodings));
+        } catch (MediasoupClientException | RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        return renegotiateSending("setRtpEncodingParameters");
+    }
+
+    private RTCRtpSender sender(String localId) throws MediasoupClientException {
+        RTCRtpTransceiver transceiver = mapMidTransceiver.get(localId);
+
+        if (transceiver == null) {
+            throw new MediasoupClientException("associated RTCRtpTransceiver not found");
+        }
+
+        return transceiver.getSender();
+    }
+
+    // The rid of each native encoding and whether it is active, which is what the answer needs.
+    private static List<RtpEncodingParameters> simulcastStreams(List<RTCRtpEncodingParameters> encodings) {
+        return encodings.stream()
+                .map(encoding -> RtpEncodingParameters.builder()
+                        .rid(encoding.rid)
+                        .active(encoding.active)
+                        .build())
+                .toList();
+    }
+
+    // The fields of the given parameters that are set, over those of the encoding, as the spread of
+    // mediasoup-client.
+    static void assign(RTCRtpEncodingParameters encoding, RTCRtpEncodingParameters params) {
+        if (params.rid != null) {
+            encoding.rid = params.rid;
+        }
+        if (params.ssrc != null) {
+            encoding.ssrc = params.ssrc;
+        }
+        if (params.active != null) {
+            encoding.active = params.active;
+        }
+        if (params.maxBitrate != null) {
+            encoding.maxBitrate = params.maxBitrate;
+        }
+        if (params.minBitrate != null) {
+            encoding.minBitrate = params.minBitrate;
+        }
+        if (params.maxFramerate != null) {
+            encoding.maxFramerate = params.maxFramerate;
+        }
+        if (params.scaleResolutionDownBy != null) {
+            encoding.scaleResolutionDownBy = params.scaleResolutionDownBy;
+        }
+        if (params.scaleResolutionDownTo != null) {
+            encoding.scaleResolutionDownTo = params.scaleResolutionDownTo;
+        }
+        if (params.scalabilityMode != null) {
+            encoding.scalabilityMode = params.scalabilityMode;
+        }
+        if (params.numTemporalLayers != null) {
+            encoding.numTemporalLayers = params.numTemporalLayers;
+        }
+        if (params.bitratePriority != null) {
+            encoding.bitratePriority = params.bitratePriority;
+        }
+        if (params.networkPriority != null) {
+            encoding.networkPriority = params.networkPriority;
+        }
+        if (params.adaptivePtime != null) {
+            encoding.adaptivePtime = params.adaptivePtime;
+        }
+        if (params.codec != null) {
+            encoding.codec = params.codec;
+        }
     }
 
     @Override
@@ -1570,10 +1695,6 @@ public final class WebRtcJavaHandler implements Handler {
             builder.networkPriority(given.networkPriority());
         }
         return builder.build();
-    }
-
-    private static <T> CompletableFuture<T> notImplemented(String method) {
-        return CompletableFuture.failedFuture(new UnsupportedException(method + "() is not implemented yet"));
     }
 
     private static RtpCapabilities getLocalRtpCapabilities(Map<String, Object> localSdpObject) {

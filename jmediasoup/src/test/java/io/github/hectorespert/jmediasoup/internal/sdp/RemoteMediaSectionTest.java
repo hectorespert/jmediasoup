@@ -397,6 +397,34 @@ class RemoteMediaSectionTest {
         assertFalse(written.contains("a=rid:x"), written);
     }
 
+    private static RtpEncodingParameters stream(String rid, Boolean active) {
+        return RtpEncodingParameters.builder().rid(rid).active(active).build();
+    }
+
+    @Test
+    void muxingTheSimulcastStreamsPausesTheInactiveOnes() {
+        var section = new RemoteAnswerMediaSection(null, null, null, offerSection("offer-simulcast.sdp", 0), vp8());
+
+        section.muxSimulcastStreams(List.of(stream("r0", true), stream("r1", true), stream("r2", false)));
+        assertTrue(write(section).contains("a=simulcast:recv r0;r1;~r2\r\n"));
+
+        // An encoding that is not given, or without active, is paused too.
+        section.muxSimulcastStreams(List.of(stream("r0", true), stream("r1", null)));
+        assertTrue(write(section).contains("a=simulcast:recv r0;~r1;~r2\r\n"));
+
+        section.muxSimulcastStreams(List.of(stream("r0", true), stream("r1", true), stream("r2", true)));
+        assertTrue(write(section).contains("a=simulcast:recv r0;r1;r2\r\n"));
+    }
+
+    @Test
+    void muxingASectionWithoutSimulcastDoesNothing() {
+        var section = new RemoteAnswerMediaSection(null, null, null, offerSection("offer-sendonly.sdp", 1), vp8());
+
+        section.muxSimulcastStreams(List.of(stream("r0", false)));
+
+        assertFalse(section.getObject().containsKey("simulcast"));
+    }
+
     @Test
     void closingAnAnswerSectionRemovesItsSimulcast() {
         var section = new RemoteAnswerMediaSection(null, null, null, offerSection("offer-simulcast.sdp", 0), vp8());
