@@ -966,7 +966,7 @@ Origin: `aiortc_handler.py`, `unified_plan_utils.py`
 - [x] `11.2.3` A single encoding: merge it with the one obtained from the SDP. Done in `6.2`.
 - [x] `11.2.4` Several encodings: use them as they are, with the `rid` and the scalability mode of `11.3.1`, and without the SSRCs of the offer.
 - [x] `11.2.5` Pass `dtx`, `maxBitrate`, `maxFramerate`, `scaleResolutionDownBy`, `priority` and `networkPriority` to the native encoding. Done in `6.2`, except `dtx`, which the `RTCRtpEncodingParameters` of webrtc-java does not have; `priority` goes to its `bitratePriority`, as in the browsers.
-- [ ] `11.2.6` E2E test per available codec: Opus, VP8, VP9 and H264. Receiving Opus, VP8 and H264 is already checked in `5.2.9` and `5.2.10`, and sending them in `6.2.10` and `6.2.11`.
+- [x] `11.2.6` E2E test per available codec: Opus, VP8, VP9 and H264. Receiving Opus, VP8 and H264 is already checked in `5.2.9` and `5.2.10`, and sending them in `6.2.10` and `6.2.11`. VP9, in `SvcTest`, which sends it and receives it in another peer.
 
 ### 11.3 Simulcast
 
@@ -981,11 +981,12 @@ Origin: `aiortc_handler.py`, `media_section.py`. aiortc does not support simulca
 
 ### 11.4 SVC
 
-- [ ] `11.4.1` Detect VP9 SVC with one encoding and several spatial layers.
-- [ ] `11.4.2` `addLegacySimulcast`. ⚠️ do not copy: it has several bugs (`.get` on a list, the `ssrc` key instead of `ssrcs`, `join` of integers).
-- [ ] `11.4.3` The VP9 branch of `send`. ⚠️ do not copy: it assigns `sdp_transform.parse` without calling it.
-- [ ] `11.4.4` Review in mediasoup-client whether this trick with a native `scalabilityMode` is still needed.
-- [ ] `11.4.5` E2E test with VP9 SVC.
+- [x] `11.4.1` Detect VP9 SVC with one encoding and several spatial layers. Nothing to detect: as `Chrome111`, the single encoding goes with its `scalabilityMode` to the native encoding and, merged with the one of the offer, to the RTP parameters, from which mediasoup creates an SVC consumer.
+- [x] `11.4.2` ~~`addLegacySimulcast`.~~ ⚠️ do not copy: it has several bugs (`.get` on a list, the `ssrc` key instead of `ssrcs`, `join` of integers). Not ported: `Chrome111` does not use it (`11.4.4`).
+- [x] `11.4.3` ~~The VP9 branch of `send`.~~ ⚠️ do not copy: it assigns `sdp_transform.parse` without calling it. Not ported, as `11.4.2`.
+- [x] `11.4.4` Review in mediasoup-client whether this trick with a native `scalabilityMode` is still needed. It is not: `Chrome111` passes the `scalabilityMode` in `sendEncodings`, and libwebrtc encodes the layers. pymediasoup needs the trick because aiortc has no SVC. The native capabilities already come from an offer with `L3T3`, as in `Chrome111`, to get the Dependency Descriptor extension.
+- [x] `11.4.5` E2E test with VP9 SVC. `SvcTest`: `L3T3` at 960x540, the server receives a single stream with bitrate in the three spatial layers, and the consumer of another peer receives the width of the layer it prefers. The libwebrtc of webrtc-java 0.20.0 drops the scalability mode of the encodings, to `L1T1`, when the answer has an `x-google-*` parameter for the codec, which `setParameters` does not undo and which does not happen between two webrtc-java peer connections without it. So `MediasoupServer` removes the `x-google-start-bitrate` of the VP9 codec of the demo router; the other codecs keep it, since without it simulcast takes 15 s to send its highest stream. With the demo, the `L1T3` of simulcast is then sent as `L1T1`, which mediasoup accepts.
+- [ ] `11.4.6` Report to webrtc-java that an `x-google-*` parameter in the remote description drops the scalability mode, and once a version fixes it, remove the change of the VP9 codec in `MediasoupServer` and the `L1T1` check of `WebRtcJavaSendTest.aSingleEncodingKeepsItsScalabilityMode`.
 
 ### 11.5 Live control
 

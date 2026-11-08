@@ -401,6 +401,20 @@ class WebRtcJavaSendTest {
     }
 
     @Test
+    void aSingleEncodingKeepsItsScalabilityMode() {
+        Producer video = await(transport.produce(ProducerOptions.builder(videoTrack())
+                .encodings(List.of(
+                        RtpEncodingParameters.builder().scalabilityMode("L1T3").build()))
+                .build()));
+
+        assertEquals("L1T3", video.rtpParameters().encodings().getFirst().scalabilityMode());
+        // The answer has the x-google-start-bitrate of the router, with which the libwebrtc of
+        // webrtc-java 0.20.0 drops the scalability mode. This fails once it no longer does.
+        assertTrue(answerParameters(video.localId(), 96).containsKey("x-google-start-bitrate"));
+        assertEquals("L1T1", video.rtpSender().getParameters().encodings.getFirst().scalabilityMode);
+    }
+
+    @Test
     void simulcastEncodingsShareTheHighestNumberOfTemporalLayers() {
         assertEquals(
                 List.of("L1T3", "L1T3"),

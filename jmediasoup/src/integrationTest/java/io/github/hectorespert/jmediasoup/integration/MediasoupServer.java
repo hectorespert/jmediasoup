@@ -104,11 +104,17 @@ public final class MediasoupServer implements BeforeAllCallback, ParameterResolv
                 // The demo has one worker per CPU, on 44444 and the next ports, which are in the
                 // ephemeral range of Linux (32768-60999), where any outgoing connection of the host
                 // can take one first. One worker on 24444, and the plain transports below it too.
+                // VP9 leaves out the x-google-start-bitrate of the router: with an x-google parameter
+                // in the answer, the libwebrtc of webrtc-java 0.20.0 drops the scalability mode of
+                // the encodings, and sends neither SVC nor temporal layers. The other codecs keep it,
+                // since simulcast takes long to send the highest stream from the default start
+                // bitrate.
                 .withCommand(
                         "sh",
                         "-c",
                         "sed -i -e 's/port: 44444/port: " + WEBRTC_SERVER_PORT + "/'"
-                                + " -e 's/numWorkers: .*/numWorkers: 1,/' /app/config.mjs"
+                                + " -e 's/numWorkers: .*/numWorkers: 1,/'"
+                                + " -e '/video\\/VP9/,/}/{/x-google-start-bitrate/d}' /app/config.mjs"
                                 + " && exec mediasoup-demo-server")
                 .withEnv("MEDIASOUP_MIN_PORT", "20000")
                 .withEnv("MEDIASOUP_MAX_PORT", "20999")

@@ -96,6 +96,21 @@ Producer videoProducer = sendTransport.produce(ProducerOptions.builder(videoTrac
 
 While it sends, `videoProducer.setMaxSpatialLayer(1)` stops the streams above the second one, and `setRtpEncodingParameters` changes every encoding, with the fields of a webrtc-java `RTCRtpEncodingParameters` that are not `null`.
 
+With VP9, a single encoding with a scalability mode of several spatial layers sends them in a single stream (SVC), from which mediasoup drops the layers that each consumer does not receive. It needs a router whose VP9 codec has no `x-google-*` parameters (see [Limitations](#limitations)):
+
+```java
+RtpCodecCapability vp9 = device.sendRtpCapabilities().codecs().stream()
+        .filter(codec -> codec.mimeType().equalsIgnoreCase("video/VP9"))
+        .findFirst()
+        .orElseThrow();
+
+Producer svcProducer = sendTransport.produce(ProducerOptions.builder(videoTrack)
+                .codec(vp9)
+                .encodings(List.of(RtpEncodingParameters.builder().scalabilityMode("L3T3").build()))
+                .build())
+        .join();
+```
+
 ### Receive
 
 Create a receive transport, and consume each producer that the server announces with the parameters of the consumer it created:
@@ -180,9 +195,9 @@ webrtc-java publishes natives for these platforms, as classifiers of `dev.onvoid
 
 ## Limitations
 
-`0.3.0` covers the basic flow: load the device, send and receive audio and video, pause and resume, replace the track being sent, send and receive data, get stats, restart ICE, and close; and it applies the codec options and sends video in simulcast. This is not supported yet:
+`0.3.0` covers the basic flow: load the device, send and receive audio and video, pause and resume, replace the track being sent, send and receive data, get stats, restart ICE, and close; and it applies the codec options and sends video in simulcast. SVC comes in the next version.
 
-- SVC: a single VP9 encoding with several spatial layers.
+The libwebrtc of webrtc-java 0.20.0 drops the scalability mode of the encodings when the answer of mediasoup has an `x-google-*` parameter for the codec, such as the `x-google-start-bitrate` that many routers give their video codecs, or those that the `videoGoogle*` codec options add. Then it sends neither SVC nor the temporal layers of simulcast: simulcast still works, with one temporal layer per stream. To send SVC, leave the `x-google-*` parameters out of the VP9 codec of the router.
 
 [TODO.md](TODO.md) holds the plan up to parity with pymediasoup and mediasoup-client.
 
