@@ -2,7 +2,7 @@
 
 Java client for [mediasoup](https://mediasoup.org), the counterpart of what [pymediasoup](https://github.com/Huddle01/pymediasoup) is for Python. Its API follows the official JavaScript client, [mediasoup-client](https://mediasoup.org/documentation/v3/mediasoup-client/api/), and it uses [webrtc-java](https://github.com/devopvoid/webrtc-java) as the WebRTC stack.
 
-> **Status:** `0.4.0` is on Maven Central. It sends and receives audio, video and data, and sends video in simulcast and SVC; see [Limitations](#limitations) for what is not supported yet.
+> **Status:** `0.4.1` is on Maven Central. It sends and receives audio, video and data, and sends video in simulcast and SVC; see [Limitations](#limitations) for what is not supported yet.
 
 ## Installation
 
@@ -12,7 +12,7 @@ Gradle:
 
 ```kotlin
 dependencies {
-    implementation("io.github.hectorespert:jmediasoup:0.4.0")
+    implementation("io.github.hectorespert:jmediasoup:0.4.1")
     runtimeOnly("dev.onvoid.webrtc:webrtc-java:0.20.0:linux-x86_64")
 }
 ```
@@ -23,7 +23,7 @@ Maven:
 <dependency>
     <groupId>io.github.hectorespert</groupId>
     <artifactId>jmediasoup</artifactId>
-    <version>0.4.0</version>
+    <version>0.4.1</version>
 </dependency>
 <dependency>
     <groupId>dev.onvoid.webrtc</groupId>
@@ -222,7 +222,7 @@ The application needs the natives of each platform it runs on, with the version 
 
 ```kotlin
 dependencies {
-    implementation("io.github.hectorespert:jmediasoup:0.4.0")
+    implementation("io.github.hectorespert:jmediasoup:0.4.1")
     for (classifier in listOf("linux-x86_64", "macos-aarch64", "windows-x86_64")) {
         runtimeOnly("dev.onvoid.webrtc:webrtc-java:0.20.0:$classifier")
     }
@@ -306,7 +306,7 @@ Unlike pymediasoup, whose aiortc does not support them, jmediasoup sends simulca
 
 ## Limitations
 
-`0.4.0` covers the basic flow: load the device, send and receive audio and video, pause and resume, replace the track being sent, send and receive data, get stats, restart ICE, and close; and it applies the codec options and sends video in simulcast and SVC.
+`0.4.1` covers the basic flow: load the device, send and receive audio and video, pause and resume, replace the track being sent, send and receive data, get stats, restart ICE, and close; and it applies the codec options and sends video in simulcast and SVC.
 
 On Linux and Windows, the video encoders of webrtc-java 0.20.0 drop the scalability mode of the encodings when the answer of mediasoup has an `x-google-*` parameter for the codec, such as the `x-google-start-bitrate` that many routers give their video codecs, or those that the `videoGoogle*` codec options add. Then they send neither SVC nor the temporal layers of simulcast: simulcast still works, with one temporal layer per stream. To send SVC, leave the `x-google-*` parameters out of the VP9 codec of the router. On macOS, whose encoders are others, the scalability mode is kept.
 
