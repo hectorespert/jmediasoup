@@ -73,7 +73,14 @@ VideoTrack videoTrack = peerConnectionFactory.createVideoTrack("video", videoSou
 Producer producer = sendTransport.produce(ProducerOptions.builder(videoTrack).build()).join();
 ```
 
-The application then pushes frames to the source with `videoSource.pushFrame(frame)`, and audio to a `CustomAudioSource` with `pushAudio`. `ProducerOptions` also takes the codec to send, among those of `device.sendRtpCapabilities()`, and a single encoding with its `maxBitrate` and the rest of the RTP encoding parameters.
+The application then pushes frames to the source with `videoSource.pushFrame(frame)`, and audio to a `CustomAudioSource` with `pushAudio`. `ProducerOptions` also takes the codec to send, among those of `device.sendRtpCapabilities()`, a single encoding with its `maxBitrate` and the rest of the RTP encoding parameters, and the codec options, such as Opus in stereo or the bitrate with which video starts:
+
+```java
+Producer audioProducer = sendTransport.produce(ProducerOptions.builder(audioTrack)
+                .codecOptions(ProducerCodecOptions.builder().opusStereo(true).opusDtx(true).build())
+                .build())
+        .join();
+```
 
 ### Receive
 
@@ -159,10 +166,9 @@ webrtc-java publishes natives for these platforms, as classifiers of `dev.onvoid
 
 ## Limitations
 
-`0.2.0` covers the basic flow: load the device, send and receive audio and video, pause and resume, replace the track being sent, send and receive data, get stats, restart ICE, and close. These are not supported yet:
+`0.2.0` covers the basic flow: load the device, send and receive audio and video, pause and resume, replace the track being sent, send and receive data, get stats, restart ICE, and close. This is not supported yet:
 
 - Simulcast and SVC: `produce` with more than one encoding fails with `UnsupportedException`.
-- Codec options (`ProducerCodecOptions`, such as `opusStereo` or `videoGoogleStartBitrate`): they are ignored, with a warning.
 
 [TODO.md](TODO.md) holds the plan up to parity with pymediasoup and mediasoup-client.
 

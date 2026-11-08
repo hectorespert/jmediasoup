@@ -7,6 +7,7 @@ package io.github.hectorespert.jmediasoup.internal.sdp;
 import static java.util.Objects.requireNonNull;
 
 import io.github.hectorespert.jmediasoup.MediasoupClientException;
+import io.github.hectorespert.jmediasoup.ProducerCodecOptions;
 import io.github.hectorespert.jmediasoup.internal.sdptransform.Writer;
 import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
 import io.github.hectorespert.jmediasoup.sctp.SctpParameters;
@@ -214,11 +215,57 @@ public final class RemoteSdp {
      * @param answerRtpParameters the RTP parameters that mediasoup receives
      * @throws MediasoupClientException if there is no section with {@code reuseMid}
      */
-    @SuppressWarnings("unchecked")
     public void send(Map<String, Object> offerMediaObject, @Nullable String reuseMid, RtpParameters answerRtpParameters)
             throws MediasoupClientException {
+        addAnswer(offerMediaObject, reuseMid, null, answerRtpParameters, null);
+    }
+
+    /**
+     * Adds or replaces the answer to a media section of the local offer for sending, with the codec
+     * options of the producer.
+     *
+     * <p>The Dependency Descriptor header extension is removed unless mediasoup supports it for one
+     * of the codecs (AV1 and H264).
+     *
+     * @param offerMediaObject the parsed media section of the local offer
+     * @param reuseMid the MID of the closed section to replace, or {@code null}
+     * @param offerRtpParameters the RTP parameters that the local endpoint sends
+     * @param answerRtpParameters the RTP parameters that mediasoup receives
+     * @param codecOptions the codec options, or {@code null}
+     * @return the RTP parameters of the offer, with the changes that the codec options make to them,
+     *     which are the ones to give to mediasoup
+     * @throws MediasoupClientException if there is no section with {@code reuseMid}
+     */
+    public RtpParameters send(
+            Map<String, Object> offerMediaObject,
+            @Nullable String reuseMid,
+            RtpParameters offerRtpParameters,
+            RtpParameters answerRtpParameters,
+            @Nullable ProducerCodecOptions codecOptions)
+            throws MediasoupClientException {
+        requireNonNull(offerRtpParameters, "offerRtpParameters");
+        return requireNonNull(
+                addAnswer(offerMediaObject, reuseMid, offerRtpParameters, answerRtpParameters, codecOptions)
+                        .offerRtpParameters());
+    }
+
+    @SuppressWarnings("unchecked")
+    private RemoteAnswerMediaSection addAnswer(
+            Map<String, Object> offerMediaObject,
+            @Nullable String reuseMid,
+            @Nullable RtpParameters offerRtpParameters,
+            RtpParameters answerRtpParameters,
+            @Nullable ProducerCodecOptions codecOptions)
+            throws MediasoupClientException {
         var mediaSection = new RemoteAnswerMediaSection(
-                iceParameters, iceCandidates, dtlsParameters, offerMediaObject, answerRtpParameters);
+                iceParameters,
+                iceCandidates,
+                dtlsParameters,
+                null,
+                offerMediaObject,
+                offerRtpParameters,
+                answerRtpParameters,
+                codecOptions);
 
         Map<String, Object> mediaObject = mediaSection.getObject();
 
@@ -242,6 +289,8 @@ public final class RemoteSdp {
             // Plan-B with same media kind.
             replaceMediaSection(mediaSection, null);
         }
+
+        return mediaSection;
     }
 
     /**

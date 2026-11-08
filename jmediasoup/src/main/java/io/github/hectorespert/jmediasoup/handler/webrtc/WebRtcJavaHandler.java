@@ -438,8 +438,7 @@ public final class WebRtcJavaHandler implements Handler {
      *
      * <p>As in mediasoup-client, the local id is the MID of the transceiver, and the stream of the
      * {@code msid} of the RTP parameters is the given one or, if none, the one that all the tracks of
-     * the handler share. Simulcast, more than one encoding, is not supported yet, and the codec options
-     * are ignored.
+     * the handler share. Simulcast, more than one encoding, is not supported yet.
      */
     @Override
     public CompletableFuture<HandlerSendResult> send(HandlerSendOptions options) {
@@ -458,11 +457,6 @@ public final class WebRtcJavaHandler implements Handler {
             // The answer cannot negotiate simulcast yet (section 11.3 of TODO.md).
             if (options.encodings().size() > 1) {
                 throw new UnsupportedException("simulcast is not supported yet");
-            }
-
-            // The answer cannot apply them yet (section 11.1 of TODO.md).
-            if (options.codecOptions() != null) {
-                logger.warn("send() | codecOptions are not supported yet, ignoring them");
             }
 
             kind = MediaKind.fromValue(track.getKind());
@@ -615,7 +609,7 @@ public final class WebRtcJavaHandler implements Handler {
                             encodings = List.copyOf(merged);
                         }
 
-                        rtpParameters = new RtpParameters(
+                        var offerRtpParameters = new RtpParameters(
                                 localId,
                                 codecs,
                                 sendingRtpParameters.headerExtensions(),
@@ -624,7 +618,13 @@ public final class WebRtcJavaHandler implements Handler {
                                 (options.streamId() != null ? options.streamId() : sendStreamId) + " "
                                         + options.track().getId());
 
-                        remoteSdp.send(offerMediaObject, mediaSectionIdx.reuseMid(), answerRtpParameters);
+                        // With the changes of the codec options, which mediasoup has to receive too.
+                        rtpParameters = remoteSdp.send(
+                                offerMediaObject,
+                                mediaSectionIdx.reuseMid(),
+                                offerRtpParameters,
+                                answerRtpParameters,
+                                options.codecOptions());
 
                         answer = new RTCSessionDescription(RTCSdpType.ANSWER, remoteSdp.getSdp());
                     } catch (MediasoupClientException e) {

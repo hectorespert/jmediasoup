@@ -38,9 +38,12 @@ import io.github.hectorespert.jmediasoup.SendTransport;
 import io.github.hectorespert.jmediasoup.UnsupportedException;
 import io.github.hectorespert.jmediasoup.fake.FakeParameters;
 import io.github.hectorespert.jmediasoup.handler.HandlerSendOptions;
+import io.github.hectorespert.jmediasoup.internal.sdptransform.JavaScript;
+import io.github.hectorespert.jmediasoup.internal.sdptransform.Parser;
 import io.github.hectorespert.jmediasoup.rtp.MediaKind;
 import io.github.hectorespert.jmediasoup.rtp.Priority;
 import io.github.hectorespert.jmediasoup.rtp.RtpCodecCapability;
+import io.github.hectorespert.jmediasoup.rtp.RtpCodecParameters;
 import io.github.hectorespert.jmediasoup.rtp.RtpEncodingParameters;
 import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
 import io.github.hectorespert.jmediasoup.testfixtures.ColorVideoSource;
@@ -58,6 +61,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -288,13 +292,75 @@ class WebRtcJavaSendTest {
         assertEquals(List.of(), mids());
     }
 
+    // A section of the remote description, the answer of mediasoup.
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> answerSection(String mid) {
+        RTCSessionDescription answer = handler().peerConnection().getRemoteDescription();
+        return ((List<Map<String, Object>>) Parser.parse(answer.sdp).get("media"))
+                .stream()
+                        .filter(m -> JavaScript.string(m.get("mid")).equals(mid))
+                        .findFirst()
+                        .orElseThrow();
+    }
+
+    // The parameters of a codec in the fmtp of a section of the answer.
+    @SuppressWarnings("unchecked")
+    private Map<String, @Nullable Object> answerParameters(String mid, int payloadType) {
+        return ((List<Map<String, Object>>) answerSection(mid).get("fmtp"))
+                .stream()
+                        .filter(fmtp -> ((Number) fmtp.get("payload")).intValue() == payloadType)
+                        .map(fmtp -> Parser.parseParams(JavaScript.string(fmtp.get("config"))))
+                        .findFirst()
+                        .orElseThrow();
+    }
+
     @Test
-    void codecOptionsAreIgnored() {
+    void opusOptionsGoToTheAnswerAndToTheRtpParameters() {
         Producer audio = await(transport.produce(ProducerOptions.builder(audioTrack())
-                .codecOptions(ProducerCodecOptions.builder().opusStereo(true).build())
+                .codecOptions(ProducerCodecOptions.builder()
+                        .opusStereo(true)
+                        .opusFec(false)
+                        .opusDtx(true)
+                        .opusMaxPlaybackRate(24000)
+                        .opusMaxAverageBitrate(64000)
+                        .opusPtime(20)
+                        .build())
                 .build()));
 
-        assertEquals("audio/opus", audio.rtpParameters().codecs().getFirst().mimeType());
+        RtpCodecParameters codec = audio.rtpParameters().codecs().getFirst();
+        Map<String, @Nullable Object> answer = answerParameters(audio.localId(), codec.payloadType());
+        assertEquals(1, answer.get("stereo"));
+        assertEquals(0, answer.get("useinbandfec"));
+        assertEquals(1, answer.get("usedtx"));
+        assertEquals(24000, answer.get("maxplaybackrate"));
+        assertEquals(64000, answer.get("maxaveragebitrate"));
+        // libwebrtc moves the ptime of the fmtp to its own line.
+        assertEquals(20, ((Number) answerSection(audio.localId()).get("ptime")).intValue());
+
+        // What mediasoup receives in produce.
+        assertEquals(1, codec.parameters().get("sprop-stereo"));
+        assertEquals(0, codec.parameters().get("useinbandfec"));
+        assertEquals(1, codec.parameters().get("usedtx"));
+        assertEquals(20, codec.parameters().get("ptime"));
+        assertTrue(codec.rtcpFeedback().stream().noneMatch(fb -> fb.type().equals("nack")));
+    }
+
+    @Test
+    void videoOptionsGoToTheAnswer() {
+        Producer video = await(transport.produce(ProducerOptions.builder(videoTrack())
+                .codecOptions(ProducerCodecOptions.builder()
+                        .videoGoogleStartBitrate(1000)
+                        .videoGoogleMaxBitrate(3000)
+                        .videoGoogleMinBitrate(500)
+                        .build())
+                .build()));
+
+        RtpCodecParameters codec = video.rtpParameters().codecs().getFirst();
+        Map<String, @Nullable Object> answer = answerParameters(video.localId(), codec.payloadType());
+        assertEquals(1000, answer.get("x-google-start-bitrate"));
+        assertEquals(3000, answer.get("x-google-max-bitrate"));
+        assertEquals(500, answer.get("x-google-min-bitrate"));
+        assertFalse(codec.parameters().containsKey("x-google-start-bitrate"));
     }
 
     // A codec of another kind, which no codec matches.

@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.hectorespert.jmediasoup.MediasoupClientException;
+import io.github.hectorespert.jmediasoup.ProducerCodecOptions;
 import io.github.hectorespert.jmediasoup.fake.FakeParameters;
 import io.github.hectorespert.jmediasoup.internal.sdptransform.Parser;
 import io.github.hectorespert.jmediasoup.rtp.RtpCodecParameters;
@@ -195,6 +196,23 @@ class RemoteSdpTest {
                 CommonUtils.list(media(remoteSdp.getSdp()).getFirst().get("rtp"))
                         .getFirst()
                         .get("codec"));
+    }
+
+    @Test
+    void sendingWithCodecOptionsReturnsTheChangedOffer() throws Exception {
+        RemoteSdp remoteSdp = remoteSdp();
+        RtpParameters offer = answer("audio/opus", 111);
+
+        RtpParameters changed = remoteSdp.send(
+                offerSection("offer-sendonly.sdp", 0),
+                null,
+                offer,
+                offer,
+                ProducerCodecOptions.builder().opusStereo(true).build());
+
+        assertEquals(Map.of("sprop-stereo", 1), changed.codecs().getFirst().parameters());
+        assertEquals(offer.headerExtensions(), changed.headerExtensions());
+        assertTrue(remoteSdp.getSdp().contains("a=fmtp:111 stereo=1\r\n"));
     }
 
     @Test

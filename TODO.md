@@ -942,20 +942,20 @@ Origin: `transport.py`, `aiortc_handler.py`, `remote_sdp.py`
 
 Origin: `media_section.py`
 
-- [ ] `11.1.0` Decide how `RemoteAnswerMediaSection` returns the changes that the Opus options make to the parameters of the offer (`sprop-stereo`, `useinbandfec`, `usedtx`, `ptime` and the NACK of `opusNack`): mediasoup-client modifies the object it receives, and here the models are immutable.
-- [ ] `11.1.1` `opusStereo`.
-- [ ] `11.1.2` `opusFec`.
-- [ ] `11.1.3` `opusDtx`.
-- [ ] `11.1.4` `opusMaxPlaybackRate`.
-- [ ] `11.1.5` `opusMaxAverageBitrate`.
-- [ ] `11.1.6` `opusPtime`.
-- [ ] `11.1.7` `videoGoogleStartBitrate`.
-- [ ] `11.1.8` `videoGoogleMaxBitrate`.
-- [ ] `11.1.9` `videoGoogleMinBitrate`.
-- [ ] `11.1.10` Check in the answer SDP that each option is applied.
-- [ ] `11.1.11` `applyCodecParameters` with `sprop-stereo`.
-- [ ] `11.1.12` `opusNack`, from mediasoup-client.
-- [ ] `11.1.13` Remove the warning with which `send` ignores the codec options, and pass them to `RemoteSdp.send`.
+- [x] `11.1.0` Decide how `RemoteAnswerMediaSection` returns the changes that the Opus options make to the parameters of the offer (`sprop-stereo`, `useinbandfec`, `usedtx`, `ptime` and the NACK of `opusNack`): mediasoup-client modifies the object it receives, and here the models are immutable. Decided: the section builds both in one pass and exposes the changed offer with `offerRtpParameters()`, and `RemoteSdp.send` with the offer parameters and the codec options returns it, for the handler to give to `produce`.
+- [x] `11.1.1` `opusStereo`: `stereo` in the answer, `sprop-stereo` in the offer.
+- [x] `11.1.2` `opusFec`: `useinbandfec` in both.
+- [x] `11.1.3` `opusDtx`: `usedtx` in both.
+- [x] `11.1.4` `opusMaxPlaybackRate`: `maxplaybackrate` in the answer.
+- [x] `11.1.5` `opusMaxAverageBitrate`: `maxaveragebitrate` in the answer.
+- [x] `11.1.6` `opusPtime`: `ptime` in both. libwebrtc moves it from the `fmtp` of the answer to an `a=ptime` line.
+- [x] `11.1.7` `videoGoogleStartBitrate`: `x-google-start-bitrate` in the answer, for VP8, VP9, H264, H265 and AV1, as the next two.
+- [x] `11.1.8` `videoGoogleMaxBitrate`.
+- [x] `11.1.9` `videoGoogleMinBitrate`.
+- [x] `11.1.10` Check in the answer SDP that each option is applied: `RemoteMediaSectionTest` on the section, and `WebRtcJavaSendTest` on the remote description that libwebrtc accepts. `CodecOptionsTest` checks end to end that mediasoup gives the consumers of another peer the parameters of the producer, and that Opus in stereo is decoded in two channels, and in one without the option.
+- [x] `11.1.11` `applyCodecParameters` with `sprop-stereo`. Done in `5.2.6`, in `receive`.
+- [x] `11.1.12` `opusNack`, from mediasoup-client: with codec options and without `opusNack`, the plain NACK of Opus leaves the answer and the offer. Without codec options it stays.
+- [x] `11.1.13` Remove the warning with which `send` ignores the codec options, and pass them to `RemoteSdp.send`.
 
 ### 11.2 Codec selection and encodings
 

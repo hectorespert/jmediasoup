@@ -6,7 +6,9 @@ package io.github.hectorespert.jmediasoup.internal.sdp;
 
 import static java.util.Objects.requireNonNull;
 
+import io.github.hectorespert.jmediasoup.ProducerCodecOptions;
 import io.github.hectorespert.jmediasoup.internal.sdptransform.JavaScript;
+import io.github.hectorespert.jmediasoup.rtp.RtcpFeedback;
 import io.github.hectorespert.jmediasoup.rtp.RtpCodecParameters;
 import io.github.hectorespert.jmediasoup.rtp.RtpHeaderExtensionParameters;
 import io.github.hectorespert.jmediasoup.rtp.RtpParameters;
@@ -18,6 +20,7 @@ import io.github.hectorespert.jmediasoup.transport.IceParameters;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
@@ -25,9 +28,12 @@ import org.jspecify.annotations.Nullable;
  * A media section of the remote answer to a local offer, for sending: mediasoup receives what the
  * local endpoint offers to send.
  *
- * <p>Codec options and simulcast arrive with the phase that uses them.
+ * <p>Simulcast arrives with the phase that uses it.
  */
 public final class RemoteAnswerMediaSection extends RemoteMediaSection {
+
+    // The RTP parameters of the offer, with the codec options applied.
+    private final @Nullable RtpParameters offerRtpParameters;
 
     /**
      * Creates the answer to a media section of the local offer.
@@ -60,7 +66,6 @@ public final class RemoteAnswerMediaSection extends RemoteMediaSection {
      * @param answerRtpParameters the RTP parameters that mediasoup receives, required for audio and
      *     video sections
      */
-    @SuppressWarnings("unchecked")
     public RemoteAnswerMediaSection(
             @Nullable IceParameters iceParameters,
             @Nullable List<IceCandidate> iceCandidates,
@@ -68,6 +73,48 @@ public final class RemoteAnswerMediaSection extends RemoteMediaSection {
             @Nullable SctpParameters sctpParameters,
             Map<String, Object> offerMediaObject,
             @Nullable RtpParameters answerRtpParameters) {
+        this(
+                iceParameters,
+                iceCandidates,
+                dtlsParameters,
+                sctpParameters,
+                offerMediaObject,
+                null,
+                answerRtpParameters,
+                null);
+    }
+
+    /**
+     * Creates the answer to a media section of the local offer, with the codec options that the
+     * producer gives.
+     *
+     * <p>The codec options change the parameters of the answer, and some of them also those of the
+     * offer that mediasoup receives in {@code produce}, which {@link #offerRtpParameters()} returns:
+     * {@code opusStereo} ({@code sprop-stereo}), {@code opusFec}, {@code opusDtx}, {@code opusPtime},
+     * and the Opus NACK, which both lose unless {@code opusNack} is {@code true}.
+     *
+     * @param iceParameters the ICE parameters of the mediasoup transport, or {@code null}
+     * @param iceCandidates the ICE candidates of the mediasoup transport, or {@code null}
+     * @param dtlsParameters the DTLS parameters of the mediasoup transport, or {@code null}
+     * @param sctpParameters the SCTP parameters of the mediasoup transport, required for application
+     *     sections
+     * @param offerMediaObject the parsed media section of the local offer
+     * @param offerRtpParameters the RTP parameters that the local endpoint sends, required with codec
+     *     options
+     * @param answerRtpParameters the RTP parameters that mediasoup receives, required for audio and
+     *     video sections
+     * @param codecOptions the codec options, or {@code null}
+     */
+    @SuppressWarnings("unchecked")
+    public RemoteAnswerMediaSection(
+            @Nullable IceParameters iceParameters,
+            @Nullable List<IceCandidate> iceCandidates,
+            @Nullable DtlsParameters dtlsParameters,
+            @Nullable SctpParameters sctpParameters,
+            Map<String, Object> offerMediaObject,
+            @Nullable RtpParameters offerRtpParameters,
+            @Nullable RtpParameters answerRtpParameters,
+            @Nullable ProducerCodecOptions codecOptions) {
         super(iceParameters, iceCandidates, dtlsParameters);
 
         mediaObject.put("mid", JavaScript.string(offerMediaObject.get("mid")));
@@ -84,8 +131,92 @@ public final class RemoteAnswerMediaSection extends RemoteMediaSection {
             mediaObject.put("rtcpFb", new ArrayList<Map<String, Object>>());
             mediaObject.put("fmtp", new ArrayList<Map<String, Object>>());
 
+            // The codecs of the offer, by payload type, which the codec options may change.
+            var offerCodecs = new LinkedHashMap<Integer, RtpCodecParameters>();
+            if (codecOptions != null) {
+                requireNonNull(offerRtpParameters, "offerRtpParameters");
+                for (RtpCodecParameters offerCodec : offerRtpParameters.codecs()) {
+                    offerCodecs.putIfAbsent(offerCodec.payloadType(), offerCodec);
+                }
+            }
+
             for (RtpCodecParameters codec : answerRtpParameters.codecs()) {
-                addCodec(codec, codec.parameters(), codec.rtcpFeedback());
+                var codecParameters = new LinkedHashMap<String, Object>(codec.parameters());
+                List<RtcpFeedback> codecRtcpFeedback = codec.rtcpFeedback();
+
+                if (codecOptions != null) {
+                    RtpCodecParameters offerCodec = offerCodecs.get(codec.payloadType());
+
+                    switch (codec.mimeType().toLowerCase(Locale.ROOT)) {
+                        case "audio/opus", "audio/multiopus" -> {
+                            requireNonNull(offerCodec, "offer codec");
+                            var offerCodecParameters = new LinkedHashMap<String, Object>(offerCodec.parameters());
+                            List<RtcpFeedback> offerCodecRtcpFeedback = offerCodec.rtcpFeedback();
+
+                            if (codecOptions.opusStereo() != null) {
+                                offerCodecParameters.put("sprop-stereo", codecOptions.opusStereo() ? 1 : 0);
+                                codecParameters.put("stereo", codecOptions.opusStereo() ? 1 : 0);
+                            }
+
+                            if (codecOptions.opusFec() != null) {
+                                offerCodecParameters.put("useinbandfec", codecOptions.opusFec() ? 1 : 0);
+                                codecParameters.put("useinbandfec", codecOptions.opusFec() ? 1 : 0);
+                            }
+
+                            if (codecOptions.opusDtx() != null) {
+                                offerCodecParameters.put("usedtx", codecOptions.opusDtx() ? 1 : 0);
+                                codecParameters.put("usedtx", codecOptions.opusDtx() ? 1 : 0);
+                            }
+
+                            if (codecOptions.opusMaxPlaybackRate() != null) {
+                                codecParameters.put("maxplaybackrate", codecOptions.opusMaxPlaybackRate());
+                            }
+
+                            if (codecOptions.opusMaxAverageBitrate() != null) {
+                                codecParameters.put("maxaveragebitrate", codecOptions.opusMaxAverageBitrate());
+                            }
+
+                            if (codecOptions.opusPtime() != null) {
+                                offerCodecParameters.put("ptime", codecOptions.opusPtime());
+                                codecParameters.put("ptime", codecOptions.opusPtime());
+                            }
+
+                            // If opusNack is not set, we must remove NACK support for OPUS.
+                            // Otherwise it would be enabled for those handlers that artificially
+                            // announce it in their RTP capabilities.
+                            if (!Boolean.TRUE.equals(codecOptions.opusNack())) {
+                                offerCodecRtcpFeedback = withoutNack(offerCodecRtcpFeedback);
+                                codecRtcpFeedback = withoutNack(codecRtcpFeedback);
+                            }
+
+                            offerCodecs.put(
+                                    offerCodec.payloadType(),
+                                    new RtpCodecParameters(
+                                            offerCodec.mimeType(),
+                                            offerCodec.payloadType(),
+                                            offerCodec.clockRate(),
+                                            offerCodec.channels(),
+                                            offerCodecParameters,
+                                            offerCodecRtcpFeedback));
+                        }
+                        case "video/vp8", "video/vp9", "video/h264", "video/h265", "video/av1" -> {
+                            if (codecOptions.videoGoogleStartBitrate() != null) {
+                                codecParameters.put("x-google-start-bitrate", codecOptions.videoGoogleStartBitrate());
+                            }
+
+                            if (codecOptions.videoGoogleMaxBitrate() != null) {
+                                codecParameters.put("x-google-max-bitrate", codecOptions.videoGoogleMaxBitrate());
+                            }
+
+                            if (codecOptions.videoGoogleMinBitrate() != null) {
+                                codecParameters.put("x-google-min-bitrate", codecOptions.videoGoogleMinBitrate());
+                            }
+                        }
+                        default -> {}
+                    }
+                }
+
+                addCodec(codec, codecParameters, codecRtcpFeedback);
             }
 
             setPayloads(answerRtpParameters.codecs());
@@ -114,7 +245,20 @@ public final class RemoteAnswerMediaSection extends RemoteMediaSection {
 
             mediaObject.put("rtcpMux", "rtcp-mux");
             mediaObject.put("rtcpRsize", "rtcp-rsize");
+
+            this.offerRtpParameters = offerRtpParameters == null || codecOptions == null
+                    ? offerRtpParameters
+                    : new RtpParameters(
+                            offerRtpParameters.mid(),
+                            offerRtpParameters.codecs().stream()
+                                    .map(offerCodec -> offerCodecs.getOrDefault(offerCodec.payloadType(), offerCodec))
+                                    .toList(),
+                            offerRtpParameters.headerExtensions(),
+                            offerRtpParameters.encodings(),
+                            offerRtpParameters.rtcp(),
+                            offerRtpParameters.msid());
         } else if ("application".equals(type)) {
+            this.offerRtpParameters = offerRtpParameters;
             requireNonNull(sctpParameters, "sctpParameters");
             // New spec.
             if (offerMediaObject.get("sctpPort") instanceof Number) {
@@ -127,7 +271,19 @@ public final class RemoteAnswerMediaSection extends RemoteMediaSection {
                 mediaObject.put("payloads", String.valueOf(sctpParameters.port()));
                 mediaObject.put("sctpmap", sctpmap(sctpParameters));
             }
+        } else {
+            this.offerRtpParameters = offerRtpParameters;
         }
+    }
+
+    /**
+     * Returns the RTP parameters of the offer, with the changes of the codec options.
+     *
+     * @return the RTP parameters that mediasoup receives in {@code produce}, or {@code null} if none
+     *     were given
+     */
+    public @Nullable RtpParameters offerRtpParameters() {
+        return offerRtpParameters;
     }
 
     @Override
@@ -147,5 +303,13 @@ public final class RemoteAnswerMediaSection extends RemoteMediaSection {
     @Override
     public void resume() {
         mediaObject.put("direction", "recvonly");
+    }
+
+    // Keeps the NACK feedback with a parameter, such as nack pli, and removes the plain one.
+    private static List<RtcpFeedback> withoutNack(List<RtcpFeedback> rtcpFeedback) {
+        return rtcpFeedback.stream()
+                .filter(fb -> !"nack".equals(fb.type())
+                        || (fb.parameter() != null && !fb.parameter().isEmpty()))
+                .toList();
     }
 }

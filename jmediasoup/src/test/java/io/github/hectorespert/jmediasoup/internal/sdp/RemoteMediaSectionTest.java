@@ -6,9 +6,11 @@ package io.github.hectorespert.jmediasoup.internal.sdp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.hectorespert.jmediasoup.ProducerCodecOptions;
 import io.github.hectorespert.jmediasoup.fake.FakeParameters;
 import io.github.hectorespert.jmediasoup.internal.sdptransform.Writer;
 import io.github.hectorespert.jmediasoup.rtp.RtcpFeedback;
@@ -243,6 +245,127 @@ class RemoteMediaSectionTest {
 
         assertTrue(
                 write(section).contains("a=candidate:tcpcandidate 1 tcp 1 1.2.3.4 443 typ host tcptype passive\r\n"));
+    }
+
+    // Opus with the NACK that some handlers announce, and the nack pli that no Opus has, to check
+    // that only the plain NACK goes.
+    private static RtpParameters opusWithNack() {
+        RtpCodecParameters codec = opus().codecs().getFirst();
+        return new RtpParameters(
+                null,
+                List.of(new RtpCodecParameters(
+                        codec.mimeType(),
+                        codec.payloadType(),
+                        codec.clockRate(),
+                        codec.channels(),
+                        codec.parameters(),
+                        List.of(
+                                new RtcpFeedback("transport-cc", null),
+                                new RtcpFeedback("nack", null),
+                                new RtcpFeedback("nack", "pli")))),
+                opus().headerExtensions(),
+                null,
+                null,
+                null);
+    }
+
+    private static RemoteAnswerMediaSection answerWith(
+            int index, RtpParameters rtpParameters, ProducerCodecOptions codecOptions) {
+        return new RemoteAnswerMediaSection(
+                null,
+                null,
+                null,
+                null,
+                offerSection("offer-sendonly.sdp", index),
+                rtpParameters,
+                rtpParameters,
+                codecOptions);
+    }
+
+    @Test
+    void opusOptionsChangeTheAnswerAndTheOffer() {
+        var codecOptions = ProducerCodecOptions.builder()
+                .opusStereo(true)
+                .opusFec(false)
+                .opusDtx(true)
+                .opusMaxPlaybackRate(24000)
+                .opusMaxAverageBitrate(64000)
+                .opusPtime(20)
+                .build();
+
+        RemoteAnswerMediaSection section = answerWith(0, opusWithNack(), codecOptions);
+
+        String written = write(section);
+        assertTrue(
+                written.contains("a=fmtp:111 minptime=10;useinbandfec=0;stereo=1;usedtx=1;maxplaybackrate=24000;"
+                        + "maxaveragebitrate=64000;ptime=20\r\n"),
+                written);
+        assertTrue(written.contains("a=rtcp-fb:111 transport-cc\r\na=rtcp-fb:111 nack pli\r\na=extmap"), written);
+
+        // The offer gets the options that tell how it sends, and loses the NACK as well.
+        RtpCodecParameters offerCodec = section.offerRtpParameters().codecs().getFirst();
+        assertEquals(
+                Map.of("minptime", 10, "useinbandfec", 0, "sprop-stereo", 1, "usedtx", 1, "ptime", 20),
+                offerCodec.parameters());
+        assertEquals(
+                List.of(new RtcpFeedback("transport-cc", null), new RtcpFeedback("nack", "pli")),
+                offerCodec.rtcpFeedback());
+    }
+
+    @Test
+    void opusNackKeepsTheNack() {
+        RemoteAnswerMediaSection section = answerWith(
+                0, opusWithNack(), ProducerCodecOptions.builder().opusNack(true).build());
+
+        assertTrue(write(section).contains("a=rtcp-fb:111 nack\r\n"));
+        assertEquals(opusWithNack(), section.offerRtpParameters());
+    }
+
+    @Test
+    void withoutCodecOptionsTheOfferIsUnchangedAndKeepsTheNack() {
+        RtpParameters offer = opusWithNack();
+
+        var section = new RemoteAnswerMediaSection(
+                null, null, null, null, offerSection("offer-sendonly.sdp", 0), offer, offer, null);
+
+        assertTrue(write(section).contains("a=rtcp-fb:111 nack\r\n"));
+        assertSame(offer, section.offerRtpParameters());
+    }
+
+    @Test
+    void videoOptionsOnlyChangeTheAnswer() {
+        var codecOptions = ProducerCodecOptions.builder()
+                .videoGoogleStartBitrate(1000)
+                .videoGoogleMaxBitrate(3000)
+                .videoGoogleMinBitrate(500)
+                // Options of other codecs are left out.
+                .opusStereo(true)
+                .build();
+
+        RemoteAnswerMediaSection section = answerWith(1, vp8(), codecOptions);
+
+        String written = write(section);
+        assertTrue(
+                written.contains("a=fmtp:101 x-google-start-bitrate=1000;x-google-max-bitrate=3000;"
+                        + "x-google-min-bitrate=500\r\na=fmtp:102 apt=101\r\n"),
+                written);
+        assertTrue(written.contains("a=rtcp-fb:101 nack\r\n"), written);
+        assertEquals(vp8(), section.offerRtpParameters());
+    }
+
+    @Test
+    void codecOptionsNeedTheRtpParametersOfTheOffer() {
+        assertThrows(
+                NullPointerException.class,
+                () -> new RemoteAnswerMediaSection(
+                        null,
+                        null,
+                        null,
+                        null,
+                        offerSection("offer-sendonly.sdp", 0),
+                        null,
+                        opus(),
+                        ProducerCodecOptions.builder().build()));
     }
 
     @Test
