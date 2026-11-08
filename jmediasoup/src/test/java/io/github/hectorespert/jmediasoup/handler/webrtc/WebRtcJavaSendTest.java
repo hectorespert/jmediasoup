@@ -56,6 +56,7 @@ import io.github.hectorespert.jmediasoup.transport.IceServer;
 import io.github.hectorespert.jmediasoup.transport.IceTransportPolicy;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -408,12 +409,16 @@ class WebRtcJavaSendTest {
                 .build()));
 
         assertEquals("L1T3", video.rtpParameters().encodings().getFirst().scalabilityMode());
-        // The answer has the x-google-start-bitrate of the router, with which the libwebrtc of
-        // webrtc-java 0.20.0 drops the scalability mode. This fails once it no longer does.
-        // The payload type of the codec depends on the natives: on macOS VideoToolbox lists its codecs first.
+        // The answer has the x-google-start-bitrate of the router, with which the encoder factory of
+        // webrtc-java 0.20.0 on Linux and Windows drops the scalability mode; that of macOS keeps it.
+        // This fails once it no longer drops it. The payload type of the codec depends on the natives:
+        // on macOS VideoToolbox lists its codecs first.
         int payloadType = video.rtpParameters().codecs().getFirst().payloadType();
         assertTrue(answerParameters(video.localId(), payloadType).containsKey("x-google-start-bitrate"));
-        assertEquals("L1T1", video.rtpSender().getParameters().encodings.getFirst().scalabilityMode);
+        boolean macos = System.getProperty("os.name").toLowerCase(Locale.ROOT).startsWith("mac");
+        assertEquals(
+                macos ? "L1T3" : "L1T1",
+                video.rtpSender().getParameters().encodings.getFirst().scalabilityMode);
     }
 
     @Test

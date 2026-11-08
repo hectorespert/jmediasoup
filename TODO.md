@@ -174,7 +174,7 @@ Chosen image: `mmahdisonic/mediasoup-demo`, pinned by digest. No official image 
 - [x] `0.4.6` Check that the license is compatible with its use in CI.
 - [x] `0.4.7` Choose the image and pin it by digest, not by tag.
 - [x] `0.4.8` Validate UDP networking on Linux with `--network host`.
-- [ ] `0.4.9` Validate UDP networking on macOS and Windows with a port range and `announcedAddress`.
+- [ ] `0.4.9` Validate UDP networking on macOS and Windows with a port range and `announcedAddress`. Not possible on the GitHub runners (`13.2.3`); it needs a machine of each with Docker.
 - [x] `0.4.10` If no candidate meets the criteria, revisit the decision before starting Phase 7: not needed, the candidate meets them.
 
 **Result** (with podman, which replaces Docker locally)
@@ -985,8 +985,8 @@ Origin: `aiortc_handler.py`, `media_section.py`. aiortc does not support simulca
 - [x] `11.4.2` ~~`addLegacySimulcast`.~~ ⚠️ do not copy: it has several bugs (`.get` on a list, the `ssrc` key instead of `ssrcs`, `join` of integers). Not ported: `Chrome111` does not use it (`11.4.4`).
 - [x] `11.4.3` ~~The VP9 branch of `send`.~~ ⚠️ do not copy: it assigns `sdp_transform.parse` without calling it. Not ported, as `11.4.2`.
 - [x] `11.4.4` Review in mediasoup-client whether this trick with a native `scalabilityMode` is still needed. It is not: `Chrome111` passes the `scalabilityMode` in `sendEncodings`, and libwebrtc encodes the layers. pymediasoup needs the trick because aiortc has no SVC. The native capabilities already come from an offer with `L3T3`, as in `Chrome111`, to get the Dependency Descriptor extension.
-- [x] `11.4.5` E2E test with VP9 SVC. `SvcTest`: `L3T3` at 960x540, the server receives a single stream with bitrate in the three spatial layers, and the consumer of another peer receives the width of the layer it prefers. The libwebrtc of webrtc-java 0.20.0 drops the scalability mode of the encodings, to `L1T1`, when the answer has an `x-google-*` parameter for the codec, which `setParameters` does not undo and which does not happen between two webrtc-java peer connections without it. So `MediasoupServer` removes the `x-google-start-bitrate` of the VP9 codec of the demo router; the other codecs keep it, since without it simulcast takes 15 s to send its highest stream. With the demo, the `L1T3` of simulcast is then sent as `L1T1`, which mediasoup accepts.
-- [ ] `11.4.6` Report to webrtc-java that an `x-google-*` parameter in the remote description drops the scalability mode, and once a version fixes it, remove the change of the VP9 codec in `MediasoupServer` and the `L1T1` check of `WebRtcJavaSendTest.aSingleEncodingKeepsItsScalabilityMode`.
+- [x] `11.4.5` E2E test with VP9 SVC. `SvcTest`: `L3T3` at 960x540, the server receives a single stream with bitrate in the three spatial layers, and the consumer of another peer receives the width of the layer it prefers. On Linux and Windows, webrtc-java 0.20.0 drops the scalability mode of the encodings, to `L1T1`, when the answer has an `x-google-*` parameter for the codec, which `setParameters` does not undo and which does not happen between two webrtc-java peer connections without it. There its default encoder factory is the `VideoEncoderFactoryTemplate` of libwebrtc; on macOS it is the `RTCDefaultVideoEncoderFactory` of Objective-C, which keeps the mode, as the CI of `13.2.1` showed. So `MediasoupServer` removes the `x-google-start-bitrate` of the VP9 codec of the demo router; the other codecs keep it, since without it simulcast takes 15 s to send its highest stream. With the demo, the `L1T3` of simulcast is then sent as `L1T1`, which mediasoup accepts.
+- [ ] `11.4.6` Report to webrtc-java that, on Linux and Windows, an `x-google-*` parameter in the remote description drops the scalability mode, and once a version fixes it, remove the change of the VP9 codec in `MediasoupServer` and the `L1T1` check of `WebRtcJavaSendTest.aSingleEncodingKeepsItsScalabilityMode`.
 - [x] `11.4.7` Publish version `0.4.0`, with SVC. The GitHub release `0.4.0` on `main` published it, after the integration tests, and it was on Maven Central 11 minutes after the upload. A clean Gradle project with only Maven Central uses it.
 
 ### 11.5 Live control
@@ -1044,9 +1044,9 @@ Dropped: the project does not include examples, and the README shows how to use 
 
 ### 13.2 Multiplatform CI
 
-- [ ] `13.2.1` Unit tests on Linux, macOS and Windows.
-- [ ] `13.2.2` Loading the natives on every supported platform.
-- [ ] `13.2.3` Integration tests on the platforms where Docker networking allows it.
+- [x] `13.2.1` Unit tests on Linux, macOS and Windows. The `build` workflow runs on `ubuntu-24.04`, `ubuntu-24.04-arm`, `macos-15`, `macos-15-intel`, `windows-2025` and `windows-11-arm`, with bash as the shell. `.gitattributes` checks text files out with lf everywhere. The only failures were in a test that took for granted the payload type of VP8, which on macOS is another one, and that the scalability mode is dropped, which on macOS is not (`11.4.5`).
+- [x] `13.2.2` Loading the natives on every supported platform. The unit tests load them on the six platforms of `13.2.1`; `linux-aarch32` has no GitHub runner and stays untested.
+- [x] `13.2.3` Integration tests on the platforms where Docker networking allows it. Only Linux x86_64: the demo image is only for amd64, so they skip themselves on Linux aarch64, and the macOS runners of GitHub have no Docker, and the Windows ones only Windows containers.
 - [ ] `13.2.4` Tests with a recent mediasoup version besides the 3.19.14 of the image (`0.5.14`), building the official demo or with another image.
 - [ ] `13.2.5` Leak test: create and close transports in a loop, and watch the native memory.
 - [ ] `13.2.6` Consider Gradle variants by OS and CPU so that the natives are picked by themselves (`0.5.7`).

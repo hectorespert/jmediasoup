@@ -96,7 +96,7 @@ Producer videoProducer = sendTransport.produce(ProducerOptions.builder(videoTrac
 
 While it sends, `videoProducer.setMaxSpatialLayer(1)` stops the streams above the second one, and `setRtpEncodingParameters` changes every encoding, with the fields of a webrtc-java `RTCRtpEncodingParameters` that are not `null`.
 
-With VP9, a single encoding with a scalability mode of several spatial layers sends them in a single stream (SVC), from which mediasoup drops the layers that each consumer does not receive. It needs a router whose VP9 codec has no `x-google-*` parameters (see [Limitations](#limitations)):
+With VP9, a single encoding with a scalability mode of several spatial layers sends them in a single stream (SVC), from which mediasoup drops the layers that each consumer does not receive. On Linux and Windows, it needs a router whose VP9 codec has no `x-google-*` parameters (see [Limitations](#limitations)):
 
 ```java
 RtpCodecCapability vp9 = device.sendRtpCapabilities().codecs().stream()
@@ -206,17 +206,17 @@ The futures fail with a `MediasoupClientException`, wrapped in the `CompletionEx
 
 ## Platforms
 
-webrtc-java publishes natives for these platforms, as classifiers of `dev.onvoid.webrtc:webrtc-java`. The CI of jmediasoup runs its tests, against a mediasoup server, only on Linux x86_64 so far.
+webrtc-java publishes natives for these platforms, as classifiers of `dev.onvoid.webrtc:webrtc-java`. The CI of jmediasoup runs its unit tests, which load the natives and send media between peer connections, on each platform that GitHub has runners for, and its tests against a mediasoup server on Linux x86_64, the only one where the mediasoup image and the host network of Docker are available.
 
 | Classifier | Status |
 |---|---|
-| `linux-x86_64` | Tested in CI |
-| `linux-aarch64` | Natives available, not tested |
+| `linux-x86_64` | Tested in CI, also against a mediasoup server |
+| `linux-aarch64` | Tested in CI |
 | `linux-aarch32` | Natives available, not tested |
-| `macos-x86_64` | Natives available, not tested |
-| `macos-aarch64` | Natives available, not tested |
-| `windows-x86_64` | Natives available, not tested |
-| `windows-aarch64` | Natives available, not tested |
+| `macos-x86_64` | Tested in CI |
+| `macos-aarch64` | Tested in CI |
+| `windows-x86_64` | Tested in CI |
+| `windows-aarch64` | Tested in CI |
 
 The application needs the natives of each platform it runs on, with the version of webrtc-java that jmediasoup uses. A distribution for several platforms adds one dependency per classifier:
 
@@ -308,7 +308,7 @@ Unlike pymediasoup, whose aiortc does not support them, jmediasoup sends simulca
 
 `0.4.0` covers the basic flow: load the device, send and receive audio and video, pause and resume, replace the track being sent, send and receive data, get stats, restart ICE, and close; and it applies the codec options and sends video in simulcast and SVC.
 
-The libwebrtc of webrtc-java 0.20.0 drops the scalability mode of the encodings when the answer of mediasoup has an `x-google-*` parameter for the codec, such as the `x-google-start-bitrate` that many routers give their video codecs, or those that the `videoGoogle*` codec options add. Then it sends neither SVC nor the temporal layers of simulcast: simulcast still works, with one temporal layer per stream. To send SVC, leave the `x-google-*` parameters out of the VP9 codec of the router.
+On Linux and Windows, the video encoders of webrtc-java 0.20.0 drop the scalability mode of the encodings when the answer of mediasoup has an `x-google-*` parameter for the codec, such as the `x-google-start-bitrate` that many routers give their video codecs, or those that the `videoGoogle*` codec options add. Then they send neither SVC nor the temporal layers of simulcast: simulcast still works, with one temporal layer per stream. To send SVC, leave the `x-google-*` parameters out of the VP9 codec of the router. On macOS, whose encoders are others, the scalability mode is kept.
 
 [TODO.md](TODO.md) holds the plan up to parity with pymediasoup and mediasoup-client.
 
