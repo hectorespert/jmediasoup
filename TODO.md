@@ -28,7 +28,7 @@ Goal: a Java client for [mediasoup](https://mediasoup.org) with the same feature
 | B: parity | [9](#phase-9-data-channels) | Data channels |
 | B: parity | [10](#phase-10-stats-and-ice) | Stats and ICE |
 | B: parity | [11](#phase-11-codecs-and-encodings) | Codecs, simulcast and SVC |
-| B: parity | [12](#phase-12-media-utilities) | Media utilities |
+| B: parity | [12](#phase-12-media-utilities-optional) | Media utilities (optional) |
 | B: parity | [13](#phase-13-release) | Release |
 | C: extras | [14](#phase-14-beyond-pymediasoup-optional) | Beyond pymediasoup |
 
@@ -79,7 +79,7 @@ Goal: a Java client for [mediasoup](https://mediasoup.org) with the same feature
 - `module-info.java` from the start, exporting only the public packages. Internal packages go under `io.github.hectorespert.jmediasoup.internal` (`.internal.sdp`, `.internal.sdptransform`, `.internal.h264`...) and are not exported.
 - Tests run inside the library module (whitebox, with `--patch-module`) through the `org.gradlex.java-module-testing` plugin. So they see the internal packages and check the `requires` and `exports` at the same time.
 - Our own ports of `sdp-transform` and `h264-profile-level-id` as internal packages (`internal.sdptransform` and `internal.h264`). The SDP code of mediasoup-client (`handlers/sdp`) goes in `internal.sdp`. There is no usable Java alternative (see `0.5.13`). The parsed SDP is represented with `Map<String, Object>`, like the sdp-transform object and the `dict` of pymediasoup.
-- Versions: SemVer. `0.1.0` with the MVP (`7.4`), which also brought Phases 8 and 10, done before it was published; then a minor version when each parity phase is closed (`0.2.0` Phase 9, `0.3.0` Phase 11 without SVC, `11.4` and `11.2.6`, which come in a later minor version, and `0.4.0` Phase 12) and `1.0.0` with Phase 13. Fixes between phases come out as patches. In `0.x` a minor version can break the API; from `1.0.0` on, strict SemVer. Releases are only published from CI, when a GitHub release is published; its tag is the version, `X.Y.Z` without prefix, as in the other Java libraries of the author.
+- Versions: SemVer. `0.1.0` with the MVP (`7.4`), which also brought Phases 8 and 10, done before it was published; then a minor version when each parity phase is closed (`0.2.0` Phase 9, `0.3.0` Phase 11 without SVC, `11.4` and `11.2.6`, which come in `0.4.0`) and `1.0.0` with Phase 13. Phase 12 is optional, and comes in a minor version if it is done. Fixes between phases come out as patches. In `0.x` a minor version can break the API; from `1.0.0` on, strict SemVer. Releases are only published from CI, when a GitHub release is published; its tag is the version, `X.Y.Z` without prefix, as in the other Java libraries of the author.
 - The version is computed from git by the axion-release plugin (Apache-2.0), applied in the root project. `gradle-git-versioning` (qoomon) was planned first, because its version 7.0 supports the configuration cache, but it fails the build in shallow clones, which is how GitHub Actions checks out, even when there are no tags. axion-release fetches the full history by itself on CI (`CI=true`), and in `7.4.4` it reused the configuration cache and recomputed the version on each new tag or commit, despite its open issues about the cache.
 - Server: mediasoup v3. The CI validates the version of the image (3.19.14), and a recent one is added in Phase 13.
 
@@ -987,6 +987,7 @@ Origin: `aiortc_handler.py`, `media_section.py`. aiortc does not support simulca
 - [x] `11.4.4` Review in mediasoup-client whether this trick with a native `scalabilityMode` is still needed. It is not: `Chrome111` passes the `scalabilityMode` in `sendEncodings`, and libwebrtc encodes the layers. pymediasoup needs the trick because aiortc has no SVC. The native capabilities already come from an offer with `L3T3`, as in `Chrome111`, to get the Dependency Descriptor extension.
 - [x] `11.4.5` E2E test with VP9 SVC. `SvcTest`: `L3T3` at 960x540, the server receives a single stream with bitrate in the three spatial layers, and the consumer of another peer receives the width of the layer it prefers. The libwebrtc of webrtc-java 0.20.0 drops the scalability mode of the encodings, to `L1T1`, when the answer has an `x-google-*` parameter for the codec, which `setParameters` does not undo and which does not happen between two webrtc-java peer connections without it. So `MediasoupServer` removes the `x-google-start-bitrate` of the VP9 codec of the demo router; the other codecs keep it, since without it simulcast takes 15 s to send its highest stream. With the demo, the `L1T3` of simulcast is then sent as `L1T1`, which mediasoup accepts.
 - [ ] `11.4.6` Report to webrtc-java that an `x-google-*` parameter in the remote description drops the scalability mode, and once a version fixes it, remove the change of the VP9 codec in `MediasoupServer` and the `L1T1` check of `WebRtcJavaSendTest.aSingleEncodingKeepsItsScalabilityMode`.
+- [ ] `11.4.7` Publish version `0.4.0`, with SVC.
 
 ### 11.5 Live control
 
@@ -1005,7 +1006,9 @@ Origin: `producer.py`, `aiortc_handler.py`
 - Simulcast works end to end with VP8.
 - The codec options show in the SDP and, when possible, in the media.
 
-## Phase 12: media utilities
+## Phase 12: media utilities (optional)
+
+Optional, and not needed for `1.0.0`. Neither mediasoup-client nor libmediasoupclient has them: the browser gives the first its tracks, and the second only creates test tracks with the fake sources of libwebrtc. Only pymediasoup has them, because it takes them from aiortc. webrtc-java already gives the capture of the camera, the microphone and the screen, and custom sources and sinks to read and write files, so what is left here is reading and writing files, which for video needs a heavy dependency such as FFmpeg.
 
 ### 12.1 Media utilities
 
@@ -1017,13 +1020,13 @@ Origin: `aiortc.contrib.media`, used in `examples/mediasoup.py`
 - [ ] `12.1.4` `MediaPlayer`: play audio from a file.
 - [ ] `12.1.5` `MediaPlayer`: play video from a file. Decide the dependency.
 - [ ] `12.1.6` Decide whether they go in a separate artifact so as not to add dependencies to the library.
-- [ ] `12.1.7` Publish version `0.4.0`.
+- [ ] `12.1.7` Publish them in a minor version.
 
 ### 12.2 Port of the example
 
 Dropped: the project does not include examples, and the README shows how to use the library. The port of `examples/mediasoup.py` that was planned here (an `examples` subproject with the WebSocket signaling of the demo) is not done.
 
-**Phase 12 acceptance**
+**Phase 12 acceptance**, if it is done
 
 - The utilities play and record the media of a session with the server.
 
