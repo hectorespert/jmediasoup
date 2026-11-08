@@ -161,6 +161,29 @@ DataConsumer dataConsumer = recvTransport.consumeData(dataConsumerOptions).join(
 dataConsumer.onMessage(message -> System.out.println(message.isBinary() ? message.size() + " bytes" : message.asText()));
 ```
 
+### Replace the track, stats and ICE
+
+A producer replaces the track it sends without renegotiating, and producers, consumers and transports give the stats of webrtc-java:
+
+```java
+producer.replaceTrack(otherVideoTrack).join();
+
+RTCStatsReport producerStats = producer.getStats().join();
+RTCStatsReport transportStats = sendTransport.getStats().join();
+```
+
+To use STUN or TURN servers, or only relayed candidates, add them to the options of the transport before creating it, and change them later with `updateIceServers`. After the server restarts ICE on its transport, restart it on the client with the new ICE parameters:
+
+```java
+TransportOptions relayed = sendOptions.toBuilder()
+        .iceServers(List.of(new IceServer(List.of("turn:turn.example.com:3478"), "user", "secret")))
+        .iceTransportPolicy(IceTransportPolicy.RELAY)
+        .build();
+
+IceParameters iceParameters = signaling.request("restartIce", sendOptions.id()).join();
+sendTransport.restartIce(iceParameters).join();
+```
+
 ### Events and closing
 
 Transports report their connection state, and producers and consumers report when their transport closes. Listeners run one at a time on an executor of each transport, never on the threads of webrtc-java:
@@ -179,6 +202,8 @@ recvTransport.close();
 factory.close();
 ```
 
+The futures fail with a `MediasoupClientException`, wrapped in the `CompletionException` of `join()`: an `InvalidStateException` when the object is closed or not ready, such as a device not loaded, and an `UnsupportedException` when the device or the transport cannot do it, such as producing a kind that the router does not have. Invalid arguments throw `IllegalArgumentException` or `NullPointerException` at once. Each object also has an `observer()`, whose events, such as `onNewProducer` of a transport or `onClose` of a consumer, are meant for monitoring.
+
 ## Platforms
 
 webrtc-java publishes natives for these platforms, as classifiers of `dev.onvoid.webrtc:webrtc-java`. The CI of jmediasoup runs its tests, against a mediasoup server, only on Linux x86_64 so far.
@@ -193,6 +218,92 @@ webrtc-java publishes natives for these platforms, as classifiers of `dev.onvoid
 | `windows-x86_64` | Natives available, not tested |
 | `windows-aarch64` | Natives available, not tested |
 
+The application needs the natives of each platform it runs on, with the version of webrtc-java that jmediasoup uses. A distribution for several platforms adds one dependency per classifier:
+
+```kotlin
+dependencies {
+    implementation("io.github.hectorespert:jmediasoup:0.4.0")
+    for (classifier in listOf("linux-x86_64", "macos-aarch64", "windows-x86_64")) {
+        runtimeOnly("dev.onvoid.webrtc:webrtc-java:0.20.0:$classifier")
+    }
+}
+```
+
+To build only for the platform of the build, Gradle can pick the classifier from the system properties:
+
+```kotlin
+val os = System.getProperty("os.name").lowercase()
+val arch = System.getProperty("os.arch").lowercase()
+val webrtcClassifier = buildString {
+    append(when {
+        os.startsWith("linux") -> "linux"
+        os.startsWith("mac") -> "macos"
+        else -> "windows"
+    })
+    append(when (arch) {
+        "amd64", "x86_64" -> "-x86_64"
+        "arm" -> "-aarch32"
+        else -> "-aarch64"
+    })
+}
+
+dependencies {
+    runtimeOnly("dev.onvoid.webrtc:webrtc-java:0.20.0:$webrtcClassifier")
+}
+```
+
+Maven does the same with a profile per platform, activated by the operating system, that sets the classifier:
+
+```xml
+<profiles>
+    <profile>
+        <id>linux-x86_64</id>
+        <activation><os><name>Linux</name><arch>amd64</arch></os></activation>
+        <properties><webrtc.classifier>linux-x86_64</webrtc.classifier></properties>
+    </profile>
+    <profile>
+        <id>macos-aarch64</id>
+        <activation><os><family>mac</family><arch>aarch64</arch></os></activation>
+        <properties><webrtc.classifier>macos-aarch64</webrtc.classifier></properties>
+    </profile>
+    <profile>
+        <id>windows-x86_64</id>
+        <activation><os><family>windows</family><arch>amd64</arch></os></activation>
+        <properties><webrtc.classifier>windows-x86_64</webrtc.classifier></properties>
+    </profile>
+</profiles>
+```
+
+```xml
+<dependency>
+    <groupId>dev.onvoid.webrtc</groupId>
+    <artifactId>webrtc-java</artifactId>
+    <version>0.20.0</version>
+    <classifier>${webrtc.classifier}</classifier>
+    <scope>runtime</scope>
+</dependency>
+```
+
+The Java `os.arch` is `amd64` on Linux and Windows, and `x86_64` on macOS with Intel.
+
+## Differences with mediasoup-client and pymediasoup
+
+The classes, methods and options are those of mediasoup-client 3.26, and the algorithm follows its `Chrome111` handler. What changes is what Java does in another way:
+
+| | mediasoup-client | pymediasoup | jmediasoup |
+|---|---|---|---|
+| Asynchronous calls | `Promise` | `async` | `CompletableFuture` |
+| Events | `on("connect")`, `on("produce")` | `@transport.on("connect")` | The `connect`, `produce` and `producedata` handlers are passed to `createSendTransport` and `createRecvTransport`, and the other events have typed listeners, `onConnectionStateChange(...)`, that return a `Subscription` |
+| Threads | The event loop | The asyncio loop | Listeners and handlers of the application run one at a time on an executor of each transport, never on the threads of webrtc-java |
+| Models | Plain objects | pydantic models | Immutable records with builders, checked when built, with Jackson annotations |
+| Errors | `InvalidStateError`, `UnsupportedError`, `TypeError` | The same | `InvalidStateException`, `UnsupportedException`, `IllegalArgumentException` |
+| WebRTC stack | The browser, with a handler per browser | aiortc | webrtc-java, with `WebRtcJavaHandler`; other stacks can implement `HandlerFactory` |
+| Tracks | `stopTracks` stops them | They are stopped | The application disposes them: webrtc-java tracks cannot be stopped |
+| Data messages | `binaryType`, `ArrayBuffer` or `Blob` | `bytes` or `str` | `DataChannelMessage`, text or binary |
+| Media | `getUserMedia` | `MediaPlayer`, `MediaRecorder` of aiortc | The sources and sinks of webrtc-java |
+
+Unlike pymediasoup, whose aiortc does not support them, jmediasoup sends simulcast and SVC, pauses by disabling the track, stops sending when a producer closes, restarts ICE, updates the ICE servers, changes the layers and encodings of a producer, and creates, pauses, resumes and closes consumers in batches, as mediasoup-client does. It does not have, from mediasoup-client, `getDataChannelMaxMessageSize` nor the `onRtpSender` and `onRtpReceiver` callbacks of the options, nor the handlers of the other browsers.
+
 ## Limitations
 
 `0.4.0` covers the basic flow: load the device, send and receive audio and video, pause and resume, replace the track being sent, send and receive data, get stats, restart ICE, and close; and it applies the codec options and sends video in simulcast and SVC.
@@ -200,6 +311,10 @@ webrtc-java publishes natives for these platforms, as classifiers of `dev.onvoid
 The libwebrtc of webrtc-java 0.20.0 drops the scalability mode of the encodings when the answer of mediasoup has an `x-google-*` parameter for the codec, such as the `x-google-start-bitrate` that many routers give their video codecs, or those that the `videoGoogle*` codec options add. Then it sends neither SVC nor the temporal layers of simulcast: simulcast still works, with one temporal layer per stream. To send SVC, leave the `x-google-*` parameters out of the VP9 codec of the router.
 
 [TODO.md](TODO.md) holds the plan up to parity with pymediasoup and mediasoup-client.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) to build the project and run its tests, and [CHANGELOG.md](CHANGELOG.md) for the changes of each version.
 
 ## License
 

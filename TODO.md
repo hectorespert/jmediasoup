@@ -1034,13 +1034,13 @@ Dropped: the project does not include examples, and the README shows how to use 
 
 ### 13.1 Documentation
 
-- [ ] `13.1.1` Javadoc for the whole public API.
-- [ ] `13.1.2` Complete README: installation and usage of the whole API.
-- [ ] `13.1.3` Guide to using the natives per platform, with the dependency for Gradle and for Maven (`0.5.7`).
-- [ ] `13.1.4` Table of differences with pymediasoup and mediasoup-client.
-- [ ] `13.1.5` Review that `LICENSE` and `NOTICE` are complete.
-- [ ] `13.1.6` `CHANGELOG.md`.
-- [ ] `13.1.7` `CONTRIBUTING.md`.
+- [x] `13.1.1` Javadoc for the whole public API. Every public element has it: the `javadoc` task fails on any warning, missing comments included, since Phase 1.
+- [x] `13.1.2` Complete README: installation and usage of the whole API. Also replacing the track, stats, ICE servers and restart, errors and observers.
+- [x] `13.1.3` Guide to using the natives per platform, with the dependency for Gradle and for Maven (`0.5.7`). In the Platforms section of the README: several classifiers, the classifier of the build in Gradle, and a Maven profile per platform.
+- [x] `13.1.4` Table of differences with pymediasoup and mediasoup-client. A section of the README.
+- [x] `13.1.5` Review that `LICENSE` and `NOTICE` are complete. `NOTICE` has the licences of the four ported projects (pymediasoup, mediasoup-client, sdp-transform and h264-profile-level-id), which are also the origin of the test fixtures, and both files go in every jar, whose POM declares Apache-2.0.
+- [x] `13.1.6` `CHANGELOG.md`. It points to the GitHub releases, whose notes are the history of each version.
+- [x] `13.1.7` `CONTRIBUTING.md`.
 
 ### 13.2 Multiplatform CI
 
@@ -1071,8 +1071,8 @@ Publishing to Central Portal is set up in `7.4`, with version `0.1.0`.
 Features of mediasoup-client (`src/Transport.ts`) that pymediasoup does not have.
 
 - [x] `14.1.1` Create consumers in batches in a single renegotiation (`createPendingConsumers`): moved to `4.5.5`, with closing in batches in `4.5.6`.
-- [ ] `14.1.2` Pause consumers in batches (`pausePendingConsumers`).
-- [ ] `14.1.3` Resume consumers in batches (`resumePendingConsumers`).
+- [x] `14.1.2` Pause consumers in batches (`pausePendingConsumers`). Done in `8.1.6`.
+- [x] `14.1.3` Resume consumers in batches (`resumePendingConsumers`). Done in `8.1.7`.
 - [x] `14.1.4` `Transport.iceGatheringState`: moved to `4.3.4`, with the `icegatheringstatechange` and `icecandidateerror` events.
 - [ ] `14.1.5` `Transport.getDataChannelMaxMessageSize`.
 - [ ] `14.1.6` The `onRtpSender` and `onRtpReceiver` callbacks of `ProducerOptions` and `ConsumerOptions`: decide how they run with the transport queue.
