@@ -89,6 +89,10 @@ tasks.named<Test>("test") {
     // Some webrtc-java events only have package-private constructors; the tests create them by
     // reflection to simulate the stack.
     jvmArgs("--add-opens", "webrtc.java/dev.onvoid.webrtc=io.github.hectorespert.jmediasoup")
+    // WebRtcJavaLeakTest runs a few iterations, or those of -PleakTestIterations to watch the memory.
+    providers.gradleProperty("leakTestIterations").orNull?.let {
+        systemProperty("jmediasoup.leakTest.iterations", it)
+    }
 }
 
 // The internal packages are not exported, so they stay out of the public Javadoc. Their compiled

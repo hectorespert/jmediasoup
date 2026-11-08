@@ -135,7 +135,7 @@ public final class WebRtcJavaHandler implements Handler {
     // Got transport local and remote parameters.
     private volatile boolean transportReady;
     // Map of RTCTransceivers indexed by MID.
-    private final Map<String, RTCRtpTransceiver> mapMidTransceiver = new ConcurrentHashMap<>();
+    private final Map<String, Transceiver> mapMidTransceiver = new ConcurrentHashMap<>();
     // The next local id to try for a receiving whose RTP parameters have no MID.
     private int nextLocalId;
     // The stream of the tracks to send, as the MediaStream of mediasoup-client.
@@ -261,7 +261,7 @@ public final class WebRtcJavaHandler implements Handler {
                                     : RTCRtpTransceiverDirection.RECV_ONLY;
                             var audio = new RTCRtpTransceiverInit();
                             audio.direction = transceiverDirection;
-                            pc.addTransceiver(MediaType.AUDIO, audio);
+                            RTCRtpTransceiver audioTransceiver = pc.addTransceiver(MediaType.AUDIO, audio);
 
                             // Create video transceiver with scalability mode in order to retrieve
                             // Dependency Descriptor header extension.
@@ -270,10 +270,14 @@ public final class WebRtcJavaHandler implements Handler {
                             var encoding = new RTCRtpEncodingParameters();
                             encoding.scalabilityMode = "L3T3";
                             video.sendEncodings = List.of(encoding);
-                            pc.addTransceiver(MediaType.VIDEO, video);
+                            RTCRtpTransceiver videoTransceiver = pc.addTransceiver(MediaType.VIDEO, video);
 
                             return PeerConnections.createOffer(pc, new RTCOfferOptions())
-                                    .whenComplete((offer, error) -> pc.close());
+                                    .whenComplete((offer, error) -> {
+                                        audioTransceiver.dispose();
+                                        videoTransceiver.dispose();
+                                        pc.close();
+                                    });
                         } catch (RuntimeException e) {
                             pc.close();
                             throw e;
@@ -365,6 +369,10 @@ public final class WebRtcJavaHandler implements Handler {
             logger.warn("close() | failed to close the peer connection", e);
         }
 
+        // Release the native transceivers, senders and receivers, and so the tracks they send.
+        mapMidTransceiver.values().forEach(Transceiver::dispose);
+        mapMidTransceiver.clear();
+
         factory.handlers.remove(this);
     }
 
@@ -451,7 +459,7 @@ public final class WebRtcJavaHandler implements Handler {
         MediaStreamTrack track = sendOptions.track();
         HandlerSendOptions options;
         MediaKind kind;
-        RTCRtpTransceiver transceiver;
+        Transceiver transceiver;
         RemoteSdp.MediaSectionIdx mediaSectionIdx;
         try {
             assertNotClosed();
@@ -480,7 +488,7 @@ public final class WebRtcJavaHandler implements Handler {
             init.sendEncodings = options.encodings().stream()
                     .map(WebRtcJavaHandler::toRtcRtpEncodingParameters)
                     .toList();
-            transceiver = pc.addTransceiver(track, init);
+            transceiver = Transceiver.of(pc.addTransceiver(track, init));
 
             mediaSectionIdx = remoteSdp.getNextMediaSectionIdx();
         } catch (MediasoupClientException | RuntimeException e) {
@@ -490,6 +498,7 @@ public final class WebRtcJavaHandler implements Handler {
         return PeerConnections.createOffer(pc, new RTCOfferOptions())
                 .exceptionallyCompose(error -> {
                     stopQuietly(transceiver);
+                    transceiver.dispose();
                     return CompletableFuture.failedFuture(error);
                 })
                 // Through a completed future, so that what negotiateSending() throws also cleans up.
@@ -504,12 +513,13 @@ public final class WebRtcJavaHandler implements Handler {
     private CompletableFuture<HandlerSendResult> cleanUpSending(
             Throwable error,
             MediaKind kind,
-            RTCRtpTransceiver transceiver,
+            Transceiver transceiver,
             RemoteSdp.MediaSectionIdx mediaSectionIdx,
             RTCSessionDescription offer) {
         Throwable cause = error instanceof CompletionException && error.getCause() != null ? error.getCause() : error;
 
         if (closed.get()) {
+            transceiver.dispose();
             return CompletableFuture.failedFuture(cause);
         }
 
@@ -523,6 +533,7 @@ public final class WebRtcJavaHandler implements Handler {
                 })
                 .thenCompose(abortError ->
                         abortError != null ? rollbackSending(transceiver) : CompletableFuture.completedFuture(null))
+                .whenComplete((ignored, cleanUpError) -> transceiver.dispose())
                 .thenCompose(ignored -> CompletableFuture.failedFuture(cause));
     }
 
@@ -530,7 +541,7 @@ public final class WebRtcJavaHandler implements Handler {
     private CompletableFuture<HandlerSendResult> negotiateSending(
             HandlerSendOptions options,
             MediaKind kind,
-            RTCRtpTransceiver transceiver,
+            Transceiver transceiver,
             RemoteSdp.MediaSectionIdx mediaSectionIdx,
             RTCSessionDescription offer) {
         Map<String, Object> offerSdpObject = Parser.parse(offer.sdp);
@@ -579,18 +590,14 @@ public final class WebRtcJavaHandler implements Handler {
                 })
                 .thenCompose(ignored -> {
                     // We can now get the transceiver.mid.
-                    String localId = transceiver.getMid();
+                    String localId = transceiver.mid();
 
                     RtpParameters rtpParameters;
                     RTCSessionDescription answer;
                     try {
                         RTCSessionDescription localDescription = pc.getLocalDescription();
                         if (localId == null || localDescription == null) {
-                            throw new MediasoupClientException(
-                                    "no local description " + localId + " " + (localDescription == null) + " "
-                                            + java.util.Arrays.stream(pc.getTransceivers())
-                                                    .map(t -> t.getMid() + "/" + t.stopped())
-                                                    .toList());
+                            throw new MediasoupClientException("no local description");
                         }
 
                         Map<String, Object> localSdpObject = Parser.parse(localDescription.sdp);
@@ -653,7 +660,7 @@ public final class WebRtcJavaHandler implements Handler {
                         // Store in the map.
                         mapMidTransceiver.put(localId, transceiver);
 
-                        return new HandlerSendResult(localId, rtpParameters, transceiver.getSender());
+                        return new HandlerSendResult(localId, rtpParameters, transceiver.sender());
                     });
                 });
     }
@@ -664,7 +671,7 @@ public final class WebRtcJavaHandler implements Handler {
     // send() that gets the same index, which then has no MID.
     private CompletableFuture<Void> abortSending(
             MediaKind kind,
-            RTCRtpTransceiver transceiver,
+            Transceiver transceiver,
             RemoteSdp.MediaSectionIdx mediaSectionIdx,
             RTCSessionDescription offer) {
         CompletableFuture<Void> applied = pc.getSignalingState() == RTCSignalingState.HAVE_LOCAL_OFFER
@@ -674,7 +681,7 @@ public final class WebRtcJavaHandler implements Handler {
         return applied.thenCompose(ignored -> {
             RTCSessionDescription answer;
             try {
-                String mid = transceiver.getMid();
+                String mid = transceiver.mid();
                 RTCSessionDescription localDescription = pc.getLocalDescription();
                 if (mid == null || localDescription == null) {
                     throw new MediasoupClientException("no local description");
@@ -692,7 +699,7 @@ public final class WebRtcJavaHandler implements Handler {
 
                 remoteSdp.send(offerMediaObject, mediaSectionIdx.reuseMid(), answerRtpParameters);
 
-                pc.removeTrack(transceiver.getSender());
+                pc.removeTrack(transceiver.sender());
 
                 remoteSdp.closeMediaSection(mid);
 
@@ -715,7 +722,7 @@ public final class WebRtcJavaHandler implements Handler {
 
     // The last resort if the section cannot be closed: rolls the offer back and stops the transceiver,
     // as mediasoup-client does, which leaves the next send() that gets the same index without a MID.
-    private CompletableFuture<Void> rollbackSending(RTCRtpTransceiver transceiver) {
+    private CompletableFuture<Void> rollbackSending(Transceiver transceiver) {
         CompletableFuture<Void> rollback;
         try {
             rollback = pc.getSignalingState() == RTCSignalingState.HAVE_LOCAL_OFFER
@@ -731,7 +738,7 @@ public final class WebRtcJavaHandler implements Handler {
         });
     }
 
-    private static void stopQuietly(RTCRtpTransceiver transceiver) {
+    private static void stopQuietly(Transceiver transceiver) {
         try {
             transceiver.stop();
         } catch (RuntimeException e) {
@@ -751,17 +758,17 @@ public final class WebRtcJavaHandler implements Handler {
                 return CompletableFuture.completedFuture(null);
             }
 
-            RTCRtpTransceiver transceiver = mapMidTransceiver.get(localId);
+            Transceiver transceiver = mapMidTransceiver.get(localId);
 
             if (transceiver == null) {
                 throw new MediasoupClientException("associated RTCRtpTransceiver not found");
             }
 
-            transceiver.getSender().replaceTrack(null);
+            transceiver.sender().replaceTrack(null);
 
-            pc.removeTrack(transceiver.getSender());
+            pc.removeTrack(transceiver.sender());
 
-            boolean mediaSectionClosed = remoteSdp.closeMediaSection(transceiver.getMid());
+            boolean mediaSectionClosed = remoteSdp.closeMediaSection(transceiver.mid());
 
             if (mediaSectionClosed) {
                 transceiver.stop();
@@ -780,7 +787,7 @@ public final class WebRtcJavaHandler implements Handler {
                     logger.debug("stopSending() | calling pc.setRemoteDescription() [answer:{}]", answer.sdp);
                     return PeerConnections.setRemoteDescription(pc, answer);
                 })
-                .thenRun(() -> mapMidTransceiver.remove(localId));
+                .thenRun(() -> disposeTransceiver(localId));
     }
 
     @Override
@@ -792,7 +799,7 @@ public final class WebRtcJavaHandler implements Handler {
 
             logger.debug("pauseSending() [localId:{}]", localId);
 
-            RTCRtpTransceiver transceiver = mapMidTransceiver.get(localId);
+            Transceiver transceiver = mapMidTransceiver.get(localId);
 
             if (transceiver == null) {
                 throw new MediasoupClientException("associated RTCRtpTransceiver not found");
@@ -816,7 +823,7 @@ public final class WebRtcJavaHandler implements Handler {
 
             logger.debug("resumeSending() [localId:{}]", localId);
 
-            RTCRtpTransceiver transceiver = mapMidTransceiver.get(localId);
+            Transceiver transceiver = mapMidTransceiver.get(localId);
 
             remoteSdp.resumeSendingMediaSection(localId);
 
@@ -860,13 +867,13 @@ public final class WebRtcJavaHandler implements Handler {
                 logger.debug("replaceTrack() [localId:{}, no track]", localId);
             }
 
-            RTCRtpTransceiver transceiver = mapMidTransceiver.get(localId);
+            Transceiver transceiver = mapMidTransceiver.get(localId);
 
             if (transceiver == null) {
                 throw new MediasoupClientException("associated RTCRtpTransceiver not found");
             }
 
-            transceiver.getSender().replaceTrack(track);
+            transceiver.sender().replaceTrack(track);
         } catch (MediasoupClientException | RuntimeException e) {
             return CompletableFuture.failedFuture(e);
         }
@@ -941,13 +948,13 @@ public final class WebRtcJavaHandler implements Handler {
     }
 
     private RTCRtpSender sender(String localId) throws MediasoupClientException {
-        RTCRtpTransceiver transceiver = mapMidTransceiver.get(localId);
+        Transceiver transceiver = mapMidTransceiver.get(localId);
 
         if (transceiver == null) {
             throw new MediasoupClientException("associated RTCRtpTransceiver not found");
         }
 
-        return transceiver.getSender();
+        return transceiver.sender();
     }
 
     // The rid of each native encoding and whether it is active, which is what the answer needs.
@@ -1010,7 +1017,7 @@ public final class WebRtcJavaHandler implements Handler {
     @Override
     public CompletableFuture<RTCStatsReport> getSenderStats(String localId) {
         requireNonNull(localId, "localId");
-        RTCRtpTransceiver transceiver;
+        Transceiver transceiver;
         try {
             assertNotClosed();
             assertSendDirection();
@@ -1024,7 +1031,7 @@ public final class WebRtcJavaHandler implements Handler {
             return CompletableFuture.failedFuture(e);
         }
 
-        return PeerConnections.getStats(pc, transceiver.getSender());
+        return PeerConnections.getStats(pc, transceiver.sender());
     }
 
     /**
@@ -1193,7 +1200,7 @@ public final class WebRtcJavaHandler implements Handler {
                     List<HandlerReceiveResult> results = new ArrayList<>();
                     for (HandlerReceiveOptions options : optionsList) {
                         String localId = mapLocalId.get(options.trackId());
-                        RTCRtpTransceiver transceiver = findTransceiver(localId);
+                        Transceiver transceiver = findTransceiver(localId);
 
                         if (transceiver == null) {
                             throw new CompletionException(
@@ -1203,7 +1210,7 @@ public final class WebRtcJavaHandler implements Handler {
                         // Store in the map.
                         mapMidTransceiver.put(localId, transceiver);
 
-                        RTCRtpReceiver receiver = transceiver.getReceiver();
+                        RTCRtpReceiver receiver = transceiver.receiver();
                         results.add(new HandlerReceiveResult(localId, receiver.getTrack(), receiver));
                     }
                     return List.copyOf(results);
@@ -1224,7 +1231,7 @@ public final class WebRtcJavaHandler implements Handler {
             for (String localId : localIds) {
                 logger.debug("stopReceiving() [localId:{}]", localId);
 
-                RTCRtpTransceiver transceiver = mapMidTransceiver.get(localId);
+                Transceiver transceiver = mapMidTransceiver.get(localId);
 
                 if (transceiver == null) {
                     throw new MediasoupClientException("associated RTCRtpTransceiver not found");
@@ -1246,7 +1253,7 @@ public final class WebRtcJavaHandler implements Handler {
                     logger.debug("stopReceiving() | calling pc.setLocalDescription() [answer:{}]", answer.sdp);
                     return PeerConnections.setLocalDescription(pc, answer);
                 })
-                .thenRun(() -> localIds.forEach(mapMidTransceiver::remove));
+                .thenRun(() -> localIds.forEach(this::disposeTransceiver));
     }
 
     @Override
@@ -1259,7 +1266,7 @@ public final class WebRtcJavaHandler implements Handler {
             for (String localId : localIds) {
                 logger.debug("pauseReceiving() [localId:{}]", localId);
 
-                RTCRtpTransceiver transceiver = mapMidTransceiver.get(localId);
+                Transceiver transceiver = mapMidTransceiver.get(localId);
 
                 if (transceiver == null) {
                     throw new MediasoupClientException("associated RTCRtpTransceiver not found");
@@ -1285,7 +1292,7 @@ public final class WebRtcJavaHandler implements Handler {
             for (String localId : localIds) {
                 logger.debug("resumeReceiving() [localId:{}]", localId);
 
-                RTCRtpTransceiver transceiver = mapMidTransceiver.get(localId);
+                Transceiver transceiver = mapMidTransceiver.get(localId);
 
                 if (transceiver == null) {
                     throw new MediasoupClientException("associated RTCRtpTransceiver not found");
@@ -1319,7 +1326,7 @@ public final class WebRtcJavaHandler implements Handler {
     @Override
     public CompletableFuture<RTCStatsReport> getReceiverStats(String localId) {
         requireNonNull(localId, "localId");
-        RTCRtpTransceiver transceiver;
+        Transceiver transceiver;
         try {
             assertNotClosed();
             assertRecvDirection();
@@ -1333,7 +1340,7 @@ public final class WebRtcJavaHandler implements Handler {
             return CompletableFuture.failedFuture(e);
         }
 
-        return PeerConnections.getStats(pc, transceiver.getReceiver());
+        return PeerConnections.getStats(pc, transceiver.receiver());
     }
 
     /**
@@ -1460,13 +1467,25 @@ public final class WebRtcJavaHandler implements Handler {
         return localId;
     }
 
-    private @Nullable RTCRtpTransceiver findTransceiver(String mid) {
+    // Each call of getTransceivers() gives new wrappers, so those of the other transceivers are disposed.
+    private @Nullable Transceiver findTransceiver(String mid) {
+        Transceiver found = null;
         for (RTCRtpTransceiver transceiver : pc.getTransceivers()) {
-            if (mid.equals(transceiver.getMid())) {
-                return transceiver;
+            if (found == null && mid.equals(transceiver.getMid())) {
+                found = Transceiver.of(transceiver);
+            } else {
+                transceiver.dispose();
             }
         }
-        return null;
+        return found;
+    }
+
+    // Forgets a transceiver whose sending or receiving stopped, and releases its native objects.
+    private void disposeTransceiver(String localId) {
+        Transceiver transceiver = mapMidTransceiver.remove(localId);
+        if (transceiver != null) {
+            transceiver.dispose();
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -1726,6 +1745,65 @@ public final class WebRtcJavaHandler implements Handler {
         @Override
         public void onIceCandidateError(RTCPeerConnectionIceErrorEvent event) {
             listener.iceCandidateError(event);
+        }
+    }
+
+    /**
+     * A transceiver of the peer connection, with its sender and receiver. webrtc-java gives new wrappers,
+     * each with its own native reference, on every call of {@code getSender()}, {@code getReceiver()}
+     * and {@code getTransceivers()}, and only {@code dispose()} releases it: the handler gets them once,
+     * and disposes them when the sending or receiving stops or the handler closes. Until then, the
+     * native transceiver keeps its track, which the application cannot dispose.
+     */
+    private static final class Transceiver {
+
+        private final RTCRtpTransceiver transceiver;
+        private final RTCRtpSender sender;
+        private final RTCRtpReceiver receiver;
+
+        private Transceiver(RTCRtpTransceiver transceiver, RTCRtpSender sender, RTCRtpReceiver receiver) {
+            this.transceiver = transceiver;
+            this.sender = sender;
+            this.receiver = receiver;
+        }
+
+        static Transceiver of(RTCRtpTransceiver transceiver) {
+            return new Transceiver(transceiver, transceiver.getSender(), transceiver.getReceiver());
+        }
+
+        @Nullable
+        String mid() {
+            return transceiver.getMid();
+        }
+
+        RTCRtpSender sender() {
+            return sender;
+        }
+
+        RTCRtpReceiver receiver() {
+            return receiver;
+        }
+
+        void setDirection(RTCRtpTransceiverDirection direction) {
+            transceiver.setDirection(direction);
+        }
+
+        void stop() {
+            transceiver.stop();
+        }
+
+        void dispose() {
+            disposeQuietly(sender::dispose);
+            disposeQuietly(receiver::dispose);
+            disposeQuietly(transceiver::dispose);
+        }
+
+        private static void disposeQuietly(Runnable dispose) {
+            try {
+                dispose.run();
+            } catch (RuntimeException e) {
+                logger.debug("failed to dispose a native object", e);
+            }
         }
     }
 }

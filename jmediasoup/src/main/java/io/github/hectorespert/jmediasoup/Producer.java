@@ -138,7 +138,8 @@ public final class Producer {
     }
 
     /**
-     * Returns the RTP sender of the WebRTC stack.
+     * Returns the RTP sender of the WebRTC stack. With {@code WebRtcJavaHandler}, its native object is
+     * released once the producer or its transport closes: do not use it after that.
      *
      * @return the sender, or {@code null} if the handler does not expose one
      */

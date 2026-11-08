@@ -135,7 +135,8 @@ public final class Consumer {
     }
 
     /**
-     * Returns the RTP receiver of the WebRTC stack.
+     * Returns the RTP receiver of the WebRTC stack. With {@code WebRtcJavaHandler}, its native object
+     * is released once the consumer or its transport closes: do not use it after that.
      *
      * @return the receiver, or {@code null} if the handler does not expose one
      */
@@ -144,7 +145,9 @@ public final class Consumer {
     }
 
     /**
-     * Returns the track being received.
+     * Returns the track being received. With {@code WebRtcJavaHandler}, it is a view of the native track
+     * of the receiver, which is released once the consumer or its transport closes: remove its sinks
+     * before, and do not use it after that.
      *
      * @return the remote track
      */
