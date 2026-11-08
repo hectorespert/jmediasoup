@@ -2,7 +2,7 @@
 
 Java client for [mediasoup](https://mediasoup.org), the counterpart of what [pymediasoup](https://github.com/Huddle01/pymediasoup) is for Python. Its API follows the official JavaScript client, [mediasoup-client](https://mediasoup.org/documentation/v3/mediasoup-client/api/), and it uses [webrtc-java](https://github.com/devopvoid/webrtc-java) as the WebRTC stack.
 
-> **Status:** the first release, `0.1.0`, is on Maven Central. It sends and receives audio and video; see [Limitations](#limitations) for what is not supported yet.
+> **Status:** `0.2.0` is on Maven Central. It sends and receives audio, video and data; see [Limitations](#limitations) for what is not supported yet.
 
 ## Installation
 
@@ -12,7 +12,7 @@ Gradle:
 
 ```kotlin
 dependencies {
-    implementation("io.github.hectorespert:jmediasoup:0.1.0")
+    implementation("io.github.hectorespert:jmediasoup:0.2.0")
     runtimeOnly("dev.onvoid.webrtc:webrtc-java:0.20.0:linux-x86_64")
 }
 ```
@@ -23,7 +23,7 @@ Maven:
 <dependency>
     <groupId>io.github.hectorespert</groupId>
     <artifactId>jmediasoup</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
 </dependency>
 <dependency>
     <groupId>dev.onvoid.webrtc</groupId>
@@ -159,7 +159,7 @@ webrtc-java publishes natives for these platforms, as classifiers of `dev.onvoid
 
 ## Limitations
 
-`0.1.0` covers the basic flow: load the device, send and receive audio and video, pause and resume, replace the track being sent, get stats, restart ICE, and close. The next version adds data channels (`produceData` and `consumeData`). These are not supported yet:
+`0.2.0` covers the basic flow: load the device, send and receive audio and video, pause and resume, replace the track being sent, send and receive data, get stats, restart ICE, and close. These are not supported yet:
 
 - Simulcast and SVC: `produce` with more than one encoding fails with `UnsupportedException`.
 - Codec options (`ProducerCodecOptions`, such as `opusStereo` or `videoGoogleStartBitrate`): they are ignored, with a warning.

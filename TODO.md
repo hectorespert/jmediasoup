@@ -892,7 +892,7 @@ Origin: `aiortc_handler.py`, `media_section.py`, `remote_sdp.py`
 - [x] `9.5.4` E2E test: unordered channel with `maxRetransmits`. The data consumer gets `ordered: false` and the `maxRetransmits` of the data producer from mediasoup.
 - [x] `9.5.5` Test: `bufferedamountlow` fires. `WebRtcJavaDataChannelTest`, over a real channel, and `DataProducerTest` with `FakeDataChannel`.
 - [x] `9.5.6` Test: closing the transport closes the channels. With `FakeHandler`, with the natives, and end to end.
-- [ ] `9.5.7` Publish version `0.2.0`.
+- [x] `9.5.7` Publish version `0.2.0`. The GitHub release `0.2.0` on `main` published it, after the integration tests, and it was on Maven Central 11 minutes after the upload. A clean Gradle project with only Maven Central uses it.
 
 **Phase 9 acceptance**
 
