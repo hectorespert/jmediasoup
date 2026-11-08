@@ -1055,7 +1055,7 @@ Dropped: the project does not include examples, and the README shows how to use 
 
 Publishing to Central Portal is set up in `7.4`, with version `0.1.0`.
 
-- [ ] `13.3.1` Check that the parity matrix is complete.
+- [x] `13.3.1` Check that the parity matrix is complete. Against the public methods, properties and events of each class of pymediasoup, and the functions of `ortc.py` and `handlers/sdp`: every one is in it. `binaryType` and `addLegacySimulcast` say why they are not ported, and a section lists what comes from mediasoup-client.
 - [ ] `13.3.2` Publish version `1.0.0`.
 
 **Phase 13 acceptance**
@@ -1082,7 +1082,7 @@ Features of mediasoup-client (`src/Transport.ts`) that pymediasoup does not have
 
 # Parity matrix
 
-It covers the pymediasoup API. `Phase` is the phase where it becomes functional; a basic property can appear earlier.
+It covers the pymediasoup API, and at the end what jmediasoup takes from mediasoup-client besides. `Phase` is the phase where it becomes functional; a basic property can appear earlier. Every item is done, except those marked as dropped, excluded or not ported, and those of Phase 14. It was last checked against the public names and events of pymediasoup in `13.3.1`.
 
 ## Device
 
@@ -1156,7 +1156,7 @@ It covers the pymediasoup API. `Phase` is the phase where it becomes functional;
 | Item | Phase |
 |---|---|
 | `id`, `dataProducerId`, `closed`, `sctpStreamParameters`, `readyState`, `label`, `protocol`, `appData` | 9.2 |
-| `binaryType` | 9.2 |
+| `binaryType` | Dropped: `DataChannelMessage` (9.2.2) |
 | `close`, `transportClosed` | 9.2 |
 | `open`, `error`, `message`, `transportclose` events | 9.2 |
 | `observer`: `close` | 9.2 |
@@ -1195,7 +1195,7 @@ It covers the pymediasoup API. `Phase` is the phase where it becomes functional;
 | `extractRtpCapabilities`, `extractDtlsParameters`, `getCname` | 3.3 |
 | `applyCodecParameters` | 5.2, 11.1 |
 | `getRtpEncodings` | 3.3 |
-| `addLegacySimulcast` | 11.4 |
+| `addLegacySimulcast` | Not ported: `Chrome111` does not use it (11.4.2) |
 | `getCodecName`, `MediaSection` (`mid`, `closed`, `getDict`, `setIceParameters`, `disable`, `close`, `setDtlsRole`) | 3.4 |
 | `AnswerMediaSection`, `OfferMediaSection`: audio and video | 3.4 |
 | `AnswerMediaSection`, `OfferMediaSection`: `application` | 9.4 |
@@ -1225,6 +1225,19 @@ It covers the pymediasoup API. `Phase` is the phase where it becomes functional;
 | `HandlerRunOptions` (`HandlerOptions`), `HandlerSendOptions`, `HandlerSendResult`, `HandlerReceiveOptions`, `HandlerReceiveResult` | 4.1 |
 | `HandlerSendDataChannelResult`, `HandlerReceiveDataChannelOptions`, `HandlerReceiveDataChannelResult` | 4.1 |
 | `ScalabilityMode`, `parse` (internal) | 2.2 |
+
+## From mediasoup-client
+
+| Item | Phase |
+|---|---|
+| `Device.load` with `preferLocalCodecsOrder` | 4.2 |
+| `Transport.iceGatheringState`, `icegatheringstatechange` and `icecandidateerror` events | 4.3 |
+| Consumers created, closed, paused and resumed in batches | 4.5, 8.1 |
+| `ProducerOptions.streamId`, `ProducerCodecOptions.opusNack` | 1.6, 11.1 |
+| Simulcast with `rid` and `L1Tn`, SVC with a native `scalabilityMode` (`Chrome111`) | 11.3, 11.4 |
+| `muxMediaSectionSimulcast` | 11.5 |
+| `Transport.getDataChannelMaxMessageSize` | 14.1.5 |
+| `onRtpSender`, `onRtpReceiver` | 14.1.6 |
 
 ## pymediasoup dependencies and their equivalent
 
