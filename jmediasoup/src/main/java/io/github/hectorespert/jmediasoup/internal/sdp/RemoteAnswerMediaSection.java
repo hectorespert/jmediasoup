@@ -27,8 +27,6 @@ import org.jspecify.annotations.Nullable;
 /**
  * A media section of the remote answer to a local offer, for sending: mediasoup receives what the
  * local endpoint offers to send.
- *
- * <p>Simulcast arrives with the phase that uses it.
  */
 public final class RemoteAnswerMediaSection extends RemoteMediaSection {
 
@@ -243,6 +241,25 @@ public final class RemoteAnswerMediaSection extends RemoteMediaSection {
                 mediaObject.put("extmapAllowMixed", "extmap-allow-mixed");
             }
 
+            // Simulcast.
+            if (offerMediaObject.get("simulcast") instanceof Map<?, ?> simulcast) {
+                var answerSimulcast = new LinkedHashMap<String, Object>();
+                answerSimulcast.put("dir1", "recv");
+                answerSimulcast.put("list1", simulcast.get("list1"));
+                mediaObject.put("simulcast", answerSimulcast);
+
+                mediaObject.put("rids", receivingRids(offerMediaObject));
+            }
+            // Simulcast (draft version 03).
+            else if (offerMediaObject.get("simulcast_03") instanceof Map<?, ?> simulcast03) {
+                var answerSimulcast03 = new LinkedHashMap<String, Object>();
+                answerSimulcast03.put(
+                        "value", JavaScript.string(simulcast03.get("value")).replace("send", "recv"));
+                mediaObject.put("simulcast_03", answerSimulcast03);
+
+                mediaObject.put("rids", receivingRids(offerMediaObject));
+            }
+
             mediaObject.put("rtcpMux", "rtcp-mux");
             mediaObject.put("rtcpRsize", "rtcp-rsize");
 
@@ -303,6 +320,24 @@ public final class RemoteAnswerMediaSection extends RemoteMediaSection {
     @Override
     public void resume() {
         mediaObject.put("direction", "recvonly");
+    }
+
+    // The rids that the offer sends, which the answer receives.
+    private static List<Map<String, Object>> receivingRids(Map<String, Object> offerMediaObject) {
+        var rids = new ArrayList<Map<String, Object>>();
+
+        for (Map<String, Object> rid : CommonUtils.list(offerMediaObject.get("rids"))) {
+            if (!"send".equals(rid.get("direction"))) {
+                continue;
+            }
+
+            var answerRid = new LinkedHashMap<String, Object>();
+            answerRid.put("id", rid.get("id"));
+            answerRid.put("direction", "recv");
+            rids.add(answerRid);
+        }
+
+        return rids;
     }
 
     // Keeps the NACK feedback with a parameter, such as nack pli, and removes the plain one.

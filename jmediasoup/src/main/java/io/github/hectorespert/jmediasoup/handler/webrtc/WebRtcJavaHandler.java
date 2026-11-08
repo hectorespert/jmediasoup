@@ -51,6 +51,7 @@ import io.github.hectorespert.jmediasoup.handler.HandlerSendOptions;
 import io.github.hectorespert.jmediasoup.handler.HandlerSendResult;
 import io.github.hectorespert.jmediasoup.internal.ortc.Ortc;
 import io.github.hectorespert.jmediasoup.internal.ortc.OrtcUtils;
+import io.github.hectorespert.jmediasoup.internal.ortc.ScalabilityMode;
 import io.github.hectorespert.jmediasoup.internal.sdp.CommonUtils;
 import io.github.hectorespert.jmediasoup.internal.sdp.RemoteSdp;
 import io.github.hectorespert.jmediasoup.internal.sdp.UnifiedPlanUtils;
@@ -438,12 +439,15 @@ public final class WebRtcJavaHandler implements Handler {
      *
      * <p>As in mediasoup-client, the local id is the MID of the transceiver, and the stream of the
      * {@code msid} of the RTP parameters is the given one or, if none, the one that all the tracks of
-     * the handler share. Simulcast, more than one encoding, is not supported yet.
+     * the handler share. With more than one encoding, simulcast, each one gets the rid {@code r0},
+     * {@code r1}... and the same number of temporal layers, and the RTP parameters keep them as they
+     * are, without the SSRCs of the offer: mediasoup tells the streams apart by their rid.
      */
     @Override
-    public CompletableFuture<HandlerSendResult> send(HandlerSendOptions options) {
-        requireNonNull(options, "options");
-        MediaStreamTrack track = options.track();
+    public CompletableFuture<HandlerSendResult> send(HandlerSendOptions sendOptions) {
+        requireNonNull(sendOptions, "options");
+        MediaStreamTrack track = sendOptions.track();
+        HandlerSendOptions options;
         MediaKind kind;
         RTCRtpTransceiver transceiver;
         RemoteSdp.MediaSectionIdx mediaSectionIdx;
@@ -452,12 +456,19 @@ public final class WebRtcJavaHandler implements Handler {
             assertSendDirection();
 
             logger.debug(
-                    "send() [kind:{}, track.id:{}, streamId:{}]", track.getKind(), track.getId(), options.streamId());
+                    "send() [kind:{}, track.id:{}, streamId:{}]",
+                    track.getKind(),
+                    track.getId(),
+                    sendOptions.streamId());
 
-            // The answer cannot negotiate simulcast yet (section 11.3 of TODO.md).
-            if (options.encodings().size() > 1) {
-                throw new UnsupportedException("simulcast is not supported yet");
-            }
+            options = sendOptions.encodings().size() > 1
+                    ? new HandlerSendOptions(
+                            track,
+                            sendOptions.streamId(),
+                            simulcastEncodings(sendOptions.encodings()),
+                            sendOptions.codecOptions(),
+                            sendOptions.codec())
+                    : sendOptions;
 
             kind = MediaKind.fromValue(track.getKind());
 
@@ -595,10 +606,13 @@ public final class WebRtcJavaHandler implements Handler {
                                 rtcp != null ? rtcp.reducedSize() : null,
                                 rtcp != null ? rtcp.mux() : null);
 
-                        // Set RTP encodings by parsing the SDP offer, and complete them with the given
-                        // one if any.
+                        // Set RTP encodings by parsing the SDP offer if no encodings are given, and
+                        // complete them with the given one if just a single encoding has been given.
+                        // Otherwise if more than 1 encoding are given use them verbatim.
                         List<RtpEncodingParameters> encodings =
-                                UnifiedPlanUtils.getRtpEncodings(offerMediaObject, codecs);
+                                options.encodings().size() > 1
+                                        ? options.encodings()
+                                        : UnifiedPlanUtils.getRtpEncodings(offerMediaObject, codecs);
                         if (options.encodings().size() == 1) {
                             List<RtpEncodingParameters> merged = new ArrayList<>(encodings);
                             merged.set(
@@ -1450,6 +1464,34 @@ public final class WebRtcJavaHandler implements Handler {
     }
 
     // The fields that the transports keep in the encodings to send (SendTransport.normalizeEncodings).
+    // Set rid and verify scalabilityMode in each encoding.
+    // NOTE: Even if WebRTC allows different scalabilityMode (different number of temporal layers) per
+    // simulcast stream, we need that those are the same in all them, so let's pick up the highest
+    // value.
+    // NOTE: If scalabilityMode is not given, Chrome will use L1T3.
+    static List<RtpEncodingParameters> simulcastEncodings(List<RtpEncodingParameters> encodings) {
+        int maxTemporalLayers = 1;
+
+        for (RtpEncodingParameters encoding : encodings) {
+            int temporalLayers = encoding.scalabilityMode() != null
+                    ? ScalabilityMode.parse(encoding.scalabilityMode()).temporalLayers()
+                    : 3;
+
+            if (temporalLayers > maxTemporalLayers) {
+                maxTemporalLayers = temporalLayers;
+            }
+        }
+
+        var simulcastEncodings = new ArrayList<RtpEncodingParameters>();
+        for (int idx = 0; idx < encodings.size(); idx++) {
+            simulcastEncodings.add(encodings.get(idx).toBuilder()
+                    .rid("r" + idx)
+                    .scalabilityMode("L1T" + maxTemporalLayers)
+                    .build());
+        }
+        return List.copyOf(simulcastEncodings);
+    }
+
     static RTCRtpEncodingParameters toRtcRtpEncodingParameters(RtpEncodingParameters encoding) {
         var rtcEncoding = new RTCRtpEncodingParameters();
         rtcEncoding.rid = encoding.rid();

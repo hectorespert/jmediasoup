@@ -369,6 +369,45 @@ class RemoteMediaSectionTest {
     }
 
     @Test
+    void answerSectionsReceiveTheSimulcastOfTheOffer() {
+        var section = new RemoteAnswerMediaSection(null, null, null, offerSection("offer-simulcast.sdp", 0), vp8());
+
+        String written = write(section);
+        assertTrue(
+                written.contains("a=rid:r0 recv\r\na=rid:r1 recv\r\na=rid:r2 recv\r\na=simulcast:recv r0;r1;r2\r\n"),
+                written);
+    }
+
+    @Test
+    void answerSectionsReceiveTheSimulcastOfDraft03() {
+        Map<String, Object> offer = new LinkedHashMap<>(offerSection("offer-simulcast.sdp", 0));
+        offer.remove("simulcast");
+        offer.put("simulcast_03", Map.of("value", "send rid=r0;r1"));
+        offer.put(
+                "rids",
+                List.of(
+                        Map.of("id", "r0", "direction", "send"),
+                        Map.of("id", "r1", "direction", "send"),
+                        Map.of("id", "x", "direction", "recv")));
+
+        var section = new RemoteAnswerMediaSection(null, null, null, offer, vp8());
+
+        String written = write(section);
+        assertTrue(written.contains("a=rid:r0 recv\r\na=rid:r1 recv\r\na=simulcast: recv rid=r0;r1\r\n"), written);
+        assertFalse(written.contains("a=rid:x"), written);
+    }
+
+    @Test
+    void closingAnAnswerSectionRemovesItsSimulcast() {
+        var section = new RemoteAnswerMediaSection(null, null, null, offerSection("offer-simulcast.sdp", 0), vp8());
+
+        section.close();
+
+        assertFalse(section.getObject().containsKey("simulcast"));
+        assertFalse(section.getObject().containsKey("rids"));
+    }
+
+    @Test
     void monoCodecsHaveNoEncodingAndCodecsWithoutParametersNoFmtp() {
         var rtpParameters = new RtpParameters(
                 null, List.of(new RtpCodecParameters("audio/PCMU", 0, 8000, 1, null, null)), null, null, null, null);

@@ -962,9 +962,9 @@ Origin: `media_section.py`
 Origin: `aiortc_handler.py`, `unified_plan_utils.py`
 
 - [x] `11.2.1` `produce` with `codec`: send the chosen codec. Done in `6.2`; `SendTest` sends H264 by choosing it.
-- [ ] `11.2.2` Assign the `rid`s `r0`, `r1`... to the encodings.
+- [x] `11.2.2` Assign the `rid`s `r0`, `r1`... to the encodings. Done in `11.3.1`.
 - [x] `11.2.3` A single encoding: merge it with the one obtained from the SDP. Done in `6.2`.
-- [ ] `11.2.4` Several encodings: use them as they are.
+- [x] `11.2.4` Several encodings: use them as they are, with the `rid` and the scalability mode of `11.3.1`, and without the SSRCs of the offer.
 - [x] `11.2.5` Pass `dtx`, `maxBitrate`, `maxFramerate`, `scaleResolutionDownBy`, `priority` and `networkPriority` to the native encoding. Done in `6.2`, except `dtx`, which the `RTCRtpEncodingParameters` of webrtc-java does not have; `priority` goes to its `bitratePriority`, as in the browsers.
 - [ ] `11.2.6` E2E test per available codec: Opus, VP8, VP9 and H264. Receiving Opus, VP8 and H264 is already checked in `5.2.9` and `5.2.10`, and sending them in `6.2.10` and `6.2.11`.
 
@@ -972,12 +972,12 @@ Origin: `aiortc_handler.py`, `unified_plan_utils.py`
 
 Origin: `aiortc_handler.py`, `media_section.py`. aiortc does not support simulcast, so mediasoup-client (`Chrome111.ts`) has to be the reference.
 
-- [ ] `11.3.1` Remove the `UnsupportedException` of `send` with more than one encoding, and port the `rid` and `L1Tn` that `Chrome111` sets on each one. `send` already passes a single encoding in `sendEncodings`.
-- [ ] `11.3.2` `AnswerMediaSection`: `simulcast` and `rids`.
-- [ ] `11.3.3` `AnswerMediaSection`: `simulcast_03` from the draft.
-- [ ] `11.3.4` Add `S1T3` to each encoding with VP8 or H264. Review whether `numTemporalLayers` or `scalabilityMode` should be applied to the native encoding.
-- [ ] `11.3.5` E2E test: the server receives several layers.
-- [ ] `11.3.6` E2E test: the consumer receives different layers when the preferred layer changes on the server.
+- [x] `11.3.1` Remove the `UnsupportedException` of `send` with more than one encoding, and port the `rid` and `L1Tn` that `Chrome111` sets on each one. `send` already passes a single encoding in `sendEncodings`. In `WebRtcJavaHandler.simulcastEncodings`.
+- [x] `11.3.2` `AnswerMediaSection`: `simulcast` and `rids`.
+- [x] `11.3.3` `AnswerMediaSection`: `simulcast_03` from the draft.
+- [x] `11.3.4` Add `S1T3` to each encoding with VP8 or H264. Review whether `numTemporalLayers` or `scalabilityMode` should be applied to the native encoding. Decided: as `Chrome111`, and not as pymediasoup, each encoding gets `L1T{n}`, with the highest number of temporal layers of the given encodings, or 3 if none sets it, on the native encoding and in the RTP parameters, for any codec.
+- [x] `11.3.5` E2E test: the server receives several layers. `SimulcastTest`, with frames of 960x540, the smallest size at which libwebrtc sends three streams.
+- [x] `11.3.6` E2E test: the consumer receives different layers when the preferred layer changes on the server. Through the `setConsumerPreferredLayers` notification of the demo, after the first frame, since the demo ignores it for a consumer it has not stored yet. mediasoup 3.19.14 sometimes discards the key frame of the new stream, if its timestamp is too far behind, and asks for another one that libwebrtc ignores, less than 300 ms after the previous request; the test then asks for a key frame with `requestConsumerKeyFrame`.
 
 ### 11.4 SVC
 

@@ -267,6 +267,27 @@ final class DemoPeer implements AutoCloseable {
     }
 
     /**
+     * {@code setConsumerPreferredLayers}, a notification in this demo: the server sends the consumer
+     * the given spatial layer, or the highest below it that it receives, without answering.
+     *
+     * @param consumerId the consumer
+     * @param spatialLayer the spatial layer, the simulcast stream
+     */
+    void setConsumerPreferredLayers(String consumerId, int spatialLayer) {
+        protoo.notify("setConsumerPreferredLayers", Map.of("consumerId", consumerId, "spatialLayer", spatialLayer));
+    }
+
+    /**
+     * {@code requestConsumerKeyFrame}, a notification in this demo: the server asks the producer of
+     * the consumer for a key frame, without answering.
+     *
+     * @param consumerId the consumer
+     */
+    void requestConsumerKeyFrame(String consumerId) {
+        protoo.notify("requestConsumerKeyFrame", Map.of("consumerId", consumerId));
+    }
+
+    /**
      * {@code closeProducer}, a notification in this demo: the server closes the producer without
      * answering.
      *

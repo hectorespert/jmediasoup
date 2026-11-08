@@ -13,15 +13,15 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
- * A video source that sends frames of a single color, 320x240 at 30 frames per second, as long as it
- * is open.
+ * A video source that sends frames of a single color, 320x240 unless another size is given, at 30
+ * frames per second, as long as it is open.
  */
 public final class ColorVideoSource implements AutoCloseable {
 
-    /** The width of the frames. */
+    /** The width of the frames by default. */
     public static final int WIDTH = 320;
 
-    /** The height of the frames. */
+    /** The height of the frames by default. */
     public static final int HEIGHT = 240;
 
     /** The frames per second. */
@@ -36,12 +36,27 @@ public final class ColorVideoSource implements AutoCloseable {
     /** The red-difference chroma of the color. */
     public static final int V = 34;
 
+    private final int width;
+    private final int height;
     private final CustomVideoSource source = new CustomVideoSource();
     private final ScheduledExecutorService pusher = Executors.newSingleThreadScheduledExecutor(
             Thread.ofPlatform().name("color-video-source").daemon().factory());
 
-    /** Starts sending frames. */
+    /** Starts sending frames of {@link #WIDTH}x{@link #HEIGHT}. */
     public ColorVideoSource() {
+        this(WIDTH, HEIGHT);
+    }
+
+    /**
+     * Starts sending frames of the given size, such as one large enough for libwebrtc to send three
+     * simulcast streams, which it limits by resolution.
+     *
+     * @param width the width of the frames, even
+     * @param height the height of the frames, even
+     */
+    public ColorVideoSource(int width, int height) {
+        this.width = width;
+        this.height = height;
         // At a fixed rate, so that a late frame does not delay the next ones.
         pusher.scheduleAtFixedRate(this::push, 0, 1_000_000 / FRAME_RATE, TimeUnit.MICROSECONDS);
     }
@@ -68,7 +83,7 @@ public final class ColorVideoSource implements AutoCloseable {
     }
 
     private void push() {
-        NativeI420Buffer buffer = NativeI420Buffer.allocate(WIDTH, HEIGHT);
+        NativeI420Buffer buffer = NativeI420Buffer.allocate(width, height);
         fill(buffer.getDataY(), Y);
         fill(buffer.getDataU(), U);
         fill(buffer.getDataV(), V);

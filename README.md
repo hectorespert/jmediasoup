@@ -73,11 +73,23 @@ VideoTrack videoTrack = peerConnectionFactory.createVideoTrack("video", videoSou
 Producer producer = sendTransport.produce(ProducerOptions.builder(videoTrack).build()).join();
 ```
 
-The application then pushes frames to the source with `videoSource.pushFrame(frame)`, and audio to a `CustomAudioSource` with `pushAudio`. `ProducerOptions` also takes the codec to send, among those of `device.sendRtpCapabilities()`, a single encoding with its `maxBitrate` and the rest of the RTP encoding parameters, and the codec options, such as Opus in stereo or the bitrate with which video starts:
+The application then pushes frames to the source with `videoSource.pushFrame(frame)`, and audio to a `CustomAudioSource` with `pushAudio`. `ProducerOptions` also takes the codec to send, among those of `device.sendRtpCapabilities()`, the encodings with their `maxBitrate` and the rest of the RTP encoding parameters, and the codec options, such as Opus in stereo or the bitrate with which video starts:
 
 ```java
 Producer audioProducer = sendTransport.produce(ProducerOptions.builder(audioTrack)
                 .codecOptions(ProducerCodecOptions.builder().opusStereo(true).opusDtx(true).build())
+                .build())
+        .join();
+```
+
+Several encodings send the track in simulcast, one stream per encoding, from which mediasoup picks the one that each consumer receives. libwebrtc limits the number of streams by resolution: three need at least 960x540.
+
+```java
+Producer videoProducer = sendTransport.produce(ProducerOptions.builder(videoTrack)
+                .encodings(List.of(
+                        RtpEncodingParameters.builder().scaleResolutionDownBy(4.0).maxBitrate(150_000).build(),
+                        RtpEncodingParameters.builder().scaleResolutionDownBy(2.0).maxBitrate(500_000).build(),
+                        RtpEncodingParameters.builder().maxBitrate(1_500_000).build()))
                 .build())
         .join();
 ```
@@ -168,7 +180,7 @@ webrtc-java publishes natives for these platforms, as classifiers of `dev.onvoid
 
 `0.2.0` covers the basic flow: load the device, send and receive audio and video, pause and resume, replace the track being sent, send and receive data, get stats, restart ICE, and close. This is not supported yet:
 
-- Simulcast and SVC: `produce` with more than one encoding fails with `UnsupportedException`.
+- SVC, and changing the layers or the encodings of a producer while it sends (`setMaxSpatialLayer`, `setRtpEncodingParameters`).
 
 [TODO.md](TODO.md) holds the plan up to parity with pymediasoup and mediasoup-client.
 

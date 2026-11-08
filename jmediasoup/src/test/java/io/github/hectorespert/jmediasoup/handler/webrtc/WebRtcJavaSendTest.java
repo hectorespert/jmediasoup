@@ -280,16 +280,67 @@ class WebRtcJavaSendTest {
     }
 
     @Test
-    void simulcastIsNotSupportedYet() {
-        var encoding = RtpEncodingParameters.builder().build();
-        CompletionException failure = assertThrows(
-                CompletionException.class,
-                () -> await(transport.produce(ProducerOptions.builder(videoTrack())
-                        .encodings(List.of(encoding, encoding))
-                        .build())));
+    void severalEncodingsAreSentInSimulcast() {
+        Producer video = await(transport.produce(ProducerOptions.builder(videoTrack())
+                .encodings(List.of(
+                        RtpEncodingParameters.builder()
+                                .scaleResolutionDownBy(4.0)
+                                .maxBitrate(100_000)
+                                .build(),
+                        RtpEncodingParameters.builder()
+                                .scaleResolutionDownBy(2.0)
+                                .maxBitrate(300_000)
+                                .build(),
+                        RtpEncodingParameters.builder().maxBitrate(900_000).build()))
+                .build()));
 
-        assertInstanceOf(UnsupportedException.class, failure.getCause());
-        assertEquals(List.of(), mids());
+        // The encodings as given, with a rid and three temporal layers each, and no SSRC.
+        List<RtpEncodingParameters> encodings = video.rtpParameters().encodings();
+        assertEquals(
+                List.of("r0", "r1", "r2"),
+                encodings.stream().map(RtpEncodingParameters::rid).toList());
+        assertTrue(encodings.stream().allMatch(e -> "L1T3".equals(e.scalabilityMode())), encodings.toString());
+        assertTrue(encodings.stream().allMatch(e -> e.ssrc() == null), encodings.toString());
+        assertEquals(4.0, encodings.getFirst().scaleResolutionDownBy());
+
+        // The sender has them.
+        var senderEncodings = video.rtpSender().getParameters().encodings;
+        assertEquals(
+                List.of("r0", "r1", "r2"),
+                senderEncodings.stream().map(e -> e.rid).toList());
+        assertEquals(300_000, senderEncodings.get(1).maxBitrate);
+
+        // And the answer receives them.
+        Map<String, Object> answer = answerSection(video.localId());
+        assertEquals("recv", ((Map<?, ?>) answer.get("simulcast")).get("dir1"));
+        assertEquals("r0;r1;r2", ((Map<?, ?>) answer.get("simulcast")).get("list1"));
+        assertEquals(RTCSignalingState.STABLE, handler().peerConnection().getSignalingState());
+    }
+
+    @Test
+    void simulcastEncodingsShareTheHighestNumberOfTemporalLayers() {
+        assertEquals(
+                List.of("L1T3", "L1T3"),
+                WebRtcJavaHandler.simulcastEncodings(List.of(
+                                RtpEncodingParameters.builder()
+                                        .scalabilityMode("L1T2")
+                                        .build(),
+                                RtpEncodingParameters.builder().build()))
+                        .stream()
+                        .map(RtpEncodingParameters::scalabilityMode)
+                        .toList());
+        assertEquals(
+                List.of("L1T2", "L1T2"),
+                WebRtcJavaHandler.simulcastEncodings(List.of(
+                                RtpEncodingParameters.builder()
+                                        .scalabilityMode("L1T2")
+                                        .build(),
+                                RtpEncodingParameters.builder()
+                                        .scalabilityMode("L1T1")
+                                        .build()))
+                        .stream()
+                        .map(RtpEncodingParameters::scalabilityMode)
+                        .toList());
     }
 
     // A section of the remote description, the answer of mediasoup.
