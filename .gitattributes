@@ -1,6 +1,9 @@
 #
 # https://help.github.com/articles/dealing-with-line-endings/
 #
+# Text files use lf on every platform, so that Spotless and the tests see the same files on Windows
+* text=auto eol=lf
+
 # Linux start script should use lf
 /gradlew        text eol=lf
 

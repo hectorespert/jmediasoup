@@ -86,8 +86,11 @@ public final class MediasoupServer implements BeforeAllCallback, ParameterResolv
 
     private static Server server(ExtensionContext context) {
         String os = System.getProperty("os.name").toLowerCase(Locale.ROOT);
+        String arch = System.getProperty("os.arch").toLowerCase(Locale.ROOT);
         // The server needs the host network, validated only on Linux (0.4.8 and 0.4.9).
         assumeTrue(os.startsWith("linux"), "the mediasoup server tests only run on Linux");
+        // The demo image is only published for amd64.
+        assumeTrue(arch.equals("amd64") || arch.equals("x86_64"), "the mediasoup server tests only run on x86_64");
         assumeTrue(
                 DockerClientFactory.instance().isDockerAvailable(),
                 "Docker is not available: start Docker, or the podman socket with DOCKER_HOST pointing to it");
